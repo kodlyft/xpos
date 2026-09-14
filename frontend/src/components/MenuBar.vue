@@ -344,7 +344,7 @@ const menus = computed<Menu[]>(() => [
 				icon: ShoppingCart,
 				shortcut: "Ctrl+N",
 				action: () => {
-					cartStore.clearCart();
+					window.dispatchEvent(new CustomEvent("xpos:clear-cart"));
 					router.push("/pos");
 				},
 			},

@@ -42,6 +42,7 @@ export interface POSProfile {
 	selling_price_list?: string;
 	default_customer?: string;
 	allow_change_posting_date?: boolean;
+	show_customer_balance?: boolean;
 	allow_partial_payment?: boolean;
 	allow_credit_sale?: boolean;
 	allow_return?: boolean;
@@ -273,7 +274,7 @@ export interface Customer {
 	mobile_no?: string;
 	email_id?: string;
 	customer_type?: string;
-	loyalty_program?: string;
+	loyalty_program?: { name?: string; loyalty_points?: number; conversion_factor?: number };
 	loyalty_points?: number;
 	loyalty_amount?: number;
 	discount?: number;
@@ -282,6 +283,8 @@ export interface Customer {
 	default_price_list?: string;
 	gender?: string;
 	tax_id?: string;
+	balance?: number;
+	credit_limit?: number;
 	[key: string]: unknown;
 }
 

@@ -26,7 +26,10 @@ const DEFAULT_SLOW_MO = "700";
 function demoArgs(args) {
 	const configuredSlowMo = env.CYPRESS_SLOW_MO || DEFAULT_SLOW_MO;
 	const parsedSlowMo = Number.parseInt(String(configuredSlowMo), 10);
-	const safeSlowMo = Number.isFinite(parsedSlowMo) && parsedSlowMo > 0 ? parsedSlowMo : Number.parseInt(DEFAULT_SLOW_MO, 10);
+	const safeSlowMo =
+		Number.isFinite(parsedSlowMo) && parsedSlowMo > 0
+			? parsedSlowMo
+			: Number.parseInt(DEFAULT_SLOW_MO, 10);
 	env.CYPRESS_SLOW_MO = String(safeSlowMo);
 
 	const extra = [];

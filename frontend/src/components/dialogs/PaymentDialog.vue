@@ -704,6 +704,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
 import { useCartStore } from "@/stores/cartStore";
+import { useCustomerStore } from "@/stores/customerStore";
 import { useAuthStore } from "@/stores/authStore";
 import { usePaymentStore } from "@/stores/paymentStore";
 import { call, showSuccess, showError, showInfo, isNetworkError } from "@/services/api";
@@ -776,6 +777,7 @@ const posStore = usePosStore();
 const { moneyPrecision, percent } = useMoney();
 const { printInvoice, printInvoiceLocal } = usePrintInvoice();
 const cartStore = useCartStore();
+const customerStore = useCustomerStore();
 const authStore = useAuthStore();
 const paymentStore = usePaymentStore();
 const offlineStore = useOfflineStore();
@@ -1024,13 +1026,11 @@ onMounted(async () => {
 		}
 
 		try {
-			const info = await call<{
-				balance?: number;
-				credit_limit?: number;
-				loyalty_points?: number;
-				loyalty_program?: { conversion_factor?: number };
-			}>("xpos.api.customers.get_customer_info", { customer: cartStore.customer.name });
-			if (info) {
+			if (customerStore.selectedCustomerInfo?.name !== cartStore.customer.name) {
+				await customerStore.getCustomerInfo(cartStore.customer.name);
+			}
+			const info = customerStore.selectedCustomerInfo;
+			if (info && info.name === cartStore.customer.name) {
 				customerBalance.value = info.balance ?? null;
 				customerCreditLimit.value = info.credit_limit ?? 0;
 				if ((info.loyalty_points ?? 0) > 0) {

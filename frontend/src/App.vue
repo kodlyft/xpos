@@ -58,6 +58,17 @@
 
 			<KeyboardShortcutsDialog :open="showShortcutsDialog" @close="showShortcutsDialog = false" />
 			<AboutDialog :open="showAboutDialog" @close="showAboutDialog = false" />
+
+			<ConfirmDialog
+				:open="showClearCartConfirm"
+				:title="__('Clear cart?')"
+				:description="__('All items and order details for this order will be lost.')"
+				:confirm-label="__('Clear Cart')"
+				variant="destructive"
+				:icon="Trash2"
+				@confirm="confirmClearCart"
+				@cancel="showClearCartConfirm = false"
+			/>
 		</template>
 
 		<Toaster
@@ -163,10 +174,11 @@ import CashMovementDialog from "@/components/dialogs/CashMovementDialog.vue";
 import DraftInvoiceDialog from "@/components/dialogs/DraftInvoiceDialog.vue";
 import KeyboardShortcutsDialog from "@/components/dialogs/KeyboardShortcutsDialog.vue";
 import AboutDialog from "@/components/dialogs/AboutDialog.vue";
+import ConfirmDialog from "@/components/dialogs/ConfirmDialog.vue";
 import SplashScreen from "@/components/SplashScreen.vue";
 import { useBranding } from "@/composables/useBranding";
 import { TooltipWrapper } from "@/components/ui/tooltip";
-import { AlertTriangle } from "lucide-vue-next";
+import { AlertTriangle, Trash2 } from "lucide-vue-next";
 import { useOfflineStore } from "@/stores/offlineStore";
 import { initSyncListeners } from "@/services/syncIpcHandler";
 import { showError } from "@/services/api";
@@ -204,7 +216,22 @@ const {
 const isAuthPage = computed(() => route.meta.isAuthPage === true || route.meta.isSetupPage === true);
 const isFullScreen = computed(() => route.meta.fullScreen === true);
 
-async function handleClearCart() {
+const showClearCartConfirm = ref(false);
+
+function handleClearCart() {
+	if (!cartStore.isEmpty) {
+		showClearCartConfirm.value = true;
+		return;
+	}
+	doClearCart();
+}
+
+function confirmClearCart() {
+	showClearCartConfirm.value = false;
+	doClearCart();
+}
+
+async function doClearCart() {
 	cartStore.clearCart();
 	if (!cartStore.customer && posStore.defaultCustomer) {
 		const customer = await getCustomer(posStore.defaultCustomer);

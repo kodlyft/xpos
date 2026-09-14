@@ -120,6 +120,8 @@ export const usePosStore = defineStore("pos", () => {
 
 	const allowChangePostingDate = computed(() => !!posProfile.value?.allow_change_posting_date);
 
+	const showCustomerBalance = computed(() => !!posProfile.value?.show_customer_balance);
+
 	const allowPartialPayment = computed(() => !!posProfile.value?.allow_partial_payment);
 
 	const allowCreditSale = computed(() => !!posProfile.value?.allow_credit_sale);
@@ -547,6 +549,7 @@ export const usePosStore = defineStore("pos", () => {
 		sellingPriceList,
 		defaultCustomer,
 		allowChangePostingDate,
+		showCustomerBalance,
 		allowPartialPayment,
 		allowCreditSale,
 		allowReturn,

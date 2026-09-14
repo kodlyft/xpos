@@ -130,6 +130,44 @@
 					<Pencil class="w-full" />
 				</button>
 			</div>
+
+			<div v-if="showCreditInfo" class="mt-3 grid grid-cols-2 gap-2">
+				<div
+					class="rounded-lg border p-2.5"
+					:class="isOverCreditLimit ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-muted/30'"
+				>
+					<p class="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+						{{ __("Balance") }}
+					</p>
+					<p
+						class="text-2xl font-extrabold"
+						:class="isOverCreditLimit ? 'text-destructive' : 'text-foreground'"
+					>
+						{{ money(customerBalance ?? 0) }}
+					</p>
+				</div>
+				<div
+					class="rounded-lg border p-2.5"
+					:class="isOverCreditLimit ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-muted/30'"
+				>
+					<p class="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+						{{ __("Credit Limit") }}
+					</p>
+					<p
+						class="text-2xl font-extrabold"
+						:class="isOverCreditLimit ? 'text-destructive' : 'text-foreground'"
+					>
+						{{ customerCreditLimit > 0 ? money(customerCreditLimit) : __("No Limit") }}
+					</p>
+				</div>
+				<p
+					v-if="isOverCreditLimit"
+					class="col-span-2 flex items-center gap-1.5 text-xs font-semibold text-destructive"
+				>
+					<AlertTriangle class="w-3.5 h-3.5 shrink-0" />
+					{{ __("This sale exceeds the credit limit by {0}", [money(projectedBalance - customerCreditLimit)]) }}
+				</p>
+			</div>
 		</div>
 
 		<div ref="cartScrollContainer" class="flex-1 overflow-y-auto px-4 xpos-scrollbar">
@@ -221,11 +259,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { usePosStore } from "@/stores/posStore";
 import { useCartStore } from "@/stores/cartStore";
 import { useCustomerStore } from "@/stores/customerStore";
 import { showError } from "@/services/api";
+import { useMoney } from "@/composables/useMoney";
 import CartItem from "./CartItem.vue";
 import CartSummary from "./CartSummary.vue";
 import { Button } from "@/components/ui/button";
@@ -243,6 +282,7 @@ import {
 	Phone,
 	Mail,
 	Pencil,
+	AlertTriangle,
 } from "lucide-vue-next";
 import __ from "@/lib/translate";
 import CustomerEditDialog from "@/components/dialogs/CustomerEditDialog.vue";
@@ -250,6 +290,7 @@ import CustomerEditDialog from "@/components/dialogs/CustomerEditDialog.vue";
 const posStore = usePosStore();
 const cartStore = useCartStore();
 const customerStore = useCustomerStore();
+const { money } = useMoney();
 
 const cartScrollContainer = ref<HTMLElement | null>(null);
 
@@ -294,6 +335,32 @@ watch(
 			});
 		}
 	},
+);
+
+watch(
+	() => cartStore.customer?.name,
+	(name) => {
+		if (name && posStore.showCustomerBalance) customerStore.getCustomerInfo(name);
+	},
+	{ immediate: true },
+);
+
+const customerFinancials = computed(() =>
+	cartStore.customer && customerStore.selectedCustomerInfo?.name === cartStore.customer.name
+		? customerStore.selectedCustomerInfo
+		: null,
+);
+const customerBalance = computed(() => customerFinancials.value?.balance ?? null);
+const customerCreditLimit = computed(() => customerFinancials.value?.credit_limit ?? 0);
+const projectedBalance = computed(() => (customerBalance.value ?? 0) + Math.max(cartStore.grandTotal, 0));
+const isOverCreditLimit = computed(
+	() => customerCreditLimit.value > 0 && projectedBalance.value > customerCreditLimit.value,
+);
+const showCreditInfo = computed(
+	() =>
+		posStore.showCustomerBalance &&
+		!cartStore.isReturnMode &&
+		((customerBalance.value ?? 0) > 0 || customerCreditLimit.value > 0),
 );
 
 function handleCustomerClick() {
