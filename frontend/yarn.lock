@@ -2230,19 +2230,19 @@
   resolved "https://registry.yarnpkg.com/@xmldom/xmldom/-/xmldom-0.8.15.tgz#71ebf80729e4e95221d519ac9b1e1eaea7784907"
   integrity sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==
 
-"@zxing/browser@^0.1.5":
-  version "0.1.5"
-  resolved "https://registry.npmjs.org/@zxing/browser/-/browser-0.1.5.tgz"
-  integrity sha512-4Lmrn/il4+UNb87Gk8h1iWnhj39TASEHpd91CwwSJtY5u+wa0iH9qS0wNLAWbNVYXR66WmT5uiMhZ7oVTrKfxw==
+"@zxing/browser@^0.2.1":
+  version "0.2.1"
+  resolved "https://registry.yarnpkg.com/@zxing/browser/-/browser-0.2.1.tgz#41ca0b80648d131dec5d8cc18efbd62fae4646e7"
+  integrity sha512-92pVfVDUXbc15xu9vIEmhNyqIEASMEkDF92CwT6T+7sg2EHXJRktH9CQKoQSXe51UtbNsj+Fm09H/JBWHMs/Sw==
   optionalDependencies:
     "@zxing/text-encoding" "^0.9.0"
 
-"@zxing/library@^0.21.3":
-  version "0.21.3"
-  resolved "https://registry.npmjs.org/@zxing/library/-/library-0.21.3.tgz"
-  integrity sha512-hZHqFe2JyH/ZxviJZosZjV+2s6EDSY0O24R+FQmlWZBZXP9IqMo7S3nb3+2LBWxodJQkSurdQGnqE7KXqrYgow==
+"@zxing/library@^0.23.0":
+  version "0.23.0"
+  resolved "https://registry.yarnpkg.com/@zxing/library/-/library-0.23.0.tgz#cc1a341f064b36fc24631cc13797bcd329e36ca7"
+  integrity sha512-6fkkoFwP8CHxl6ugnPsj74PLJgX2iRv5zczGAyt5OBzQgxFhuhF0NCEc4t4OvSr8xAv2MRLlI0Iu9ZGDZQ2urA==
   dependencies:
-    ts-custom-error "^3.2.1"
+    ts-custom-error "^3.3.1"
   optionalDependencies:
     "@zxing/text-encoding" "~0.9.0"
 
@@ -6375,9 +6375,9 @@ truncate-utf8-bytes@^1.0.0:
   dependencies:
     utf8-byte-length "^1.0.1"
 
-ts-custom-error@^3.2.1:
+ts-custom-error@^3.3.1:
   version "3.3.1"
-  resolved "https://registry.npmjs.org/ts-custom-error/-/ts-custom-error-3.3.1.tgz"
+  resolved "https://registry.yarnpkg.com/ts-custom-error/-/ts-custom-error-3.3.1.tgz#8bd3c8fc6b8dc8e1cb329267c45200f1e17a65d1"
   integrity sha512-5OX1tzOjxWEgsr/YEUWSuPrQ00deKLh6D7OTWcvNHm12/7QPyRh8SYpyWvA4IZv8H/+GQWQEh/kwo95Q9OVW1A==
 
 tslib@^2.0.0, tslib@^2.1.0, tslib@^2.4.0, tslib@^2.8.0, tslib@^2.8.1:
