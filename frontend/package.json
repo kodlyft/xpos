@@ -32,8 +32,8 @@
     "test:e2e:run": "node scripts/run-cypress.mjs run"
   },
   "dependencies": {
-    "@zxing/browser": "^0.1.5",
-    "@zxing/library": "^0.21.3",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.20",
