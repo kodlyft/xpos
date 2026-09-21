@@ -84,7 +84,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Reports",
-   "link_count": 16,
+   "link_count": 17,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -195,6 +195,17 @@
    "link_type": "Report",
    "onboard": 0,
    "report_ref_doctype": "Bin",
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales Summary",
+   "link_count": 0,
+   "link_to": "Sales Summary",
+   "link_type": "Report",
+   "onboard": 0,
+   "report_ref_doctype": "Sales Invoice",
    "type": "Link"
   },
   {
@@ -333,7 +344,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-06-06 12:12:41.123126",
+ "modified": "2026-09-21 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "X POS",
  "name": "X POS",
