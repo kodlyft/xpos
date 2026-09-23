@@ -4,7 +4,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from xpos.x_pos.api.items import get_items
+from xpos.x_pos.api.item_processing.search import get_items
 
 
 class TestNumericItemCodes(FrappeTestCase):
@@ -40,7 +40,7 @@ class TestNumericItemCodes(FrappeTestCase):
 	def test_numeric_code_appears_without_search(self):
 		pos_profile = json.dumps({"name": "TestProfile"})
 		item_groups = json.dumps(["All Item Groups"])
-		with patch("xpos.x_pos.api.items.get_items_details", return_value=[]):
+		with patch("xpos.x_pos.api.item_processing.search.get_items_details", return_value=[]):
 			seen_target = False
 			start_after = None
 			for _ in range(300):

@@ -1,13 +1,54 @@
 # Copyright (c) 2025, Kodlyft and contributors
 # For license information, please see license.txt
 
+import json
+
 import frappe
 from frappe import _
+from frappe.utils import flt, nowdate
 
 
 def execute(filters=None):
 	columns, data = get_columns(), evaluate_filters(filters)
 	return columns, data
+
+
+@frappe.whitelist()
+def create_purchase_order(report_data: str | list, filters: str | dict | None = None) -> dict:
+	"""Create a draft Purchase Order from the report rows that need restocking."""
+	rows = json.loads(report_data) if isinstance(report_data, str) else report_data
+	filters = frappe._dict(json.loads(filters) if isinstance(filters, str) else (filters or {}))
+	if not filters.supplier or not filters.company:
+		frappe.throw(_("Company and Supplier filters are required to create a Purchase Order."))
+
+	items = [
+		{
+			"item_code": row.get("item_code"),
+			"qty": flt(row.get("req_qty")),
+			"uom": row.get("uom"),
+			"conversion_factor": flt(row.get("conversion_factor")) or 1,
+			"rate": flt(row.get("rate")),
+			"warehouse": row.get("warehouse"),
+			"schedule_date": nowdate(),
+		}
+		for row in rows or []
+		if row.get("item_code") and flt(row.get("req_qty")) > 0
+	]
+	if not items:
+		frappe.throw(_("No items with a Required Qty to order."))
+
+	po = frappe.get_doc(
+		{
+			"doctype": "Purchase Order",
+			"supplier": filters.supplier,
+			"company": filters.company,
+			"transaction_date": nowdate(),
+			"schedule_date": nowdate(),
+			"items": items,
+		}
+	)
+	po.insert()
+	return {"name": po.name}
 
 
 def evaluate_filters(filters):

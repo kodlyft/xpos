@@ -130,7 +130,7 @@ class TestValidateStockOnInvoice(unittest.TestCase):
 		)
 
 		with patch.object(stock_module, "collect_stock_errors", return_value=[]) as collect:
-			stock_module._validate_stock_on_invoice(invoice)
+			stock_module.validate_stock_on_invoice(invoice)
 
 		collect.assert_called_once()
 		passed_items = collect.call_args[0][0]
@@ -150,7 +150,7 @@ class TestValidateStockOnInvoice(unittest.TestCase):
 			patch.object(stock_module, "_should_block", return_value=True),
 			self.assertRaises(stock_module.XPosInsufficientStockError),
 		):
-			stock_module._validate_stock_on_invoice(invoice)
+			stock_module.validate_stock_on_invoice(invoice)
 
 	def test_profile_can_opt_out_of_blocking(self):
 		invoice = FakeDoc(
@@ -164,7 +164,7 @@ class TestValidateStockOnInvoice(unittest.TestCase):
 			patch.object(stock_module, "collect_stock_errors", return_value=errors),
 			patch.object(stock_module, "_should_block", return_value=False),
 		):
-			stock_module._validate_stock_on_invoice(invoice)  # must not raise
+			stock_module.validate_stock_on_invoice(invoice)  # must not raise
 
 
 class TestConsolidationStockGuard(unittest.TestCase):
@@ -182,7 +182,7 @@ class TestConsolidationStockGuard(unittest.TestCase):
 		self.addCleanup(patcher.stop)
 
 		negative_patcher = patch(
-			"xpos.x_pos.overrides.pos_invoice_merge_log._negative_stock_allowed", return_value=False
+			"xpos.x_pos.overrides.pos_invoice_merge_log.negative_stock_allowed", return_value=False
 		)
 		negative_patcher.start()
 		self.addCleanup(negative_patcher.stop)
@@ -215,7 +215,7 @@ class TestConsolidationStockGuard(unittest.TestCase):
 		]
 
 		with patch("xpos.x_pos.overrides.pos_invoice_merge_log.get_stock_availability", return_value=1.0):
-			self.log._validate_net_stock(docs)  # must not raise
+			self.log.validate_net_stock(docs)  # must not raise
 
 	def test_genuine_shortfall_is_blocked(self):
 		docs = [self._sale("IT-1", "WH", 2)]
@@ -224,7 +224,7 @@ class TestConsolidationStockGuard(unittest.TestCase):
 			patch("xpos.x_pos.overrides.pos_invoice_merge_log.get_stock_availability", return_value=1.0),
 			self.assertRaises(frappe.ValidationError),
 		):
-			self.log._validate_net_stock(docs)
+			self.log.validate_net_stock(docs)
 
 	def test_packed_items_are_counted(self):
 		docs = [
@@ -241,12 +241,12 @@ class TestConsolidationStockGuard(unittest.TestCase):
 
 		with (
 			patch(
-				"xpos.x_pos.overrides.pos_invoice_merge_log._negative_stock_allowed",
+				"xpos.x_pos.overrides.pos_invoice_merge_log.negative_stock_allowed",
 				return_value=True,
 			),
 			patch("xpos.x_pos.overrides.pos_invoice_merge_log.get_stock_availability", return_value=0.0),
 		):
-			self.log._validate_net_stock(docs)  # must not raise
+			self.log.validate_net_stock(docs)  # must not raise
 
 	def test_post_submit_assertion_catches_negative_bin(self):
 		docs = [self._sale("IT-1", "WH", 1)]
@@ -258,4 +258,4 @@ class TestConsolidationStockGuard(unittest.TestCase):
 			mock_frappe.throw.side_effect = NegativeStockRaised
 
 			with self.assertRaises(NegativeStockRaised):
-				self.log._assert_no_negative_stock(docs)
+				self.log.assert_no_negative_stock(docs)

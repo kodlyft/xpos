@@ -52,6 +52,7 @@ frappe.query_reports["Purchase Order Report"] = {
 					method: "xpos.x_pos.report.purchase_order_report.purchase_order_report.create_purchase_order",
 					args: {
 						report_data: report_data,
+						filters: filters,
 					},
 					callback: function (r) {
 						if (!r.exc) {

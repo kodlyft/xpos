@@ -22,7 +22,7 @@ def enforce_stock_availability(invoice_doc):
 	sell the last unit.
 	"""
 
-	from xpos.x_pos.api.invoice_processing.stock import _validate_stock_on_invoice
+	from xpos.x_pos.api.invoice_processing.stock import validate_stock_on_invoice
 	from xpos.x_pos.api.item_processing.stock import lock_bins_for_update
 
 	if invoice_doc.get("is_return"):
@@ -34,7 +34,7 @@ def enforce_stock_availability(invoice_doc):
 			for row in (invoice_doc.get("items") or []) + (invoice_doc.get("packed_items") or [])
 		]
 	)
-	_validate_stock_on_invoice(invoice_doc)
+	validate_stock_on_invoice(invoice_doc)
 
 
 def _get_item_rate_precision():

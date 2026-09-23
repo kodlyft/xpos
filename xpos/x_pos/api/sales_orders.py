@@ -6,7 +6,7 @@ import json
 import frappe
 from frappe.utils import getdate, nowdate
 
-from xpos.x_pos.api.payment_entry import create_payment_entry
+from xpos.x_pos.api.payment_processing.creation import create_payment_entry
 
 
 def _payment_entry_job(order_name: str, payments: list[dict]):

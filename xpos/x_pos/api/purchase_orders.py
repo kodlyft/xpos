@@ -2193,6 +2193,37 @@ def update_item_prices(items: list, pos_profile: dict):
 
 
 @frappe.whitelist()
+def update_item_selling_price(
+	data: str | dict, pos_profile: str | None = None, company: str | None = None
+) -> dict:
+	"""Apply purchase-screen sale prices before a Purchase Invoice draft is submitted.
+
+	The draft submit path does not go through ``create_purchase_invoice_direct``,
+	so the frontend calls this first; the POS Profile flags still decide what is written.
+	"""
+	from erpnext.stock.get_item_details import get_conversion_factor
+
+	payload = json.loads(data) if isinstance(data, str) else data
+	# Only a profile name is accepted - a client-supplied dict could switch price updates on.
+	profile = _resolve_pos_profile(pos_profile if isinstance(pos_profile, str) else None)
+	_ensure_allowed(profile, "allow_purchase_order", _("Purchase invoices"))
+
+	items = []
+	for row in payload.get("items") or []:
+		if not row.get("item_code"):
+			continue
+		conversion_factor = 1
+		if row.get("uom"):
+			conversion_factor = (
+				flt(get_conversion_factor(row["item_code"], row["uom"]).get("conversion_factor")) or 1
+			)
+		items.append({**row, "conversion_factor": conversion_factor})
+
+	update_item_prices(items, profile)
+	return {"updated_count": len(items)}
+
+
+@frappe.whitelist()
 def get_item_purchase_details(item_code: str, pos_profile: str | None = None) -> dict | None:
 	"""Fetch full item details for purchase invoice including prices, UOMs, and tax info.
 
