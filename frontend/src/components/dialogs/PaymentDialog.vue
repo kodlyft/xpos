@@ -708,9 +708,9 @@ import { useCustomerStore } from "@/stores/customerStore";
 import { useAuthStore } from "@/stores/authStore";
 import { usePaymentStore } from "@/stores/paymentStore";
 import { call, showSuccess, showError, showInfo, isNetworkError } from "@/services/api";
-import { useOfflineStore } from "@/stores/offlineStore";
 import { __ } from "@/lib/translate";
 import { usePrintInvoice } from "@/composables/usePrintInvoice";
+import { useOfflineSale } from "@/composables/useOfflineSale";
 import { isElectron } from "@/services/electronBridge";
 import { fiscalizeViaLocalService } from "@/services/fbrLocalService";
 import {
@@ -776,11 +776,11 @@ import {
 const posStore = usePosStore();
 const { moneyPrecision, percent } = useMoney();
 const { printInvoice, printInvoiceLocal } = usePrintInvoice();
+const { completeOfflineSale } = useOfflineSale();
 const cartStore = useCartStore();
 const customerStore = useCustomerStore();
 const authStore = useAuthStore();
 const paymentStore = usePaymentStore();
-const offlineStore = useOfflineStore();
 
 const amountInput = ref<InstanceType<typeof NumberInput> | null>(null);
 const submitBtn = ref<InstanceType<typeof Button> | null>(null);
@@ -1376,20 +1376,11 @@ async function submitPayment(withPrint: boolean = true) {
 		}
 
 		if (!isOnline()) {
-			const result = await offlineStore.saveOffline(
-				invoiceData,
-				cartStore.customerName,
-				cartStore.grandTotal,
-				cartStore.getStockReservations(),
-			);
-			if (result.success) {
-				showInfo(
-					__(`Invoice saved offline (#${result.localId}). It will sync when you're back online.`),
-				);
-				cartStore.clearAll();
-			} else {
-				showError(__("Failed to save invoice offline"));
-			}
+			const saved = await completeOfflineSale(invoiceData, {
+				withPrint,
+				cashier: authStore.userFullName,
+			});
+			if (!saved) showError(__("Failed to save invoice offline"));
 			return;
 		}
 		let result = await call<CreateInvoiceResult>("xpos.api.invoices.create_invoice", {
@@ -1418,20 +1409,11 @@ async function submitPayment(withPrint: boolean = true) {
 			close();
 			cartStore.openDraftDialog();
 		} else if (isNetworkError(error)) {
-			const invoiceData = buildInvoicePayload();
-			const result = await offlineStore.saveOffline(
-				invoiceData,
-				cartStore.customerName,
-				cartStore.grandTotal,
-				cartStore.getStockReservations(),
-			);
-			if (result.success) {
-				showInfo(
-					__(`Invoice saved offline (#${result.localId}). It will sync when you're back online.`),
-				);
-				cartStore.clearAll();
-				return;
-			}
+			const saved = await completeOfflineSale(buildInvoicePayload(), {
+				withPrint,
+				cashier: authStore.userFullName,
+			});
+			if (saved) return;
 			showError(__("You are offline. Invoice could not be saved locally."));
 		} else {
 			showError(__("Payment failed: {0}", [extractErrorMessage(error)]));

@@ -11,6 +11,36 @@ export interface PrintInvoiceOptions {
 }
 
 /**
+ * Print an HTML document from a hidden iframe. Unlike window.open, this is not caught by
+ * popup blockers after an await, and needs no network.
+ */
+export function printHtml(html: string): HTMLIFrameElement {
+	const frame = document.createElement("iframe");
+	frame.setAttribute("aria-hidden", "true");
+	Object.assign(frame.style, {
+		position: "fixed",
+		right: "0",
+		bottom: "0",
+		width: "0",
+		height: "0",
+		border: "0",
+	});
+	frame.onload = () => {
+		const win = frame.contentWindow;
+		if (!win) return;
+		win.onafterprint = () => setTimeout(() => frame.remove(), 0);
+		// Give the logo a moment to load before the print dialog snapshots the page.
+		setTimeout(() => {
+			win.focus();
+			win.print();
+		}, 250);
+	};
+	frame.srcdoc = html;
+	document.body.appendChild(frame);
+	return frame;
+}
+
+/**
  * Shared invoice printing helpers used by the payment dialog (genuine receipt),
  * the terminal backup receipt, and the cashier settlement screen.
  */
@@ -100,5 +130,29 @@ export function usePrintInvoice() {
 		}
 	}
 
-	return { printInvoice, printInvoiceLocal };
+	/**
+	 * Print a sale that exists only on this device. The server's print view is unreachable
+	 * offline, so the receipt is built from the sale's snapshot and the cached receipt layout.
+	 */
+	async function printReceiptOffline(snapshot: ReceiptSnapshot): Promise<boolean> {
+		try {
+			const context = await getCachedReceiptContext(posStore.profileName);
+			if (!context) {
+				showError(
+					__(
+						"The receipt layout is not available offline. Reprint this sale from Order History once back online.",
+					),
+				);
+				return false;
+			}
+			printHtml(buildReceiptHtml(snapshot, context));
+			return true;
+		} catch (error) {
+			console.error("Offline print error:", error);
+			showError(__("Failed to print invoice"));
+			return false;
+		}
+	}
+
+	return { printInvoice, printInvoiceLocal, printReceiptOffline };
 }

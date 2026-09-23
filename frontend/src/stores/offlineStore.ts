@@ -13,7 +13,7 @@ import {
 	adjustCachedStock,
 } from "@/services/dbBridge";
 import type { PendingInvoice } from "@/services/idbService";
-import type { InvoiceData } from "@/types/pos.types";
+import type { InvoiceData, ReceiptSnapshot } from "@/types/pos.types";
 import __ from "@/lib/translate";
 
 export type OfflineInvoice = PendingInvoice;
@@ -181,12 +181,14 @@ export const useOfflineStore = defineStore("offline", () => {
 		customerName?: string,
 		grandTotal?: number,
 		reservations?: { item_code: string; stock_qty: number }[],
+		receipt?: ReceiptSnapshot,
 	): Promise<{ success: boolean; localId?: number }> {
 		try {
 			const record = {
 				data: invoiceData as unknown,
 				customer_name: customerName || invoiceData.customer,
 				grand_total: grandTotal,
+				receipt,
 			};
 
 			const result = await addPendingInvoice(record);

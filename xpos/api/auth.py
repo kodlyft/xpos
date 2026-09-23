@@ -4,6 +4,7 @@
 
 import frappe
 from frappe import _
+from frappe.sessions import get_csrf_token as session_csrf_token
 from frappe.utils import cint, flt
 
 ALL_PERMISSION_KEYS = (
@@ -161,6 +162,17 @@ def get_current_user_permissions() -> dict:
 		"role": role_name,
 		"permissions": permissions,
 	}
+
+
+@frappe.whitelist(methods=["GET"])
+def get_csrf_token() -> str:
+	"""Return the session's CSRF token, so a page loaded from the offline cache can recover.
+
+	GET is not CSRF-checked, which is what lets a page holding a stale token ask for the current one.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Not logged in"), frappe.AuthenticationError)
+	return session_csrf_token()
 
 
 @frappe.whitelist()

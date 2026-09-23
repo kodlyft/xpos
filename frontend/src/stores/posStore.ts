@@ -289,6 +289,7 @@ export const usePosStore = defineStore("pos", () => {
 				});
 
 				if (result.pos_profile?.use_offline_mode) {
+					refreshReceiptContext(result.pos_profile.name);
 					try {
 						await cachePOSData(result);
 
@@ -498,8 +499,10 @@ export const usePosStore = defineStore("pos", () => {
 		}
 	}
 
+	/** Cache the receipt layout so a sale made offline can still be printed. */
 	async function refreshReceiptContext(profileName: string): Promise<void> {
-		if (!isElectron() || !isOnline() || !profileName) return;
+		if (!isOnline() || !profileName) return;
+		if (!isElectron() && !useOfflineMode.value) return;
 		try {
 			const ctx = await call<ReceiptContext>("xpos.api.print_formats.get_receipt_context", {
 				pos_profile: profileName,

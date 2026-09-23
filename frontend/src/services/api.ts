@@ -100,7 +100,43 @@ function stripHtml(value: string): string {
 	return (doc.body.textContent || "").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Fetch the session's current CSRF token. The token in the page goes stale when the page comes
+ * from the offline cache, or the session's token changes; GET requests are not CSRF-checked, so
+ * this still works.
+ */
+export async function refreshCsrfToken(): Promise<string | null> {
+	try {
+		const response = await fetch(`${getApiBaseUrlSync()}/api/method/xpos.api.auth.get_csrf_token`, {
+			method: "GET",
+			headers: { Accept: "application/json" },
+			credentials: isElectron() ? "include" : "same-origin",
+			cache: "no-store",
+		});
+		if (!response.ok) return null;
+		const token = (await response.json())?.message;
+		if (typeof token !== "string" || !token) return null;
+		window.xpos = window.xpos || ({} as XPosGlobal);
+		window.xpos.csrf_token = token;
+		return token;
+	} catch {
+		return null;
+	}
+}
+
 async function fetchCall<T = unknown>(method: string, args: Record<string, unknown> = {}): Promise<T> {
+	const { response, data } = await postMethod(method, args);
+
+	if (response.status === 400 && data.exc_type === "CSRFTokenError" && (await refreshCsrfToken())) {
+		return handleResponse<T>(method, args, await postMethod(method, args));
+	}
+	return handleResponse<T>(method, args, { response, data });
+}
+
+async function postMethod(
+	method: string,
+	args: Record<string, unknown>,
+): Promise<{ response: Response; data: Record<string, any> }> {
 	if (!isOnline()) {
 		throw new Error("__offline__");
 	}
@@ -135,8 +171,14 @@ async function fetchCall<T = unknown>(method: string, args: Record<string, unkno
 		throw new Error("__offline__");
 	}
 
-	const data = await response.json();
+	return { response, data: await response.json() };
+}
 
+function handleResponse<T>(
+	method: string,
+	args: Record<string, unknown>,
+	{ response, data }: { response: Response; data: Record<string, any> },
+): T {
 	if (!response.ok || data.exc) {
 		const traceback = toTraceback(data.exc);
 		const errorMsg = extractErrorMessage(data, response.status, traceback);

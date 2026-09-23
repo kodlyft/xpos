@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { isProxy, reactive, ref } from "vue";
 
 // ── Mock electronBridge ──────────────────────────────────────
 // In Electron mode, isElectron() returns true and functions go through IPC.
@@ -306,6 +307,16 @@ describe("dbBridge", () => {
 			expect(result).toEqual({ id: 7, local_id: "inv_xyz" });
 		});
 
+		it("addPendingInvoice sends plain data over IPC, which cannot clone reactive arrays", async () => {
+			const payments = reactive([{ mode_of_payment: "Cash", amount: 20 }]);
+
+			await bridge.addPendingInvoice({ data: { payments }, grand_total: 20 });
+
+			const sent = mockElectronDb.addPendingInvoice.mock.calls.at(-1)![0];
+			expect(() => structuredClone(sent)).not.toThrow();
+			expect(sent.data.payments).toEqual([{ mode_of_payment: "Cash", amount: 20 }]);
+		});
+
 		it("getPendingInvoices filters by status", async () => {
 			const invoices = [{ id: 1, status: "pending", data: "{}" }];
 			mockElectronDb.getPendingInvoices.mockResolvedValueOnce(invoices);
@@ -563,6 +574,58 @@ describe("dbBridge", () => {
 			const result = await bridge.getItems();
 			// In browser mode, it queries Dexie - the mock returns []
 			expect(result).toEqual([]);
+		});
+
+		it("addPendingInvoice keeps the receipt beside the invoice data, not inside it", async () => {
+			const table = mockDb.table("pendingInvoices");
+			const receipt = { name: "", grand_total: 10, items: [] } as any;
+
+			const result = await bridge.addPendingInvoice({
+				data: { customer: "Walk-in Customer" },
+				customer_name: "Walk-in Customer",
+				grand_total: 10,
+				receipt,
+			});
+
+			expect(result).toEqual({ id: 1, local_id: expect.stringMatching(/^inv_/) });
+			const stored = table.add.mock.calls.at(-1)![0];
+			expect(stored.receipt).toEqual(receipt);
+			expect(stored.data).toEqual({ customer: "Walk-in Customer" });
+			expect(stored.status).toBe("pending");
+		});
+
+		// A cash sale's payments and change legs arrive as live Vue arrays. IndexedDB copies with
+		// the structured clone algorithm, which throws DataCloneError on a Proxy -- the sale then
+		// failed with "Failed to save invoice offline".
+		it("addPendingInvoice stores plain data when the cart passes reactive arrays", async () => {
+			const table = mockDb.table("pendingInvoices");
+			const payments = reactive([{ mode_of_payment: "Cash", amount: 20 }]);
+			const changeLegs = ref([{ mode_of_payment: "Cash", amount: 5 }]);
+			expect(() => structuredClone({ payments })).toThrow();
+
+			await bridge.addPendingInvoice({
+				data: { customer: "Walk-in", payments, pos_change_legs: changeLegs.value },
+				grand_total: 15,
+				receipt: { name: "", payments, change_legs: changeLegs.value } as any,
+			});
+
+			const stored = table.add.mock.calls.at(-1)![0];
+			expect(() => structuredClone(stored)).not.toThrow();
+			expect(isProxy(stored.data.payments)).toBe(false);
+			expect(stored.data.payments).toEqual([{ mode_of_payment: "Cash", amount: 20 }]);
+			expect(stored.data.pos_change_legs).toEqual([{ mode_of_payment: "Cash", amount: 5 }]);
+			expect(stored.receipt.change_legs).toEqual([{ mode_of_payment: "Cash", amount: 5 }]);
+		});
+
+		it("addPendingPurchase stores plain data when given reactive arrays", async () => {
+			const table = mockDb.table("pendingPurchases");
+			const items = reactive([{ item_code: "SKU1", qty: 2 }]);
+
+			await bridge.addPendingPurchase({ type: "purchase_invoice", data: { items } } as any);
+
+			const stored = table.add.mock.calls.at(-1)![0];
+			expect(() => structuredClone(stored)).not.toThrow();
+			expect(stored.data.items).toEqual([{ item_code: "SKU1", qty: 2 }]);
 		});
 
 		it("countItems falls back to idbService", async () => {
