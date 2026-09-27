@@ -1,3 +1,4 @@
+import { useCacheStatus } from "./cacheStatus";
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { call, isNetworkError } from "@/services/api";
@@ -60,34 +61,44 @@ export const useItemStore = defineStore("items", () => {
 	const isLoadingVariants = ref(false);
 
 	async function cacheAllItems(posProfile: string): Promise<void> {
-		if (isElectron()) return;
-		if (!usePosStore().useOfflineMode) return;
+		if (isElectron() || !isOnline() || !usePosStore().useOfflineMode) return;
+		const status = useCacheStatus();
+		if (!status.begin("Products and stock", posProfile)) return;
 		try {
-			const batchSize = 200;
-			let start = 0;
-			let allItems: POSItem[] = [];
-			let batch: POSItem[];
-
-			do {
-				batch = await call<POSItem[]>("xpos.api.items.get_pos_items", {
+			const limit = Math.max(0, Number(usePosStore().posProfile?.xpos_product_preload_limit || 0));
+			const allItems: POSItem[] = [];
+			let complete = false;
+			while (true) {
+				const size = limit ? Math.min(200, limit + 1 - allItems.length) : 200;
+				const batch = await call<POSItem[]>("xpos.api.items.get_pos_items", {
 					pos_profile: posProfile,
 					search_term: "",
 					item_group: "",
-					start,
-					page_length: batchSize,
+					start: allItems.length,
+					page_length: size,
 				});
-				allItems = [...allItems, ...batch];
-				start += batchSize;
-			} while (batch.length === batchSize);
-
-			await idbCacheItems(allItems);
-
-			const posStoreRef = usePosStore();
-			const warehouse = posStoreRef.warehouse;
-			if (warehouse && allItems.length > 0) {
-				await cacheAllStock(posProfile, warehouse, allItems);
+				allItems.push(...batch);
+				if (batch.length < size) {
+					complete = true;
+					break;
+				}
+				if (limit && allItems.length > limit) break;
 			}
+			const selected = (limit ? allItems.slice(0, limit) : allItems).map((item, rank) => ({
+				...item,
+				xpos_cache_rank: rank,
+			}));
+			// Catalog rows already contain fresh stock; do not fetch it all a second time.
+			await idbCacheItems(selected);
+			const warehouse = usePosStore().warehouse;
+			if (warehouse)
+				await cacheStockForWarehouse(
+					warehouse,
+					selected.map((item) => ({ item_code: item.item_code, actual_qty: item.actual_qty || 0 })),
+				);
+			status.finish("Products and stock", posProfile, selected.length, complete);
 		} catch (error) {
+			status.fail("Products and stock");
 			console.warn("[XPOS Offline] Failed to cache items:", error);
 		}
 	}

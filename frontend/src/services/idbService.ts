@@ -200,7 +200,7 @@ export async function cacheItems(allItems: POSItem[]): Promise<void> {
 }
 
 export async function getCachedItems(): Promise<POSItem[]> {
-	return db.items.toArray();
+	return (await db.items.toArray()).sort((a, b) => (a.xpos_cache_rank ?? Infinity) - (b.xpos_cache_rank ?? Infinity));
 }
 
 export async function getCachedItemByCode(itemCode: string): Promise<POSItem | undefined> {
@@ -237,7 +237,7 @@ export async function searchCachedItems(
 		});
 	}
 
-	return results;
+	return results.sort((a, b) => (a.xpos_cache_rank ?? Infinity) - (b.xpos_cache_rank ?? Infinity));
 }
 
 export async function updateCachedItem(item: POSItem): Promise<void> {
@@ -280,7 +280,7 @@ export async function cacheCustomers(customers: Customer[]): Promise<void> {
 }
 
 export async function getCachedCustomers(): Promise<Customer[]> {
-	return db.customers.toArray();
+	return (await db.customers.toArray()).sort((a, b) => (a.xpos_cache_rank ?? Infinity) - (b.xpos_cache_rank ?? Infinity));
 }
 
 export async function getCachedCustomerByName(name: string): Promise<Customer | undefined> {
@@ -288,7 +288,7 @@ export async function getCachedCustomerByName(name: string): Promise<Customer | 
 }
 
 export async function searchCachedCustomers(term: string): Promise<Customer[]> {
-	const all = await db.customers.toArray();
+	const all = await getCachedCustomers();
 	if (!term) return all.slice(0, 20);
 
 	const lower = term.toLowerCase();

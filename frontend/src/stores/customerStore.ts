@@ -1,3 +1,4 @@
+import { useCacheStatus } from "./cacheStatus";
 import { defineStore } from "pinia";
 import { ref, computed, type ComputedRef } from "vue";
 import { call } from "@/services/api";
@@ -54,13 +55,6 @@ export const useCustomerStore = defineStore("customers", () => {
 					limit: 100,
 				});
 				customers.value = result || [];
-				if (customers.value.length > 0 && usePosStore().useOfflineMode) {
-					try {
-						await cacheCustomers(customers.value);
-					} catch (error) {
-						console.warn("[XPOS Offline] Failed to cache customers:", error);
-					}
-				}
 			}
 		} catch (error) {
 			console.error("Error searching customers:", error);
@@ -84,18 +78,22 @@ export const useCustomerStore = defineStore("customers", () => {
 
 	async function cacheAllCustomers(posProfile?: string): Promise<void> {
 		if (!isOnline()) return;
-
+		const status = useCacheStatus();
+		if (!status.begin("Customers", posProfile || "")) return;
 		try {
-			const result = await call<Customer[]>("xpos.api.customers.get_customers", {
+			const result = await call<{ customers: Customer[]; complete: boolean }>("xpos.api.customers.get_customers", {
 				search_term: "",
 				pos_profile: posProfile || "",
-				limit: 1000,
+				preload: 1,
+				with_metadata: 1,
 			});
 
-			if (result && result.length > 0) {
-				await cacheCustomers(result);
+			if (result) {
+				await cacheCustomers(result.customers.map((customer, rank) => ({ ...customer, xpos_cache_rank: rank })));
+				status.finish("Customers", posProfile || "", result.customers.length, result.complete);
 			}
 		} catch (error) {
+			status.fail("Customers");
 			console.warn("[XPOS Offline] Failed to pre-cache customers:", error);
 		}
 	}

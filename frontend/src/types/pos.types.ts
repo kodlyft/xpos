@@ -30,6 +30,8 @@ export interface ItemSearchSettings {
 }
 
 export interface POSProfile {
+	xpos_product_preload_limit?: number;
+	xpos_product_order?: string;
 	name: string;
 	warehouse: string;
 	currency: string;
@@ -168,6 +170,7 @@ export interface POSClosingShiftTax {
 }
 
 export interface POSItem {
+	xpos_cache_rank?: number;
 	item_code: string;
 	item_name: string;
 	local_item_name?: string;
@@ -267,6 +270,7 @@ export interface StockAvailability {
 }
 
 export interface Customer {
+	xpos_cache_rank?: number;
 	name: string;
 	customer_name: string;
 	customer_group?: string;

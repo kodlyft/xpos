@@ -12,13 +12,48 @@ from xpos.utils import row_value
 
 
 @frappe.whitelist()
-def get_customers(search_term: str = "", limit: int = 20, pos_profile: str = None):
+def get_customers(
+	search_term: str = "", limit: int = 20, pos_profile: str = None, preload: int = 0, with_metadata: int = 0
+):
 	"""Search customers by name, mobile, email, or tax ID.
 
 	If a POS Profile is provided, respects customer group restrictions.
 	"""
 	conditions = "c.disabled = 0"
-	values = {"limit": int(limit)}
+	values = {"limit": max(1, min(cint(limit), 100000))}
+	order_by = "c.customer_name ASC, c.name ASC"
+	join = ""
+	limit_sql = "LIMIT %(limit)s"
+	if pos_profile:
+		profile = frappe.get_cached_doc("POS Profile", pos_profile)
+		if cint(preload):
+			configured = profile.get("xpos_customer_preload_limit")
+			values["limit"] = max(0, cint(configured if configured is not None else 5000))
+			if not values["limit"]:
+				limit_sql = ""
+		ranking = profile.get("xpos_customer_order") or "Alphabetical"
+		metrics = {
+			"Most Recent Purchase": "last_purchase",
+			"Most Revenue": "revenue",
+			"Most Transactions": "transactions",
+		}
+		if isinstance(ranking, str) and ranking in metrics:
+			# Count original POS tickets, not their consolidated Sales Invoice a second time.
+			join = """LEFT JOIN (
+				SELECT customer,
+				MAX(CASE WHEN is_return = 0 THEN TIMESTAMP(posting_date, posting_time) END) AS last_purchase,
+				SUM(base_net_total) AS revenue,
+				SUM(CASE WHEN is_return = 0 THEN 1 ELSE 0 END) AS transactions
+				FROM (
+				 SELECT customer, posting_date, posting_time, is_return, base_net_total
+				 FROM `tabSales Invoice` WHERE docstatus = 1 AND company = %(company)s AND IFNULL(is_consolidated, 0) = 0
+				 UNION ALL
+				 SELECT customer, posting_date, posting_time, is_return, base_net_total
+				 FROM `tabPOS Invoice` WHERE docstatus = 1 AND company = %(company)s
+				) sales GROUP BY customer
+			) history ON history.customer = c.name"""
+			values["company"] = profile.company
+			order_by = f"history.{metrics[ranking]} DESC, {order_by}"
 
 	if pos_profile:
 		try:
@@ -52,6 +87,9 @@ def get_customers(search_term: str = "", limit: int = 20, pos_profile: str = Non
 		)"""
 		values["search"] = f"%{search_term}%"
 
+	selected_limit = values["limit"]
+	if cint(with_metadata) and limit_sql:
+		values["limit"] += 1  # One extra row distinguishes a full selection from a capped one.
 	customers = frappe.db.sql(  # nosemgrep: frappe-sql-format-injection — conditions built from validated allowed-field lists, values parameterized
 		f"""
 		SELECT
@@ -67,14 +105,18 @@ def get_customers(search_term: str = "", limit: int = 20, pos_profile: str = Non
 			c.customer_type,
 			c.gender
 		FROM `tabCustomer` c
+		{join}
 		WHERE {conditions}
-		ORDER BY c.customer_name ASC
-		LIMIT %(limit)s
+		ORDER BY {order_by}
+		{limit_sql}
 		""",
 		values,
 		as_dict=True,
 	)
 
+	if cint(with_metadata):
+		complete = not limit_sql or len(customers) <= selected_limit
+		return {"customers": customers if complete else customers[:selected_limit], "complete": complete}
 	return customers
 
 

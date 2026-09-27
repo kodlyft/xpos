@@ -6485,6 +6485,54 @@
    "translatable": 0,
    "unique": 0,
    "width": null
+  },
+  {
+   "default": "5000",
+   "description": "Number of customers preloaded for offline use. 0 loads all eligible customers. Online search is not restricted to this selection.",
+   "dt": "POS Profile",
+   "fieldname": "xpos_customer_preload_limit",
+   "fieldtype": "Int",
+   "insert_after": "customer_groups",
+   "label": "Browser Customer Limit",
+   "module": "X POS",
+   "name": "POS Profile-xpos_customer_preload_limit",
+   "options": null
+  },
+  {
+   "default": "Alphabetical",
+   "description": "Company-wide submitted sales over all available history. Revenue excludes tax and nets returns; transaction count excludes returns. Ties sort alphabetically.",
+   "dt": "POS Profile",
+   "fieldname": "xpos_customer_order",
+   "fieldtype": "Select",
+   "insert_after": "xpos_customer_preload_limit",
+   "label": "Customer Order",
+   "module": "X POS",
+   "name": "POS Profile-xpos_customer_order",
+   "options": "Alphabetical\nMost Recent Purchase\nMost Revenue\nMost Transactions"
+  },
+  {
+   "default": "0",
+   "description": "Products and their stock quantities to cache for this register. 0 loads all eligible products. Product groups and Hide Unavailable Items still apply.",
+   "dt": "POS Profile",
+   "fieldname": "xpos_product_preload_limit",
+   "fieldtype": "Int",
+   "insert_after": "xpos_customer_order",
+   "label": "Browser Product Limit",
+   "module": "X POS",
+   "name": "POS Profile-xpos_product_preload_limit",
+   "options": null
+  },
+  {
+   "default": "Alphabetical",
+   "description": "Order used for browsing and selecting the limited offline catalog.",
+   "dt": "POS Profile",
+   "fieldname": "xpos_product_order",
+   "fieldtype": "Select",
+   "insert_after": "xpos_product_preload_limit",
+   "label": "Product Order",
+   "module": "X POS",
+   "name": "POS Profile-xpos_product_order",
+   "options": "Alphabetical\nItem Code\nRecently Updated\nMost Recent Purchase\nMost Revenue\nMost Transactions"
   }
  ],
  "custom_perms": [],

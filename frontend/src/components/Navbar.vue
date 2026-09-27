@@ -148,6 +148,7 @@
 			</TooltipWrapper>
 		</div>
 
+		<CacheSyncStatus />
 		<OfflinePendingPanel :open="showOfflinePanel" @close="showOfflinePanel = false" />
 
 		<div class="hidden md:flex items-center">
@@ -239,6 +240,7 @@
 </template>
 
 <script setup lang="ts">
+import CacheSyncStatus from "@/components/offline/CacheSyncStatus.vue";
 import { computed, inject, onMounted, onUnmounted, ref, nextTick, type Ref } from "vue";
 import { usePosStore } from "@/stores/posStore";
 import { usePaymentStore } from "@/stores/paymentStore";
