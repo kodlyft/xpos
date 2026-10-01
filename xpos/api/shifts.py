@@ -346,6 +346,7 @@ def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 			"docstatus": 1,
 			"is_pos": 1,
 			"owner": opening.user,
+			"pos_closing_entry": ["is", "not set"],
 		}
 		if doctype == "POS Invoice":
 			fallback_filters["consolidated_invoice"] = ["in", ["", None]]
@@ -460,6 +461,7 @@ def get_shift_summary(opening_shift: str):
 			"docstatus": 1,
 			"is_pos": 1,
 			"owner": opening.user,
+			"pos_closing_entry": ["is", "not set"],
 		}
 		if doctype == "POS Invoice":
 			fallback_filters["consolidated_invoice"] = ["in", ["", None]]
