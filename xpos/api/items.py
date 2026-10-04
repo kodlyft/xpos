@@ -172,6 +172,7 @@ def get_pos_items(
 		"Selling Settings", "selling_price_list"
 	)
 
+	stock = get_stock_qty_map([item.item_code for item in items], warehouse, pos_profile)
 	for item in items:
 		item.rate = (
 			frappe.db.get_value(
@@ -182,9 +183,7 @@ def get_pos_items(
 			or 0
 		)
 
-		item.actual_qty = (
-			get_stock_qty(item.item_code, warehouse, pos_profile=pos_profile) if warehouse else 0
-		)
+		item.actual_qty = stock.get(item.item_code, 0)
 
 	if include_uoms and items:
 		item_codes = [item.item_code for item in items]
@@ -710,6 +709,30 @@ def get_price_for_uom(
 		or 1.0
 	)
 	return {"rate": flt(base_rate) * flt(conversion_factor)}
+
+
+def get_stock_qty_map(item_codes: list[str], warehouse: str, pos_profile: str | None = None):
+	"""Read a catalog page's stock together, preserving pending POS deductions."""
+	if not item_codes or not warehouse:
+		return {}
+	warehouses = [warehouse]
+	if frappe.db.get_value("Warehouse", warehouse, "is_group"):
+		warehouses = frappe.db.get_descendants("Warehouse", warehouse) or []
+	Bin = DocType("Bin")
+	rows = (
+		frappe.qb.from_(Bin)
+		.select(Bin.item_code, Sum(Bin.actual_qty).as_("actual_qty"))
+		.where(Bin.item_code.isin(item_codes))
+		.where(Bin.warehouse.isin(warehouses))
+		.groupby(Bin.item_code)
+		.run(as_dict=True)
+	)
+	stock = {row.item_code: flt(row.actual_qty) for row in rows}
+	if pos_profile and get_invoice_type() == "POS Invoice":
+		pending = _get_pending_pos_qty_map(warehouses, item_codes=item_codes)
+		for code in item_codes:
+			stock[code] = stock.get(code, 0) - pending.get(code, 0)
+	return stock
 
 
 def get_stock_qty(item_code: str, warehouse: str, pos_profile: str | None = None):

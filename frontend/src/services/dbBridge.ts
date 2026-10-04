@@ -217,17 +217,24 @@ export async function addPendingInvoice(record: {
 		return getDb().addPendingInvoice(record);
 	}
 	const { db } = await import("./idbService");
-	const localId = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-	const id = await db.table("pendingInvoices").add({
-		local_id: localId,
-		data: record.data,
-		status: "pending",
-		customer_name: record.customer_name,
-		grand_total: record.grand_total,
-		receipt: record.receipt,
-		created_at: new Date().toISOString(),
+	const data = record.data as Record<string, unknown>;
+	const localId = String(data.local_id || `inv_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+	const table = db.table("pendingInvoices");
+	return db.transaction("rw", table, async () => {
+		const existing = await table.filter((row) => row.local_id === localId).first();
+		if (existing) {
+			if (JSON.stringify(existing.data) !== JSON.stringify(record.data)) {
+				throw new Error("This sale is awaiting confirmation. Retry the original sale from Pending Invoices before changing it.");
+			}
+			return { id: existing.id as number, local_id: localId };
+		}
+		const id = await table.add({
+			local_id: localId, data: record.data, status: "pending",
+			customer_name: record.customer_name, grand_total: record.grand_total,
+			receipt: record.receipt, created_at: new Date().toISOString(),
+		});
+		return { id: id as number, local_id: localId };
 	});
-	return { id: id as number, local_id: localId };
 }
 
 export async function getPendingInvoices(status?: string) {

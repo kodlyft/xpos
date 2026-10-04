@@ -710,6 +710,7 @@ import { usePaymentStore } from "@/stores/paymentStore";
 import { call, showSuccess, showError, showInfo, isNetworkError } from "@/services/api";
 import { __ } from "@/lib/translate";
 import { usePrintInvoice } from "@/composables/usePrintInvoice";
+import { submitDurableInvoice } from "@/services/invoiceSubmission";
 import { useOfflineSale } from "@/composables/useOfflineSale";
 import { isElectron } from "@/services/electronBridge";
 import { fiscalizeViaLocalService } from "@/services/fbrLocalService";
@@ -1337,9 +1338,9 @@ async function submitPayment(withPrint: boolean = true) {
 	isSubmitting.value = true;
 	printAfterSave.value = withPrint;
 
+	const invoiceData = buildInvoicePayload();
 	try {
 		const shiftName = posStore.posOpeningShift?.name || "";
-		const invoiceData = buildInvoicePayload();
 
 		if (isElectron() && window.electronAPI?.db) {
 			const result = await window.electronAPI.db.addPendingInvoice({
@@ -1383,12 +1384,17 @@ async function submitPayment(withPrint: boolean = true) {
 			if (!saved) showError(__("Failed to save invoice offline"));
 			return;
 		}
-		let result = await call<CreateInvoiceResult>("xpos.api.invoices.create_invoice", {
-			data: JSON.stringify(invoiceData),
-		});
-		if (result.status === "fbr_local_required") {
-			result = await finalizeWithLocalFbr(result);
-		}
+		const result = await submitDurableInvoice(
+			invoiceData,
+			cartStore.getReceiptSnapshot("", authStore.userFullName),
+			async () => {
+				let response = await call<CreateInvoiceResult>("xpos.api.invoices.create_invoice", {
+					data: JSON.stringify(invoiceData),
+				});
+				if (response.status === "fbr_local_required") response = await finalizeWithLocalFbr(response);
+				return response;
+			},
+		);
 
 		posStore.lastInvoiceName = result.name;
 
@@ -1398,18 +1404,21 @@ async function submitPayment(withPrint: boolean = true) {
 			showSuccess(__("Invoice {0} saved successfully!", [result.name]));
 		}
 
-		if (withPrint && result.name) {
-			await printInvoice(result.name);
-		}
-
 		cartStore.clearAll();
+		if (withPrint && result.name) {
+			try {
+				await printInvoice(result.name);
+			} catch {
+				showError(__("Sale saved. Receipt printing failed; use Reprint."));
+			}
+		}
 	} catch (error: unknown) {
 		if (isTabConflictError(error)) {
 			showError(__("This tab was changed on another terminal. Reload it and try again."));
 			close();
 			cartStore.openDraftDialog();
 		} else if (isNetworkError(error)) {
-			const saved = await completeOfflineSale(buildInvoicePayload(), {
+			const saved = await completeOfflineSale(invoiceData, {
 				withPrint,
 				cashier: authStore.userFullName,
 			});

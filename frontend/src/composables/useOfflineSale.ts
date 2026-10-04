@@ -42,11 +42,11 @@ export function useOfflineSale() {
 		posStore.lastInvoiceName = name;
 		showInfo(__("Invoice saved offline ({0}). It will sync when you're back online.", [name]));
 
+		cartStore.clearAll();
 		if (options.withPrint) {
 			await printReceiptOffline({ ...receipt, name });
 		}
 
-		cartStore.clearAll();
 		return true;
 	}
 

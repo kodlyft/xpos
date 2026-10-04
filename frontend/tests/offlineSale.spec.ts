@@ -86,7 +86,7 @@ describe("completeOfflineSale", () => {
 			receipt,
 		);
 		expect(printReceiptOffline).toHaveBeenCalledWith({ ...receipt, name: "OFFLINE-7" });
-		expect(calls).toEqual(["print", "clearAll"]);
+		expect(calls).toEqual(["clearAll", "print"]);
 	});
 
 	it("takes the receipt before the cart is cleared", async () => {

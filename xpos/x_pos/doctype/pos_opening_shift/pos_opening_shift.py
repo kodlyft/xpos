@@ -16,9 +16,7 @@ class POSOpeningShift(StatusUpdater):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
-		from xpos.x_pos.doctype.pos_opening_shift_detail.pos_opening_shift_detail import (
-			POSOpeningShiftDetail,
-		)
+		from xpos.x_pos.doctype.pos_opening_shift_detail.pos_opening_shift_detail import POSOpeningShiftDetail
 
 		amended_from: DF.Link | None
 		balance_details: DF.Table[POSOpeningShiftDetail]
@@ -32,7 +30,6 @@ class POSOpeningShift(StatusUpdater):
 		status: DF.Literal["Draft", "Open", "Closed", "Cancelled"]
 		user: DF.Link
 		xpos_local_id: DF.Data | None
-
 	# end: auto-generated types
 
 	def validate(self):

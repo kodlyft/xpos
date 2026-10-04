@@ -295,6 +295,8 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 	local_id = local_id or data.get("local_id")
 
 	warehouse = data.get("warehouse")
+	if not warehouse and data.get("pos_profile"):
+		warehouse = frappe.get_cached_doc("POS Profile", data["pos_profile"]).warehouse
 	existing = find_invoice_by_local_id(local_id, warehouse)
 	if existing:
 		dt, name = existing
@@ -653,7 +655,8 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 			invoice_doc.save(ignore_permissions=True)
 		else:
 			invoice_doc.insert(ignore_permissions=True)
-	except frappe.exceptions.UniqueValidationError:
+	except (frappe.exceptions.UniqueValidationError, frappe.QueryDeadlockError):
+		# Concurrent attempts may contend on the naming series before reaching the unique ID.
 		frappe.db.rollback()
 		existing = find_invoice_by_local_id(local_id, warehouse)
 		if existing:

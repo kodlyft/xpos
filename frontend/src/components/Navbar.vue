@@ -124,7 +124,7 @@
 			</Button>
 		</TooltipWrapper>
 
-		<div v-if="posStore.useOfflineMode" class="flex items-center gap-1">
+		<div v-if="posStore.useOfflineMode || offlineStore.hasPending" class="flex items-center gap-1">
 			<TooltipWrapper :content="offlineStore.statusLabel">
 				<Button
 					variant="ghost"

@@ -1,3 +1,4 @@
+import { newInvoiceId } from "@/services/invoiceSubmission";
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
 import { call } from "@/services/api";
@@ -1077,6 +1078,7 @@ export const useCartStore = defineStore("cart", () => {
 	}
 
 	function clearCart(): void {
+		invoiceLocalId = "";
 		items.value = [];
 		selectedCartIndex.value = -1;
 		discountPercentage.value = 0;
@@ -1310,8 +1312,10 @@ export const useCartStore = defineStore("cart", () => {
 		}
 	}
 
+	let invoiceLocalId = "";
 	function getInvoiceData(posProfile: string, posOpeningShift: string): InvoiceData {
 		const data: InvoiceData = {
+			local_id: invoiceLocalId || (invoiceLocalId = newInvoiceId()),
 			pos_profile: posProfile,
 			customer: customer.value?.name || "",
 			items: items.value.map(

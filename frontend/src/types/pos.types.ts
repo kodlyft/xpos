@@ -413,6 +413,7 @@ export interface InvoiceChangeLeg {
 }
 
 export interface InvoiceData {
+	local_id?: string;
 	name?: string;
 	modified?: string;
 	doctype?: string;

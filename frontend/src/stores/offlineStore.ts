@@ -67,6 +67,7 @@ export const useOfflineStore = defineStore("offline", () => {
 	});
 
 	function init() {
+		window.addEventListener("xpos:pending-invoices-changed", refreshPendingCount);
 		window.addEventListener("online", handleOnline);
 		window.addEventListener("offline", handleOffline);
 
@@ -75,6 +76,7 @@ export const useOfflineStore = defineStore("offline", () => {
 	}
 
 	function destroy() {
+		window.removeEventListener("xpos:pending-invoices-changed", refreshPendingCount);
 		window.removeEventListener("online", handleOnline);
 		window.removeEventListener("offline", handleOffline);
 		stopPeriodicSync();

@@ -207,21 +207,11 @@
    "no_copy": 1,
    "print_hide": 1,
    "read_only": 1
-  },
-  {
-   "fieldname": "amended_from",
-   "fieldtype": "Link",
-   "label": "Amended From",
-   "no_copy": 1,
-   "options": "POS Closing Shift",
-   "print_hide": 1,
-   "read_only": 1,
-   "search_index": 1
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-29 00:03:01.517664",
+ "modified": "2026-10-04 22:09:22.429740",
  "modified_by": "Administrator",
  "module": "X POS",
  "name": "POS Closing Shift",

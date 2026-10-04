@@ -16,6 +16,7 @@ vi.mock("@/services/electronBridge", () => ({
 
 // ── Mock idbService (browser fallback) ───────────────────────
 const mockDb = {
+	transaction: vi.fn(async (...args: any[]) => args.at(-1)()),
 	items: {
 		orderBy: vi.fn(() => ({ toArray: vi.fn().mockResolvedValue([]) })),
 		where: vi.fn(() => ({ equals: vi.fn(() => ({ toArray: vi.fn().mockResolvedValue([]) })) })),
@@ -39,6 +40,7 @@ const mockDb = {
 		bulkPut: vi.fn().mockResolvedValue(undefined),
 	},
 	table: vi.fn().mockReturnValue({
+		filter: vi.fn(() => ({ first: vi.fn().mockResolvedValue(undefined) })),
 		get: vi.fn().mockResolvedValue(undefined),
 		put: vi.fn().mockResolvedValue(undefined),
 		bulkPut: vi.fn().mockResolvedValue(undefined),
@@ -574,6 +576,21 @@ describe("dbBridge", () => {
 			const result = await bridge.getItems();
 			// In browser mode, it queries Dexie - the mock returns []
 			expect(result).toEqual([]);
+		});
+
+		it("keeps the first-attempt identity when handing a sale to the offline queue", async () => {
+			const table = mockDb.table("pendingInvoices");
+			await bridge.addPendingInvoice({ data: { local_id: "first-attempt", customer: "Buyer" } });
+			expect(table.add.mock.calls.at(-1)![0].local_id).toBe("first-attempt");
+		});
+
+		it("reuses an already journaled sale and refuses to overwrite an uncertain outcome", async () => {
+			const table = mockDb.table("pendingInvoices");
+			const data = { local_id: "same-sale", customer: "Buyer" };
+			table.filter.mockReturnValueOnce({ first: vi.fn().mockResolvedValue({ id: 8, data }) });
+			expect(await bridge.addPendingInvoice({ data })).toEqual({ id: 8, local_id: "same-sale" });
+			table.filter.mockReturnValueOnce({ first: vi.fn().mockResolvedValue({ id: 8, data }) });
+			await expect(bridge.addPendingInvoice({ data: { ...data, customer: "Changed" } })).rejects.toThrow("awaiting confirmation");
 		});
 
 		it("addPendingInvoice keeps the receipt beside the invoice data, not inside it", async () => {

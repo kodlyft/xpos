@@ -49,8 +49,8 @@ class POSClosingShift(Document):
 		total_quantity: DF.Float
 		user: DF.Link
 		xpos_local_id: DF.Data | None
-
 	# end: auto-generated types
+
 	def validate(self):
 		user = frappe.get_all(
 			"POS Closing Shift",
