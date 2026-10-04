@@ -146,20 +146,11 @@
    "options": "POS Cash Movement",
    "print_hide": 1,
    "read_only": 1
-  },
-  {
-   "fieldname": "amended_from",
-   "fieldtype": "Link",
-   "label": "Amended From",
-   "no_copy": 1,
-   "options": "POS Cash Movement",
-   "print_hide": 1,
-   "read_only": 1
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-29 15:29:13.422452",
+ "modified": "2026-10-04 22:04:19.290126",
  "modified_by": "Administrator",
  "module": "X POS",
  "name": "POS Cash Movement",
