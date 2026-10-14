@@ -81,6 +81,7 @@ Once a return is initiated, the POS enters **return mode**:
   - Submit button reads "Return & Print"
   - All items must have negative quantities
   - Grand total must be negative
+  - If the original sale was paid by gift card, **Refund to gift card ••••1234** puts the money back on that card, up to what it paid. See [Gift Cards](29-gift-cards.md#returns-cancellations-and-adjustments)
 
 ---
 

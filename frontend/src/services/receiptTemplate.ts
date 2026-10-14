@@ -1,5 +1,6 @@
 import { formatFor, formatWithSymbol } from "@/composables/useCurrency";
-import type { ReceiptContext, ReceiptSnapshot } from "@/types/pos.types";
+import type { IssuedGiftCard, ReceiptContext, ReceiptSnapshot } from "@/types/pos.types";
+import { __ } from "@/lib/translate";
 import { formatFloat, formatQty } from "@/utils/numberFormat";
 
 function esc(value: unknown): string {
@@ -295,4 +296,28 @@ export function buildReceiptHtml(snapshot: ReceiptSnapshot, ctx: ReceiptContext)
         <div class="powered-by">Powered by XPOS &bull; ${new Date().getFullYear()}</div>
     </div>
 </div>`;
+}
+
+/** A slip carrying the full code of each card just sold, printed once at the till. */
+export function buildGiftCardSlipHtml(cards: IssuedGiftCard[]): string {
+	const blocks = cards
+		.map(
+			(card) => `
+		<div class="card">
+			<div class="title">${esc(__("Gift Card"))}</div>
+			<div class="code">${esc(card.code)}</div>
+			<div class="value">${esc(fmtMoney(card.amount, card.currency))}</div>
+			${card.valid_upto ? `<div class="small">${esc(__("Valid until {0}", [fmtDate(card.valid_upto)]))}</div>` : ""}
+			<div class="small">${esc(__("Anyone holding this code can spend it. Keep it safe."))}</div>
+		</div>`,
+		)
+		.join("");
+	return `<!doctype html><html><head><meta charset="utf-8"><style>
+		body { font-family: monospace; width: 72mm; margin: 0 auto; }
+		.card { text-align: center; padding: 8px 0; border-bottom: 1px dashed #000; }
+		.title { font-weight: bold; }
+		.code { font-size: 18px; font-weight: bold; letter-spacing: 2px; margin: 6px 0; }
+		.value { font-size: 16px; }
+		.small { font-size: 11px; margin-top: 4px; }
+	</style></head><body>${blocks}</body></html>`;
 }

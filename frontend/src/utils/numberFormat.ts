@@ -235,3 +235,13 @@ export function parseNumber(value: number | string | null | undefined, format?: 
 	const parsed = parseFloat(text);
 	return Number.isFinite(parsed) ? parsed : 0;
 }
+
+export function formatTaxAmount(
+	value: number | string | null | undefined,
+	included: boolean | number | null | undefined,
+	format: (value: number | string) => string,
+): string {
+	const figure = format(value ?? 0);
+	const amount = typeof value === "number" ? value : parseFloat(String(value));
+	return !included && amount >= 0 ? `+${figure}` : figure;
+}

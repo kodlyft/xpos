@@ -97,6 +97,7 @@ The app stores offline data in your browser with dedicated storage for:
 - Full invoices are created and validated locally
 - Saved to the `pendingInvoices` queue in IndexedDB
 - Includes all data: items, customer, payments, discounts, taxes, offers
+- **Exception:** sales that sell or spend a [gift card](29-gift-cards.md) are never saved offline. They need a live connection, and the server refuses any that arrive late through the sync queue
 
 ### Purchase Orders
 - Purchase orders can be created offline

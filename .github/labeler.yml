@@ -1,0 +1,29 @@
+pos-ui:
+- frontend/src/*
+- frontend/src/**/*
+
+electron:
+- frontend/electron/*
+- frontend/electron/**/*
+
+api:
+- xpos/api/*
+
+doctypes:
+- xpos/x_pos/*
+
+patches:
+- xpos/patches/*
+- xpos/patches.txt
+
+translations:
+- xpos/locale/*
+
+ci:
+- .github/*
+- .github/**/*
+
+# Any python files modifed but no test files modified
+needs-tests:
+- any: ['xpos/**/*.py']
+  all: ['!xpos/**/test*.py']

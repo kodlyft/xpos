@@ -11,3 +11,5 @@ xpos.patches.add_open_tab_permissions
 xpos.patches.add_pos_query_indexes
 xpos.patches.enable_pos_change_gl_entries
 xpos.patches.move_item_search_settings_to_pos_settings
+xpos.patches.v2.carry_coupon_entry_from_auto_fetch
+xpos.patches.v2.add_gift_card_permissions

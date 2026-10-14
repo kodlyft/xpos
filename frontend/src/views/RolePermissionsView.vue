@@ -120,7 +120,11 @@ const PERMISSION_GROUPS: { title: string; items: { key: string; label: string }[
 	},
 	{
 		title: "Sales Operations",
-		items: [{ key: "sale_return", label: "Sale Return" }],
+		items: [
+			{ key: "sale_return", label: "Sale Return" },
+			{ key: "sell_gift_card", label: "Sell Gift Card" },
+			{ key: "redeem_gift_card", label: "Accept Gift Card Payment" },
+		],
 	},
 	{
 		title: "Cash Management",

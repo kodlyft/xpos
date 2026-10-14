@@ -1,11 +1,26 @@
 name: Tests
 
 on:
-  pull_request: {}
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "**.po"
+      - "**.pot"
+      - "docs/**"
   push:
     branches:
       - develop
       - main
+  schedule:
+    # Run everyday at midnight UTC
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      frappe_branch:
+        description: "Frappe / ERPNext branch"
+        default: "version-16"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -76,16 +91,18 @@ jobs:
              SET GLOBAL collation_server = 'utf8mb4_unicode_ci';"
 
       - name: Install bench and set up site
+        env:
+          FRAPPE_BRANCH: ${{ inputs.frappe_branch || 'version-16' }}
         run: |
           pip install frappe-bench
           bench init --skip-redis-config-generation --skip-assets --python "$(which python)" \
-            --frappe-branch version-16 ~/frappe-bench
+            --frappe-branch "${FRAPPE_BRANCH}" ~/frappe-bench
           cd ~/frappe-bench
           bench set-config -g db_host 127.0.0.1
           bench set-config -g redis_cache "redis://127.0.0.1:6379"
           bench set-config -g redis_queue "redis://127.0.0.1:6379"
           bench set-config -g redis_socketio "redis://127.0.0.1:6379"
-          bench get-app --branch version-16 erpnext
+          bench get-app --branch "${FRAPPE_BRANCH}" erpnext
           bench get-app xpos "${GITHUB_WORKSPACE}/xpos"
           bench new-site test_site \
             --db-root-username root \
@@ -98,3 +115,12 @@ jobs:
 
       - name: Run tests
         run: cd ~/frappe-bench && bench --site test_site run-tests --app xpos
+
+      - name: Show bench logs
+        if: ${{ always() }}
+        run: |
+          cd ~/frappe-bench/logs 2>/dev/null || exit 0
+          for f in ./*.log*; do
+            echo "Printing log: $f"
+            cat "$f"
+          done

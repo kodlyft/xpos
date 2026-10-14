@@ -70,7 +70,8 @@ X POS is a feature-rich, offline-first Point of Sale application built on Frappe
 - **Price list selection** – Per-transaction selling price list with currency support
 - **Pricing rules** – Volume, customer, time-based, and brand/group rules
 - **Free-item promotions** – "Buy X get Y free" rules with auto-apply
-- **Coupon codes** – Validate and apply reusable coupon and gift-card codes
+- **Coupon codes** – Validate and apply promotional and customer-bound coupon codes (discounts, not stored value)
+- **Gift cards** – Sell stored-value cards anyone can spend in parts, with a liability ledger reconciled to the GL (online only)
 - **Multi-level discounts** – Item-level, order-level, and permission-controlled additional discounts
 - **Delivery charges** – Dynamic delivery fee calculation per basket or customer
 

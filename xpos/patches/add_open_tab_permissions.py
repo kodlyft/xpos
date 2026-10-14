@@ -11,6 +11,11 @@ NEW_PERMISSIONS = (
 
 def execute():
 	"""Backfill the open-tab permissions onto POS Roles that already exist."""
+	backfill_permissions(NEW_PERMISSIONS)
+
+
+def backfill_permissions(new_permissions):
+	"""Add catalog permissions missing from existing POS Roles, enabled per the role defaults."""
 	seed_pos_permissions()
 
 	defaults = dict(DEFAULT_ROLES)
@@ -18,7 +23,7 @@ def execute():
 	for role_name in frappe.get_all("POS Role", pluck="name"):
 		role = frappe.get_doc("POS Role", role_name)
 		present = {row.permission for row in role.permissions}
-		missing = [key for key in NEW_PERMISSIONS if key not in present]
+		missing = [key for key in new_permissions if key not in present]
 		if not missing:
 			continue
 

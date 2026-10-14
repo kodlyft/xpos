@@ -3,6 +3,13 @@ import { ref, type Ref } from "vue";
 import { call, isNetworkError } from "@/services/api";
 import { cacheOffers, getCachedOffers } from "@/services/dbBridge";
 import type { POSOffer, POSCoupon, GiftCoupon, DeliveryCharge } from "@/types/pos.types";
+import __ from "@/lib/translate";
+
+function couponErrorMessage(error: unknown): string {
+	if (isNetworkError(error)) return __("Could not reach the server to validate the coupon");
+	if (error instanceof Error && error.name === "Error" && error.message) return error.message;
+	return __("Failed to validate coupon");
+}
 
 export const useOfferStore = defineStore("offers", () => {
 	const offers = ref<POSOffer[]>([]);
@@ -71,7 +78,8 @@ export const useOfferStore = defineStore("offers", () => {
 			return result || { coupon: null };
 		} catch (error) {
 			console.error("Error fetching coupon:", error);
-			return { coupon: null };
+			coupon.value = null;
+			return { coupon: null, msg: couponErrorMessage(error) };
 		} finally {
 			isLoadingCoupon.value = false;
 		}

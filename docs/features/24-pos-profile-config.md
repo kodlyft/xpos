@@ -42,6 +42,7 @@ The POS Profile is the central configuration hub for X POS. It controls every as
 | Setting | Description |
 |---|---|
 | Auto Fetch Coupons & Gifts | Enable coupon entry and automatic cart-offer refresh |
+| Enable Gift Cards | Sell and accept [stored-value gift cards](29-gift-cards.md); needs a company row in Gift Card Settings and the Gift Card mode in Payments |
 
 ---
 

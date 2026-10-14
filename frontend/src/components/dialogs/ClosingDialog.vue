@@ -153,6 +153,12 @@
 												>
 													{{ detail.currency }}
 												</span>
+												<span
+													v-if="detail.mode_of_payment === posStore.giftCardMode"
+													class="block text-[11px] font-normal text-muted-foreground"
+												>
+													{{ __("Taken from gift cards, not counted in the till") }}
+												</span>
 											</td>
 											<td class="px-4 py-2.5 text-end text-muted-foreground">
 												{{ formatFor(detail.currency, detail.opening_amount) }}
@@ -170,6 +176,9 @@
 													:precision="precisionFor(detail.currency)"
 													class="w-28 text-end text-sm ms-auto"
 													data-testid="closing-input"
+													:disabled="
+														detail.mode_of_payment === posStore.giftCardMode
+													"
 													@change="calculateDifference(index)"
 												/>
 											</td>

@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-14 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "gift_card",
+  "transaction_type",
+  "amount",
+  "balance_after",
+  "column_break_main",
+  "company",
+  "currency",
+  "posting_date",
+  "user",
+  "voucher_section",
+  "voucher_type",
+  "voucher_no",
+  "voucher_detail_no",
+  "column_break_voucher",
+  "reverses",
+  "operation_id",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "gift_card",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Gift Card",
+   "options": "Gift Card",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "transaction_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Transaction Type",
+   "options": "Issue\nRedeem\nRefund\nVoid\nAdjustment",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "Positive adds value to the card, negative takes it off.",
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Amount",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "balance_after",
+   "fieldtype": "Currency",
+   "label": "Balance After",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Posting Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "voucher_section",
+   "fieldtype": "Section Break",
+   "label": "Voucher"
+  },
+  {
+   "fieldname": "voucher_type",
+   "fieldtype": "Link",
+   "label": "Voucher Type",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "voucher_no",
+   "fieldtype": "Dynamic Link",
+   "label": "Voucher No",
+   "options": "voucher_type",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "voucher_detail_no",
+   "fieldtype": "Data",
+   "label": "Voucher Row",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_voucher",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reverses",
+   "fieldtype": "Link",
+   "label": "Reverses",
+   "options": "Gift Card Transaction",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "operation_id",
+   "fieldtype": "Data",
+   "label": "Operation ID",
+   "no_copy": 1,
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "links": [],
+ "modified": "2026-10-14 16:36:01.770430",
+ "modified_by": "Administrator",
+ "module": "X POS",
+ "name": "Gift Card Transaction",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

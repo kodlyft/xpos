@@ -1,0 +1,57 @@
+<!-- Dual-tone module icons for the X POS dock tiles and sidebar headers, in the same style as
+     Frappe's and ERPNext's sprites. Each symbol animates while its dock tile is hovered, through the
+     icon-motion custom properties the tile sets (see frappe's dock.scss), and rests still anywhere
+     else.
+
+     This sprite is inserted into the page, so the style block below is a document stylesheet. -->
+
+<svg id="xpos-module-symbols" aria-hidden="true" style="display: none;" class="icon" xmlns="http://www.w3.org/2000/svg">
+	<style>
+		/* Tones come from --duotone-light and --duotone-dark, which the dock and the sidebar header
+		   set; each path's fallback is its resting tone. Values match ERPNext's sprite. */
+
+		/* The till prints while hovered: the receipt feeds up out of the slot, then drops back in. */
+		.xpos-till-receipt {
+			transform-box: fill-box;
+			transform-origin: center bottom;
+			animation: xpos-till-print 1.6s ease-in-out infinite;
+			animation-play-state: var(--icon-motion, paused);
+		}
+		@keyframes xpos-till-print {
+			0%, 100% { transform: translateY(0); }
+			55%, 70% { transform: translateY(-2px); }
+		}
+		/* The bow lifts and springs back while hovered, the way a gift is shaken. */
+		.gift-card-bow {
+			transform-box: fill-box;
+			transform-origin: center bottom;
+			animation: gift-card-bow 1.4s ease-in-out infinite;
+			animation-play-state: var(--icon-motion, paused);
+		}
+		@keyframes gift-card-bow {
+			0%, 100% { transform: translateY(0) scale(1); }
+			30% { transform: translateY(-1.2px) scale(1.14); }
+			55% { transform: translateY(0.4px) scale(0.94); }
+			75% { transform: translateY(0) scale(1); }
+		}
+	</style>
+
+	<symbol viewBox="0 0 24 24" id="icon-xpos-till-duotone" stroke="none">
+		<!-- the receipt sits in the slot behind the display, so it can rise out of it -->
+		<path class="xpos-till-receipt" fill-rule="evenodd" d="M13.5 2.5H19V8H13.5Z M14.75 4H17.75V4.8H14.75Z M14.75 5.6H16.75V6.4H14.75Z" style="fill: var(--duotone-light, var(--ink-gray-3))" />
+		<!-- display on its stand, keypad body, cash drawer -->
+		<path d="M4 3.5H11.5V8H8.6V9.5H6.9V8H4Z" style="fill: var(--duotone-dark, light-dark(var(--ink-gray-5), var(--ink-gray-6)))" />
+		<path d="M5.2 4.6H10.3V6.9H5.2Z" style="fill: var(--duotone-light, var(--ink-gray-3))" />
+		<path fill-rule="evenodd" d="M4.5 9.5H19.5L20.5 16H3.5Z M7 11H9V12.5H7Z M10.5 11H12.5V12.5H10.5Z M14 11H16V12.5H14Z M7.5 13.5H9.5V15H7.5Z M11 13.5H13V15H11Z M14.5 13.5H16.5V15H14.5Z" style="fill: var(--duotone-dark, light-dark(var(--ink-gray-5), var(--ink-gray-6)))" />
+		<path d="M2.5 17H21.5V20.5A1.5 1.5 0 0 1 20 22H4A1.5 1.5 0 0 1 2.5 20.5Z" style="fill: var(--duotone-light, var(--ink-gray-3))" />
+		<path d="M9.5 19H14.5V20.3H9.5Z" style="fill: var(--duotone-dark, light-dark(var(--ink-gray-5), var(--ink-gray-6)))" />
+	</symbol>
+
+	<symbol viewBox="0 0 24 24" id="icon-gift-card-duotone" stroke="none">
+		<path d="M2 9.5A2.5 2.5 0 0 1 4.5 7H19.5A2.5 2.5 0 0 1 22 9.5V18.5A2.5 2.5 0 0 1 19.5 21H4.5A2.5 2.5 0 0 1 2 18.5Z" style="fill: var(--duotone-dark, light-dark(var(--ink-gray-5), var(--ink-gray-6)))" />
+		<!-- the ribbon wraps the card -->
+		<path d="M8 7H10.5V21H8Z M2 12.5H22V15H2Z" style="fill: var(--duotone-light, var(--ink-gray-3))" />
+		<!-- two loops and a knot -->
+		<path class="gift-card-bow" fill-rule="evenodd" d="M9.25 7.5C7 7.5 4.5 6.4 4.5 4.6C4.5 3.2 5.6 2.5 6.7 2.5C8.3 2.5 9.25 4.6 9.25 7.5Z M9.25 7.5C11.5 7.5 14 6.4 14 4.6C14 3.2 12.9 2.5 11.8 2.5C10.2 2.5 9.25 4.6 9.25 7.5Z" style="fill: var(--duotone-light, var(--ink-gray-3))" />
+	</symbol>
+</svg>

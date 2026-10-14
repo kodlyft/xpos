@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { hasGiftCardActivity } from "@/services/giftCards";
 import { ref, computed } from "vue";
 import { call, showSuccess, showError, showInfo } from "@/services/api";
 import { usePosStore } from "@/stores/posStore";
@@ -185,6 +186,7 @@ export const useOfflineStore = defineStore("offline", () => {
 		reservations?: { item_code: string; stock_qty: number }[],
 		receipt?: ReceiptSnapshot,
 	): Promise<{ success: boolean; localId?: number }> {
+		if (hasGiftCardActivity(invoiceData)) return { success: false };
 		try {
 			const record = {
 				data: invoiceData as unknown,

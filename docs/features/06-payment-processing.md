@@ -190,6 +190,19 @@ If the selected customer is enrolled in a loyalty program and has available poin
 
 ---
 
+## Gift Card Payment
+
+When gift cards are enabled on the POS Profile and the till is online:
+
+1. Click **Pay with Gift Card**, then scan or type the code and click **Apply**
+2. The server returns the card's balance. The lower of the balance and the amount due is added as a split-payment row showing the masked card (`••••-1234`)
+3. Pay any rest with another method. Change is only ever given from cash
+4. Once a card is tendered the total is no longer rounded, so the card pays to the cent
+
+The Gift Card mode never appears as a plain payment button: it can only be used through a checked card. See [Gift Cards](29-gift-cards.md).
+
+---
+
 ## Write-Off
 
 - A small **write-off** field is available when `allow_write_off_change` is enabled

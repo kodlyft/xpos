@@ -1,0 +1,38 @@
+name: "Auto-label PRs based on title"
+
+on:
+  pull_request_target:
+    types: [opened, reopened, edited]
+
+jobs:
+  add-label-if-prefix-matches:
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label PR from its conventional-commit title
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            const title = context.payload.pull_request.title.toLowerCase();
+            const type = (title.match(/^(\w+)(\(.*?\))?(!)?:/) || [])[1];
+            const labels = [];
+
+            if (/^\w+(\(.*?\))?!:/.test(title) || title.includes("breaking change")) labels.push("breaking");
+            if (type === "feat") labels.push("feature");
+            if (type === "fix") labels.push("bug");
+            if (type === "perf") labels.push("performance");
+            if (["chore", "ci", "style", "test", "refactor", "docs", "build"].includes(type)) {
+              labels.push("skip-release-notes");
+            }
+
+            if (labels.length) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                labels,
+              });
+            }

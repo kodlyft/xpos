@@ -18,6 +18,8 @@ ALL_PERMISSION_KEYS = (
 	"sale_return",
 	"recall_other_shift_tabs",
 	"settle_outstanding_invoice",
+	"sell_gift_card",
+	"redeem_gift_card",
 	"expense",
 	"bank_drop",
 	"current_stock_by_brand",

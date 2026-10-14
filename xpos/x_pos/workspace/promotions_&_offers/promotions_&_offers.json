@@ -1,0 +1,217 @@
+{
+ "app": "xpos",
+ "charts": [],
+ "content": "[{\"id\":\"promo_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Promotions & Offers</span>\",\"col\":12}},{\"id\":\"promo_sc_0\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"POS Offer\",\"col\":3}},{\"id\":\"promo_sc_1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"POS Coupon\",\"col\":3}},{\"id\":\"promo_sc_2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gift Card\",\"col\":3}},{\"id\":\"promo_sc_3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Gift Card Liability\",\"col\":3}},{\"id\":\"promo_spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"promo_card_0\",\"type\":\"card\",\"data\":{\"card_name\":\"Offers\",\"col\":4}},{\"id\":\"promo_card_1\",\"type\":\"card\",\"data\":{\"card_name\":\"Coupons & Referrals\",\"col\":4}},{\"id\":\"promo_card_2\",\"type\":\"card\",\"data\":{\"card_name\":\"Gift Cards\",\"col\":4}},{\"id\":\"promo_card_3\",\"type\":\"card\",\"data\":{\"card_name\":\"Setup\",\"col\":4}}]",
+ "creation": "2026-10-14 17:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "gift",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Promotions & Offers",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Offers",
+   "link_count": 4,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "POS Offer",
+   "link_count": 0,
+   "link_to": "POS Offer",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Promotional Scheme",
+   "link_count": 0,
+   "link_to": "Promotional Scheme",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Pricing Rule",
+   "link_count": 0,
+   "link_to": "Pricing Rule",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Loyalty Program",
+   "link_count": 0,
+   "link_to": "Loyalty Program",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Coupons & Referrals",
+   "link_count": 2,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "POS Coupon",
+   "link_count": 0,
+   "link_to": "POS Coupon",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Referral Code",
+   "link_count": 0,
+   "link_to": "Referral Code",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Gift Cards",
+   "link_count": 3,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Gift Card",
+   "link_count": 0,
+   "link_to": "Gift Card",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Gift Card Transaction",
+   "link_count": 0,
+   "link_to": "Gift Card Transaction",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Gift Card Liability",
+   "link_count": 0,
+   "link_to": "Gift Card Liability",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Setup",
+   "link_count": 3,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Gift Card Settings",
+   "link_count": 0,
+   "link_to": "Gift Card Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Mode of Payment",
+   "link_count": 0,
+   "link_to": "Mode of Payment",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "POS Profile",
+   "link_count": 0,
+   "link_to": "POS Profile",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-10-14 17:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "X POS",
+ "name": "Promotions & Offers",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "restrict_to_domain": "",
+ "roles": [],
+ "sequence_id": 2.0,
+ "shortcuts": [
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "POS Offer",
+   "link_to": "POS Offer",
+   "type": "DocType"
+  },
+  {
+   "color": "Purple",
+   "doc_view": "List",
+   "label": "POS Coupon",
+   "link_to": "POS Coupon",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Gift Card",
+   "link_to": "Gift Card",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "label": "Gift Card Liability",
+   "link_to": "Gift Card Liability",
+   "type": "Report"
+  }
+ ],
+ "standard": 1,
+ "title": "Promotions & Offers",
+ "type": "Workspace"
+}

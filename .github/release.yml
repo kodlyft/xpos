@@ -1,0 +1,24 @@
+changelog:
+  exclude:
+    labels:
+      - skip-release-notes
+      - dependencies
+  categories:
+    - title: ⚠️ Breaking Changes
+      labels:
+        - breaking
+    - title: 🚀 Features
+      labels:
+        - feature
+    - title: 🐛 Bug Fixes
+      labels:
+        - bug
+    - title: ⚡ Performance
+      labels:
+        - performance
+    - title: 🌐 Translations
+      labels:
+        - translations
+    - title: Other Changes
+      labels:
+        - "*"

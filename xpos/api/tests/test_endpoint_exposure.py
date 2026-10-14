@@ -80,3 +80,16 @@ class TestRepricingEndpointIsGone(unittest.TestCase):
 		ungated repricing endpoint defeated that control entirely.
 		"""
 		self.assertFalse(function_exists("xpos.api.items", "update_price_list_rate"))
+
+
+class TestGiftCardHelpersAreNotExposed(unittest.TestCase):
+	"""Only the gated gift card endpoints are reachable over HTTP."""
+
+	def test_ledger_writers_are_not_endpoints(self):
+		for name in ("add_transaction", "create_card", "issue_auth_token", "lock_card", "claim_issued_codes"):
+			self.assertTrue(function_exists("xpos.x_pos.gift_cards", name), name)
+			self.assertFalse(is_whitelisted("xpos.x_pos.gift_cards", name), name)
+
+	def test_gated_endpoints_remain_public(self):
+		for name in ("check_gift_card", "claim_issued_gift_cards", "adjust_gift_card"):
+			self.assertTrue(is_whitelisted("xpos.api.gift_cards", name), name)

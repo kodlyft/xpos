@@ -183,6 +183,7 @@ import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Search, RotateCcw, ArrowLeft, Loader2 } from "lucide-vue-next";
 import __ from "@/lib/translate";
+import type { GiftCardRefund } from "@/types/pos.types";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
@@ -207,6 +208,7 @@ interface ReturnItem {
 	stock_uom: string;
 	max_qty: number;
 	return_qty: number;
+	gift_card?: string;
 	serial_no?: string;
 	batch_no?: string;
 }
@@ -216,6 +218,7 @@ const invoices = ref<SearchInvoice[]>([]);
 const isSearching = ref(false);
 const selectedInvoice = ref<SearchInvoice | null>(null);
 const returnItems = ref<ReturnItem[]>([]);
+const giftCardRefunds = ref<GiftCardRefund[]>([]);
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -271,7 +274,9 @@ async function selectInvoice(invoiceName: string) {
 				batch_no?: string;
 				remaining_returnable_qty: number;
 				already_returned_qty: number;
+				gift_card?: string;
 			}>;
+			gift_card_refunds?: GiftCardRefund[];
 		}>("xpos.api.invoices.get_invoice_for_return", {
 			invoice_name: invoiceName,
 			pos_profile: posStore.profileName,
@@ -294,7 +299,9 @@ async function selectInvoice(invoiceName: string) {
 			return_qty: item.remaining_returnable_qty,
 			serial_no: item.serial_no,
 			batch_no: item.batch_no,
+			gift_card: item.gift_card,
 		}));
+		giftCardRefunds.value = result?.gift_card_refunds || [];
 	} catch (error) {
 		console.error("Error fetching invoice for return:", error);
 	}
@@ -328,8 +335,17 @@ function processReturn() {
 				item.serial_no,
 				item.batch_no,
 			);
+			if (item.gift_card) {
+				// a returned gift card line must name the card, so the server can void exactly that one
+				const line = cartStore.items.findLast((row) => row.item_code === item.item_code);
+				if (line) line.gift_card = item.gift_card;
+			}
 		}
 	}
+	cartStore.returnGiftCards = giftCardRefunds.value;
+	cartStore.setGiftCardTender(
+		giftCardRefunds.value.length > 0 || returnItems.value.some((i) => !!i.gift_card),
+	);
 
 	close();
 }
@@ -339,6 +355,7 @@ function close() {
 	invoices.value = [];
 	selectedInvoice.value = null;
 	returnItems.value = [];
+	giftCardRefunds.value = [];
 	emit("close");
 }
 </script>

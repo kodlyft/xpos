@@ -183,3 +183,22 @@ def xpos_item_barcode(
 		width=width,
 		height=height,
 	)
+
+
+def xpos_gift_card_line(row) -> str:
+	"""Jinja helper: the masked card on a gift-card payment or sale row, and what it holds after it."""
+	card = row.get("xpos_gift_card")
+	if not card:
+		return ""
+	from xpos.x_pos.gift_cards import mask_code
+
+	details = frappe.db.get_value("Gift Card", card, ["code_last4", "currency"], as_dict=True)
+	if not details:
+		return ""
+	balance = frappe.db.get_value(
+		"Gift Card Transaction", {"gift_card": card, "voucher_detail_no": row.name}, "balance_after"
+	)
+	line = mask_code(details.code_last4)
+	if balance is not None:
+		line += " · " + frappe._("Balance {0}").format(fmt_money(flt(balance), currency=details.currency))
+	return line

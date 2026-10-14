@@ -24,4 +24,5 @@ class POSCouponDetail(Document):
 		pos_offer: DF.Link
 		type: DF.Data | None
 	# end: auto-generated types
+
 	pass

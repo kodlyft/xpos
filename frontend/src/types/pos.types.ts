@@ -70,6 +70,7 @@ export interface POSProfile {
 	allow_cash_deposit?: boolean;
 	max_discount_percentage_allowed?: number;
 	auto_fetch_coupons_gifts?: boolean;
+	allow_coupon_entry?: boolean;
 	hide_closing_shift?: boolean;
 	use_offline_mode?: boolean;
 	cash_mode_of_payment?: string;
@@ -211,6 +212,10 @@ export interface CartItem extends POSItem {
 	pos_rate_overridden?: boolean;
 	pos_is_free_item?: boolean;
 	pos_free_item_rule?: string;
+	/** A stored-value gift card being sold, not a stock item. */
+	gift_card_issue?: boolean;
+	/** On a return: the card sold on the original line. */
+	gift_card?: string;
 }
 
 export interface ItemGroup {
@@ -382,6 +387,8 @@ export interface InvoiceItem {
 	is_replace?: boolean;
 	is_free_item?: number;
 	pricing_rules?: string;
+	gift_card_issue?: number;
+	gift_card?: string;
 }
 
 export interface InvoicePayment {
@@ -393,6 +400,10 @@ export interface InvoicePayment {
 	pos_tender_currency?: string;
 	pos_tender_amount?: number;
 	pos_exchange_rate?: number;
+	/** Token from a live balance check; the server turns it back into the card. */
+	gift_card_auth?: string;
+	/** On a return: the card that paid the original sale, refunded here. */
+	gift_card?: string;
 }
 
 export interface TenderLeg {
@@ -402,6 +413,34 @@ export interface TenderLeg {
 	native_amount: number;
 	exchange_rate: number;
 	base_amount: number;
+	gift_card?: string;
+	gift_card_auth?: string;
+	masked_code?: string;
+}
+
+export interface GiftCardCheck {
+	gift_card: string;
+	masked_code: string;
+	balance: number;
+	currency: string;
+	valid_upto?: string | null;
+	mode_of_payment: string;
+	auth: string;
+}
+
+export interface IssuedGiftCard {
+	gift_card: string;
+	code: string;
+	masked_code: string;
+	amount: number;
+	currency: string;
+	valid_upto?: string | null;
+}
+
+export interface GiftCardRefund {
+	gift_card: string;
+	masked_code: string;
+	amount: number;
 }
 
 export interface InvoiceChangeLeg {
@@ -776,6 +815,14 @@ export interface ShiftCheckResult {
 	print_settings?: PrintSettings;
 	disable_rounded_total?: number;
 	is_cashier?: boolean;
+	gift_cards?: GiftCardConfig | null;
+}
+
+export interface GiftCardConfig {
+	mode_of_payment: string;
+	item: string;
+	min_amount: number;
+	max_amount: number;
 }
 
 export interface OpeningData {

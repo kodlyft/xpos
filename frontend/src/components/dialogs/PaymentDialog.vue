@@ -107,7 +107,7 @@
 									>
 								</span>
 								<span :class="tax.included_in_print_rate ? 'text-blue-500' : ''">
-									{{ tax.included_in_print_rate ? "" : "+" }}{{ money(tax.amount) }}
+									{{ formatTaxAmount(tax.amount, tax.included_in_print_rate, money) }}
 								</span>
 							</div>
 							<div
@@ -191,6 +191,66 @@
 									{{ method.mode_of_payment }}
 								</p>
 							</button>
+						</div>
+
+						<div v-if="canRedeemGiftCards" class="mt-2" data-testid="gift-card-tender">
+							<p v-if="!offlineStore.isOnline" class="text-xs text-muted-foreground">
+								{{ __("Gift cards need a live connection.") }}
+							</p>
+							<div v-else-if="showGiftInput" class="flex gap-2">
+								<input
+									ref="giftCodeRef"
+									v-model="giftCodeInput"
+									data-testid="gift-card-code"
+									autocomplete="off"
+									class="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm font-mono uppercase"
+									:placeholder="__('Gift card code')"
+									@keydown.enter.stop.prevent="applyGiftCard"
+									@keydown.esc.stop.prevent="showGiftInput = false"
+								/>
+								<Button
+									size="sm"
+									:disabled="checkingGift || !giftCodeInput.trim()"
+									@click="applyGiftCard"
+								>
+									<Loader2 v-if="checkingGift" class="w-4 h-4 animate-spin" />
+									{{ __("Apply") }}
+								</Button>
+							</div>
+							<Button v-else variant="outline" size="sm" class="w-full" @click="openGiftInput">
+								<Gift class="w-4 h-4" />
+								{{ __("Pay with Gift Card") }}
+							</Button>
+						</div>
+
+						<div
+							v-if="
+								cartStore.isReturnMode &&
+								posStore.giftCardMode &&
+								cartStore.returnGiftCards.length
+							"
+							class="mt-2 space-y-1"
+						>
+							<Button
+								v-for="card in cartStore.returnGiftCards"
+								:key="card.gift_card"
+								variant="outline"
+								size="sm"
+								class="w-full"
+								:disabled="
+									!offlineStore.isOnline ||
+									splitPayments.some((leg) => leg.gift_card === card.gift_card)
+								"
+								@click="refundToGiftCard(card)"
+							>
+								<Gift class="w-4 h-4" />
+								{{
+									__("Refund to gift card {0} (up to {1})", [
+										card.masked_code,
+										money(card.amount),
+									])
+								}}
+							</Button>
 						</div>
 					</div>
 
@@ -290,6 +350,11 @@
 								<div class="flex items-center gap-2">
 									<component :is="getMethodIcon(sp.mode_of_payment)" class="w-5 h-5" />
 									<span class="font-medium text-foreground">{{ sp.mode_of_payment }}</span>
+									<span
+										v-if="sp.masked_code"
+										class="font-mono text-xs text-muted-foreground"
+										>{{ sp.masked_code }}</span
+									>
 								</div>
 								<div class="flex items-center gap-2">
 									<div class="text-right">
@@ -714,6 +779,9 @@ import { submitDurableInvoice } from "@/services/invoiceSubmission";
 import { useOfflineSale } from "@/composables/useOfflineSale";
 import { isElectron } from "@/services/electronBridge";
 import { fiscalizeViaLocalService } from "@/services/fbrLocalService";
+import { checkGiftCard, hasGiftCardActivity } from "@/services/giftCards";
+import { hasPermission } from "@/services/userRights";
+import { useOfflineStore } from "@/stores/offlineStore";
 import {
 	Dialog,
 	DialogContent,
@@ -766,9 +834,17 @@ import {
 	toInvoicePayments,
 	type TenderContext,
 } from "@/services/tenderLegs";
-import type { InvoiceChangeLeg, InvoiceData, InvoicePayment, TenderLeg } from "@/types/pos.types";
+import type {
+	GiftCardRefund,
+	InvoiceChangeLeg,
+	InvoiceData,
+	InvoicePayment,
+	IssuedGiftCard,
+	TenderLeg,
+} from "@/types/pos.types";
 import { isOnline, extractErrorMessage, isTabConflictError } from "@/utils";
 import { nowDate } from "@/utils/datetime";
+import { formatTaxAmount } from "@/utils/numberFormat";
 import {
 	isPaymentDialogSaveAndPrintShortcut,
 	isPaymentDialogSaveOnlyShortcut,
@@ -782,6 +858,7 @@ const cartStore = useCartStore();
 const customerStore = useCustomerStore();
 const authStore = useAuthStore();
 const paymentStore = usePaymentStore();
+const offlineStore = useOfflineStore();
 
 const amountInput = ref<InstanceType<typeof NumberInput> | null>(null);
 const submitBtn = ref<InstanceType<typeof Button> | null>(null);
@@ -813,10 +890,26 @@ const redeemPointsInput = ref(0);
 const numpadKeys = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "C", "0", "⌫"];
 
 const availableMethods = computed(() => {
-	const methods = posStore.paymentMethods;
+	// the gift card mode is tendered only through a scanned card, never as a plain amount
+	const methods = posStore.paymentMethods.filter((m) => m.mode_of_payment !== posStore.giftCardMode);
 	if (methods.length > 0) return methods;
 	return [{ mode_of_payment: "Cash" }, { mode_of_payment: "Card" }];
 });
+
+const giftCodeRef = ref<HTMLInputElement | null>(null);
+const giftCodeInput = ref("");
+const showGiftInput = ref(false);
+const checkingGift = ref(false);
+
+const canRedeemGiftCards = computed(
+	() =>
+		!!posStore.giftCardMode &&
+		!cartStore.isReturnMode &&
+		!cartStore.isGiftCardSale &&
+		hasPermission("redeem_gift_card"),
+);
+const hasGiftCardLegs = computed(() => splitPayments.value.some((leg) => leg.gift_card));
+const isGiftCardSale = computed(() => cartStore.isGiftCardSale || hasGiftCardLegs.value);
 
 const quickAmounts = computed(() => {
 	const total = Math.abs(cartStore.grandTotal);
@@ -970,6 +1063,7 @@ function changeRemainingIn(currency: string): number {
 
 const canSubmitOutstanding = computed(() => {
 	if (cartStore.isReturnMode || remainingAmount.value <= 0) return false;
+	if (cartStore.isGiftCardSale) return false;
 	if (posStore.allowCreditSale) return true;
 	return hasRecordedPayment.value && posStore.allowPartialPayment;
 });
@@ -988,6 +1082,7 @@ const outstandingSubmissionHint = computed(() => {
 
 const canSubmit = computed(() => {
 	if (cartStore.isEmpty) return false;
+	if (isGiftCardSale.value && !offlineStore.isOnline) return false;
 	if (selectedRateMissing.value) return false;
 	const total = roundCurrency(Math.abs(cartStore.grandTotal));
 	if (total <= 0) return true;
@@ -1169,7 +1264,80 @@ function addSplitPayment() {
 
 function removeSplitPayment(idx: number) {
 	splitPayments.value.splice(idx, 1);
+	cartStore.setGiftCardTender(hasGiftCardLegs.value || cartStore.returnGiftCards.length > 0);
 	refillTenderRemainder();
+}
+
+function openGiftInput() {
+	showGiftInput.value = true;
+	nextTick(() => giftCodeRef.value?.focus());
+}
+
+function addGiftCardLeg(mode: string, amount: number, card: Partial<TenderLeg>) {
+	if (!isSplitPayment.value) {
+		isSplitPayment.value = true;
+		splitPayments.value = [];
+	}
+	splitPayments.value.push({ ...buildLeg(mode, amount), ...card });
+	const other = availableMethods.value[0]?.mode_of_payment;
+	if (other) selectedMethod.value = other;
+	refillTenderRemainder();
+}
+
+async function applyGiftCard() {
+	const code = giftCodeInput.value.trim();
+	if (!code || checkingGift.value) return;
+	if (!isOnline()) {
+		showError(__("Gift cards need a live connection."));
+		return;
+	}
+	checkingGift.value = true;
+	try {
+		const card = await checkGiftCard(code, posStore.profileName);
+		if (splitPayments.value.some((leg) => leg.gift_card === card.gift_card)) {
+			showInfo(__("This gift card is already applied."));
+			return;
+		}
+		// a sale paid by card is charged to the cent, so drop rounding before working out what is due
+		cartStore.setGiftCardTender(true);
+		const paidSoFar = isSplitPayment.value ? splitTotal.value : 0;
+		const due = roundCurrency(Math.abs(cartStore.grandTotal) - paidSoFar);
+		const amount = roundCurrency(Math.min(card.balance, due));
+		if (amount <= 0) {
+			cartStore.setGiftCardTender(hasGiftCardLegs.value);
+			showInfo(__("Nothing is left to pay."));
+			return;
+		}
+		addGiftCardLeg(card.mode_of_payment, amount, {
+			gift_card: card.gift_card,
+			gift_card_auth: card.auth,
+			masked_code: card.masked_code,
+		});
+		giftCodeInput.value = "";
+		showGiftInput.value = false;
+		showInfo(
+			__("Gift card {0}: {1} applied, {2} left on the card.", [
+				card.masked_code,
+				money(amount),
+				money(card.balance - amount),
+			]),
+		);
+	} catch (error) {
+		showError(extractErrorMessage(error));
+	} finally {
+		checkingGift.value = false;
+	}
+}
+
+function refundToGiftCard(card: GiftCardRefund) {
+	const paidSoFar = isSplitPayment.value ? splitTotal.value : 0;
+	const due = roundCurrency(Math.abs(cartStore.grandTotal) - paidSoFar);
+	const amount = roundCurrency(Math.min(card.amount, due));
+	if (amount <= 0) return;
+	addGiftCardLeg(posStore.giftCardMode, amount, {
+		gift_card: card.gift_card,
+		masked_code: card.masked_code,
+	});
 }
 
 watch(selectedCurrency, (next, prev) => {
@@ -1258,6 +1426,13 @@ function validateForSubmission(): { valid: boolean; message?: string } {
 		}
 	}
 
+	if (isGiftCardSale.value && (!isOnline() || isElectron())) {
+		return {
+			valid: false,
+			message: __("Gift cards need a live connection. This sale cannot be saved offline."),
+		};
+	}
+
 	if (selectedRateMissing.value) {
 		return {
 			valid: false,
@@ -1339,8 +1514,14 @@ async function submitPayment(withPrint: boolean = true) {
 	printAfterSave.value = withPrint;
 
 	const invoiceData = buildInvoicePayload();
+	const giftCardSale = hasGiftCardActivity(invoiceData);
 	try {
 		const shiftName = posStore.posOpeningShift?.name || "";
+
+		if (giftCardSale) {
+			await submitGiftCardSale(invoiceData, withPrint);
+			return;
+		}
 
 		if (isElectron() && window.electronAPI?.db) {
 			const result = await window.electronAPI.db.addPendingInvoice({
@@ -1434,8 +1615,51 @@ async function submitPayment(withPrint: boolean = true) {
 	}
 }
 
+/**
+ * Gift card value moves only on a live server, so these sales skip the offline queue. If the
+ * response is lost the cart stays put: paying again resends the same sale, which the server
+ * recognises and never charges twice.
+ */
+async function submitGiftCardSale(invoiceData: InvoiceData, withPrint: boolean) {
+	if (isElectron() || !isOnline()) {
+		showError(__("Gift cards need a live connection. This sale cannot be saved offline."));
+		return;
+	}
+	let result: CreateInvoiceResult;
+	try {
+		result = await call<CreateInvoiceResult>("xpos.api.invoices.create_invoice", {
+			data: JSON.stringify(invoiceData),
+		});
+		if (result.status === "fbr_local_required") result = await finalizeWithLocalFbr(result);
+	} catch (error) {
+		if (isNetworkError(error)) {
+			showError(
+				__(
+					"The connection dropped before the server answered. Press Pay again to finish this sale; it will not be charged twice.",
+				),
+			);
+		} else {
+			showError(__("Payment failed: {0}", [extractErrorMessage(error)]));
+		}
+		return;
+	}
+
+	posStore.lastInvoiceName = result.name;
+	showSuccess(__("Invoice {0} saved successfully!", [result.name]));
+	if (result.issued_gift_cards?.length) cartStore.showIssuedGiftCards(result.issued_gift_cards);
+	cartStore.clearAll();
+	if (withPrint && result.name) {
+		try {
+			await printInvoice(result.name);
+		} catch {
+			showError(__("Sale saved. Receipt printing failed; use Reprint."));
+		}
+	}
+}
+
 interface CreateInvoiceResult {
 	name: string;
+	issued_gift_cards?: IssuedGiftCard[];
 	status?: string;
 	doctype?: string;
 	fbr_payload?: Record<string, unknown>;

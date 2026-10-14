@@ -64,6 +64,8 @@ Before closing, you can review a complete summary of the shift:
 3. Review any discrepancies between expected and actual amounts
 4. Click **Close Shift** to finalize
 
+Gift cards sold for cash count in the Cash row. Gift-card payments appear on their own **Gift Card** row, which is filled in for you and cannot be edited, because no money reaches the till. See [Gift Cards](29-gift-cards.md#shifts-and-reports).
+
 ### What Happens on Shift Close
 - A **POS Closing Shift** document is created with:
   - All invoices linked as child records (Sales Invoice Reference table)

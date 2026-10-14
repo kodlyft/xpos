@@ -13,6 +13,8 @@ export interface PosPermissions {
 	sale_return: boolean;
 	recall_other_shift_tabs: boolean;
 	settle_outstanding_invoice: boolean;
+	sell_gift_card: boolean;
+	redeem_gift_card: boolean;
 	expense: boolean;
 	bank_drop: boolean;
 	current_stock_by_brand: boolean;
@@ -30,6 +32,8 @@ const DEFAULT_PERMISSIONS: PosPermissions = {
 	sale_return: false,
 	recall_other_shift_tabs: false,
 	settle_outstanding_invoice: false,
+	sell_gift_card: false,
+	redeem_gift_card: false,
 	expense: false,
 	bank_drop: false,
 	current_stock_by_brand: false,

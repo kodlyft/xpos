@@ -1,0 +1,134 @@
+name: Patch
+
+on:
+  pull_request:
+    paths-ignore:
+      - "**.js"
+      - "**.ts"
+      - "**.vue"
+      - "**.css"
+      - "**.md"
+      - "**.html"
+      - "**.po"
+      - "**.pot"
+      - "frontend/**"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: patch-xpos-${{ github.event_name }}-${{ github.event.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Patch Test (v15 -> current)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      mariadb:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: --health-cmd="mariadb-admin ping" --health-interval=5s --health-timeout=2s --health-retries=10
+
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=2s --health-retries=10
+
+    steps:
+      - name: Clone xpos
+        uses: actions/checkout@v7
+        with:
+          path: xpos
+          fetch-depth: 0
+
+      - name: Check for valid Python & Merge Conflicts
+        run: |
+          python -m compileall -q -f "${GITHUB_WORKSPACE}/xpos/xpos"
+          if grep -lr --exclude-dir=node_modules "^<<<<<<< " "${GITHUB_WORKSPACE}/xpos"; then
+            echo "::error::Found merge conflict markers"
+            exit 1
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: |
+            3.11
+            3.14
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libmariadb-dev mariadb-client wkhtmltopdf
+
+      - name: Add test_site to hosts
+        run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
+
+      - name: Configure MariaDB
+        run: |
+          mariadb --host 127.0.0.1 --port 3306 -u root -proot -e \
+            "SET GLOBAL character_set_server = 'utf8mb4';
+             SET GLOBAL collation_server = 'utf8mb4_unicode_ci';"
+
+      - name: Install version-15 site
+        run: |
+          pip install frappe-bench
+          git -C "${GITHUB_WORKSPACE}/xpos" branch -f version-15 origin/version-15
+          bench init --skip-redis-config-generation --skip-assets --python "$(which python3.11)" \
+            --frappe-branch version-15 ~/frappe-bench
+          cd ~/frappe-bench
+          bench set-config -g db_host 127.0.0.1
+          bench set-config -g redis_cache "redis://127.0.0.1:6379"
+          bench set-config -g redis_queue "redis://127.0.0.1:6379"
+          bench set-config -g redis_socketio "redis://127.0.0.1:6379"
+          bench get-app --branch version-15 --skip-assets erpnext
+          bench get-app --branch version-15 --skip-assets xpos "${GITHUB_WORKSPACE}/xpos"
+          bench new-site test_site \
+            --db-root-username root \
+            --db-root-password root \
+            --db-host 127.0.0.1 \
+            --admin-password admin \
+            --install-app erpnext \
+            --install-app xpos
+
+      - name: Update to current version and migrate
+        run: |
+          cd ~/frappe-bench
+          target="${GITHUB_BASE_REF:-version-16}"
+          [ "$target" = "develop" ] && target=version-16
+
+          git -C apps/frappe fetch --depth 1 upstream "$target:$target"
+          git -C apps/erpnext fetch --depth 1 upstream "$target:$target"
+          git -C apps/frappe checkout -q -f "$target"
+          git -C apps/erpnext checkout -q -f "$target"
+          git -C apps/xpos fetch -q "${GITHUB_WORKSPACE}/xpos" "$GITHUB_SHA"
+          git -C apps/xpos checkout -q -f FETCH_HEAD
+
+          rm -rf env
+          bench -v setup env --python "$(which python3.14)"
+          bench pip install -e ./apps/erpnext -e ./apps/xpos
+
+          bench --site test_site migrate
+
+      - name: Show bench logs
+        if: ${{ always() }}
+        run: |
+          cd ~/frappe-bench/logs 2>/dev/null || exit 0
+          for f in ./*.log*; do
+            echo "Printing log: $f"
+            cat "$f"
+          done

@@ -1,0 +1,31 @@
+{
+ "app": "xpos",
+ "creation": "2026-10-14 16:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Dock",
+ "idx": 0,
+ "items": [
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "xpos-till-duotone",
+   "link_to": "X POS",
+   "link_type": "Sidebar",
+   "title": "X POS"
+  },
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "gift-card-duotone",
+   "link_to": "Promotions & Offers",
+   "link_type": "Sidebar",
+   "title": "Promotions & Offers"
+  }
+ ],
+ "modified": "2026-10-14 17:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "xpos",
+ "owner": "Administrator",
+ "standard": 1,
+ "user": ""
+}

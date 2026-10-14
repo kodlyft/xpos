@@ -1,0 +1,37 @@
+# This workflow is agnostic to branches. Only maintain on develop branch.
+# To add/remove versions just modify the matrix.
+
+name: Create weekly release pull requests
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    # 9:30 UTC Tuesday
+    - cron: "30 9 * * 2"
+  workflow_dispatch:
+
+jobs:
+  stable-release:
+    name: Release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["16"]
+
+    steps:
+      - uses: octokit/request-action@v2.x
+        # fails with 422 when a release PR is already open
+        continue-on-error: true
+        with:
+          route: POST /repos/{owner}/{repo}/pulls
+          owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          title: "chore: release v${{ matrix.version }}"
+          body: "Automated weekly release."
+          base: version-${{ matrix.version }}
+          head: develop
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}

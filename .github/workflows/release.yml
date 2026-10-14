@@ -125,3 +125,14 @@ jobs:
       - name: Summary
         run: |
           echo "Published X POS ${{ env.APP_VERSION }} Windows installer to the v${{ env.APP_VERSION }} release." >> "$GITHUB_STEP_SUMMARY"
+
+  release-notes:
+    name: Release Notes
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release_notes.yml
+    with:
+      tag_name: v${{ needs.release.outputs.version }}
+    secrets: inherit

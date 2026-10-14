@@ -127,6 +127,8 @@ export function evaluateOffers(offers: POSOffer[], cartItems: CartItem[]): Offer
 	if (!realItems.length) return result;
 
 	for (const offer of offers) {
+		if (offerVal(offer, "promo_source", "") === "Promotional Scheme") continue;
+
 		const offerType = str(offerVal(offer, "offer", ""));
 		const applyOn = str(offerVal(offer, "apply_on", ""));
 		const offerName = offer.name || "";

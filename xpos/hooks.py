@@ -58,7 +58,7 @@ page_renderer = ["xpos.pwa.ServiceWorkerPage"]
 # Svg Icons
 # ------------------
 # include app icons in desk
-# app_include_icons = "xpos/public/icons.svg"
+app_include_icons = ["/assets/xpos/icons/module-icons.svg"]
 
 # Home Pages
 # ----------
@@ -91,6 +91,7 @@ jinja = {
 		"xpos.x_pos.api.jinja_helpers.xpos_tender_rate",
 		"xpos.x_pos.api.jinja_helpers.xpos_number",
 		"xpos.x_pos.api.jinja_helpers.xpos_qty",
+		"xpos.x_pos.api.jinja_helpers.xpos_gift_card_line",
 	],
 }
 

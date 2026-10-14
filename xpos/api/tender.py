@@ -14,6 +14,7 @@ from xpos.api.exchange import (
 	get_mode_tender_currencies,
 	resolve_tender_rate,
 )
+from xpos.x_pos.gift_cards import GiftCardAuthError, gift_card_mode, live_connection_message, read_auth_token
 
 
 def minor_unit(currency: str) -> float:
@@ -41,6 +42,7 @@ def build_tender_legs(payments: list[dict], invoice_doc, rate_cache: dict | None
 
 	modes = [payment.get("mode_of_payment") for payment in payments if payment.get("mode_of_payment")]
 	tender_map = get_mode_tender_currencies(modes)
+	gift_mode = gift_card_mode(invoice_doc.get("company"))
 
 	rows: list[dict] = []
 	total = 0.0
@@ -53,6 +55,13 @@ def build_tender_legs(payments: list[dict], invoice_doc, rate_cache: dict | None
 		details = tender_map.get(mode) or {}
 		tender_currency = details.get("currency")
 		client_amount = flt(payment.get("amount", 0))
+
+		if gift_mode and mode == gift_mode:
+			amount = flt(client_amount, invoice_precision)
+			if amount:
+				rows.append(gift_card_leg(payment, amount, invoice_doc))
+				total += amount
+			continue
 
 		claimed = payment.get("pos_tender_currency")
 		if claimed and claimed != (tender_currency or invoice_currency):
@@ -109,6 +118,32 @@ def build_tender_legs(payments: list[dict], invoice_doc, rate_cache: dict | None
 		total += amount
 
 	return rows, flt(total, invoice_precision)
+
+
+def gift_card_leg(payment: dict, amount: float, invoice_doc) -> dict:
+	"""A gift-card payment row. A sale needs the token from a live balance check; a return
+	may only send money back to a card that paid the original sale."""
+	mode = payment.get("mode_of_payment")
+	if invoice_doc.get("is_return"):
+		card = payment.get("gift_card")
+		used = card and frappe.db.exists(
+			"Sales Invoice Payment",
+			{"parent": invoice_doc.return_against, "mode_of_payment": mode, "xpos_gift_card": card},
+		)
+		if not used:
+			frappe.throw(_("Choose the gift card that paid {0}.").format(invoice_doc.return_against))
+		return {"mode_of_payment": mode, "amount": amount, "xpos_gift_card": card}
+
+	token = payment.get("gift_card_auth")
+	auth = read_auth_token(token)
+	if not auth:
+		frappe.throw(live_connection_message(), GiftCardAuthError)
+	return {
+		"mode_of_payment": mode,
+		"amount": amount,
+		"xpos_gift_card": auth["gift_card"],
+		"xpos_gift_card_auth": token,
+	}
 
 
 def build_change_legs(change_legs: list[dict], invoice_doc, rate_cache: dict | None = None) -> tuple:

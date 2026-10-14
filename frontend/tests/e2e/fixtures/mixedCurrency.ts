@@ -83,6 +83,7 @@ export const POS_PROFILE_DOC = {
 	max_discount_percentage_allowed: 0,
 	input_qty: 0,
 	auto_fetch_coupons_gifts: 0,
+	allow_coupon_entry: 0,
 	item_groups: [],
 	customer_groups: [],
 };

@@ -18,6 +18,8 @@ import type {
 	DeliveryCharge,
 	ReceiptSnapshot,
 	OpenTab,
+	GiftCardRefund,
+	IssuedGiftCard,
 } from "@/types/pos.types";
 import __ from "@/lib/translate";
 import {
@@ -84,6 +86,12 @@ export const useCartStore = defineStore("cart", () => {
 	const isReturnMode = ref(false);
 	const returnAgainst = ref("");
 	const returnItemCodes = ref<string[]>([]);
+	/** Cards that paid the sale being returned, and how much each may take back. */
+	const returnGiftCards = ref<GiftCardRefund[]>([]);
+	/** A gift card is among this sale's tender, so the total is charged to the cent. */
+	const giftCardTender = ref(false);
+	/** Codes of cards just sold. Shown once, then forgotten: the server keeps only a hash. */
+	const issuedGiftCards = ref<IssuedGiftCard[]>([]);
 	const orderNotes = ref("");
 	const deliveryDate = ref("");
 	const postingDate = ref(nowDate());
@@ -173,8 +181,17 @@ export const useCartStore = defineStore("cart", () => {
 		}, 0),
 	);
 
+	/** Sells a gift card, or returns one: money, not goods, so no tax and no rounding. */
+	const isGiftCardSale = computed(() => {
+		const giftItem = usePosStore().giftCards?.item;
+		return items.value.some(
+			(item) => item.gift_card_issue || item.gift_card || (!!giftItem && item.item_code === giftItem),
+		);
+	});
+
 	const calculatedTaxes = computed(() => {
 		const posStore = usePosStore();
+		if (isGiftCardSale.value) return [];
 		const taxDetails = posStore.taxes || [];
 		const taxInclusive = posStore.taxInclusiveMode;
 
@@ -303,7 +320,8 @@ export const useCartStore = defineStore("cart", () => {
 			total += selectedDeliveryCharge.value.rate || 0;
 		}
 		total = isReturnMode.value ? total : Math.max(0, total);
-		if (!posStore.disableRoundedTotal && total !== 0) {
+		// card value is exact money, so a sale that sells or spends one is never rounded
+		if (!posStore.disableRoundedTotal && total !== 0 && !isGiftCardSale.value && !giftCardTender.value) {
 			total = Math.round(total);
 		}
 		return total;
@@ -488,6 +506,9 @@ export const useCartStore = defineStore("cart", () => {
 	}
 
 	function addItem(item: POSItem): { success: boolean; message?: string } {
+		if (isGiftCardSale.value) {
+			return { success: false, message: __("Sell gift cards on their own sale, without other items.") };
+		}
 		if (
 			isReturnMode.value &&
 			returnItemCodes.value.length > 0 &&
@@ -534,6 +555,56 @@ export const useCartStore = defineStore("cart", () => {
 		}
 
 		return { success: true };
+	}
+
+	function addGiftCardLine(amount: number): { success: boolean; message?: string } {
+		const config = usePosStore().giftCards;
+		if (!config)
+			return { success: false, message: __("Gift cards are not enabled on this POS Profile.") };
+		if (isReturnMode.value || items.value.some((item) => !item.gift_card_issue)) {
+			return { success: false, message: __("Sell gift cards on their own sale, without other items.") };
+		}
+		const value = normalizeItemRate(amount);
+		if (!(value > 0)) return { success: false, message: __("Enter the value of the gift card.") };
+		if (config.min_amount && value < config.min_amount) {
+			return {
+				success: false,
+				message: __("The minimum gift card value is {0}.", [config.min_amount]),
+			};
+		}
+		if (config.max_amount && value > config.max_amount) {
+			return {
+				success: false,
+				message: __("The maximum gift card value is {0}.", [config.max_amount]),
+			};
+		}
+		items.value.push({
+			uid: nextRowId(),
+			item_code: config.item,
+			item_name: __("Gift Card"),
+			rate: value,
+			qty: 1,
+			uom: "Nos",
+			stock_uom: "Nos",
+			discount_percentage: 0,
+			discount_amount: 0,
+			is_stock_item: false,
+			conversion_factor: 1,
+			gift_card_issue: true,
+		});
+		return { success: true };
+	}
+
+	function setGiftCardTender(active: boolean): void {
+		giftCardTender.value = active;
+	}
+
+	function showIssuedGiftCards(cards: IssuedGiftCard[]): void {
+		issuedGiftCards.value = cards;
+	}
+
+	function dismissIssuedGiftCards(): void {
+		issuedGiftCards.value = [];
 	}
 
 	function canAddItemWithDetails(
@@ -1104,6 +1175,8 @@ export const useCartStore = defineStore("cart", () => {
 		currency.value = "";
 		conversionRate.value = 1;
 		selectedDeliveryCharge.value = null;
+		giftCardTender.value = false;
+		returnGiftCards.value = [];
 	}
 
 	function clearAll(): void {
@@ -1339,6 +1412,9 @@ export const useCartStore = defineStore("cart", () => {
 					is_replace: item.pos_is_replace,
 					is_free_item: item.pos_is_free_item ? 1 : undefined,
 					pricing_rules: item.pos_free_item_rule,
+					gift_card_issue:
+						item.gift_card_issue || item.item_code === posStore.giftCards?.item ? 1 : undefined,
+					gift_card: item.gift_card,
 				}),
 			),
 			pos_opening_shift: posOpeningShift,
@@ -1524,6 +1600,14 @@ export const useCartStore = defineStore("cart", () => {
 	return {
 		items,
 		customer,
+		returnGiftCards,
+		giftCardTender,
+		isGiftCardSale,
+		addGiftCardLine,
+		setGiftCardTender,
+		issuedGiftCards,
+		showIssuedGiftCards,
+		dismissIssuedGiftCards,
 		discountPercentage,
 		discountAmount,
 		showPaymentDialog,

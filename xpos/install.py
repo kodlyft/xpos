@@ -21,6 +21,8 @@ POS_PERMISSIONS = (
 	("sale_return", "Sale Return", "Sales Operations"),
 	("recall_other_shift_tabs", "Recall Other Shifts' Tabs", "Sales Operations"),
 	("settle_outstanding_invoice", "Settle Outstanding Invoice", "Sales Operations"),
+	("sell_gift_card", "Sell Gift Card", "Sales Operations"),
+	("redeem_gift_card", "Accept Gift Card Payment", "Sales Operations"),
 	# Cash Management
 	("expense", "Expense", "Cash Management"),
 	("bank_drop", "Bank Drop", "Cash Management"),
