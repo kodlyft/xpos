@@ -10,6 +10,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import erpnext.accounts.doctype.payment_reconciliation.payment_reconciliation  # noqa: F401 - binds the real reconcile_against_document before tests patch erpnext.accounts.utils
 import frappe
 
 from xpos.api import invoices, profile_rules
@@ -678,9 +679,11 @@ class TestCustomerCredit(unittest.TestCase):
 		from xpos.api import customer_credit
 
 		pos = profile(use_customer_credit=flag)
+		frappe.get_system_settings("rounding_method")  # load it now; ``flt`` reads it while sql is stubbed
 		with (
 			patch.object(customer_credit, "get_invoice_type", return_value=invoice_type),
 			patch.object(customer_credit, "credit_account_supported", return_value=currency_ok),
+			patch.object(customer_credit, "read_latest_on_lock"),
 			patch.object(
 				customer_credit.frappe.db, "sql", side_effect=lambda q, name, as_dict: rows.get(name, [])
 			),

@@ -27,6 +27,7 @@ from xpos.api.profile_rules import (
 from xpos.api.profiles import resolve_pos_profile, user_may_use_profile
 from xpos.api.tender import build_change_legs, build_tender_legs, invoice_currency_of
 from xpos.api.utilities import can_recall_other_shift_tabs, get_invoice_type, is_pos_cashier
+from xpos.utils import read_latest_on_lock
 from xpos.x_pos.doctype.pos_coupon.pos_coupon import validate_invoice_coupons
 from xpos.x_pos.gift_cards import (
 	claim_issued_codes,
@@ -1051,6 +1052,7 @@ def fiscal_draft(name: str, doctype: str | None, action: str):
 	):
 		frappe.throw(_("Only a cashier can {0} this invoice.").format(action), frappe.PermissionError)
 	# Serialise with any other request finishing this draft.
+	read_latest_on_lock()
 	frappe.db.get_value(doctype, name, "name", for_update=True)
 	doc.reload()
 	return doc

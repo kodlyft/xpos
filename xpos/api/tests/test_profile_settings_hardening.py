@@ -15,6 +15,7 @@ everything they created afterwards.
 import threading
 from unittest.mock import patch
 
+import erpnext.accounts.doctype.payment_reconciliation.payment_reconciliation  # noqa: F401 - binds the real reconcile_against_document before tests patch erpnext.accounts.utils
 import frappe
 from erpnext.accounts.doctype.sales_invoice.test_sales_invoice import create_sales_invoice
 from erpnext.tests.utils import ERPNextTestSuite
@@ -803,7 +804,13 @@ class TestExternalCreditAllocation(CommittedCreditTestCase):
 	def assert_spent_once(self, source_type, source, target, local_id, outcome):
 		successes = [i for i, r in outcome.items() if not isinstance(r, Exception)]
 		self.assertEqual(len(successes), 1, outcome)
-		self.assertIsInstance(outcome[1 - successes[0]], frappe.ValidationError, outcome)
+		loser = 1 - successes[0]
+		# The till (1) is always refused by XPOS. ERPNext's reconciliation (0) rewrites Payment Entry
+		# references before any hook runs, so on MariaDB 11.6+ the database refuses it first (1020).
+		refusals = (
+			frappe.ValidationError if loser == 1 else (frappe.ValidationError, frappe.QueryDeadlockError)
+		)
+		self.assertIsInstance(outcome[loser], refusals, outcome)
 		self.assertEqual(ledger_remaining(source_type, source), 0)
 		if source_type == "Payment Entry":
 			self.assertEqual(unallocated(source), 0)

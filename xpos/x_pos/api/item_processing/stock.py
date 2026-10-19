@@ -4,6 +4,8 @@ from frappe.query_builder import DocType
 from frappe.query_builder.functions import Sum
 from frappe.utils import cstr, flt, json
 
+from xpos.utils import read_latest_on_lock
+
 
 def get_stock_availability(item_code: str, warehouse: str) -> float:
 	"""Return total available quantity for an item in the given warehouse.
@@ -46,6 +48,7 @@ def lock_bins_for_update(items: list[dict]) -> None:
 	The lock is held until the surrounding transaction commits.
 	"""
 
+	read_latest_on_lock()
 	targets = set()
 	for d in items or []:
 		item_code = d.get("item_code")
