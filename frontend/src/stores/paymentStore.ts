@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { call } from "@/services/api";
+import { usePosStore } from "@/stores/posStore";
 import type {
 	OutstandingInvoice,
 	UnallocatedPayment,
@@ -25,6 +26,7 @@ export const usePaymentStore = defineStore("payment", () => {
 			const result = await call<CustomerCredit>("xpos.api.customers.get_customer_credit", {
 				customer,
 				company: company || "",
+				pos_profile: usePosStore().profileName || undefined,
 			});
 			availableCredit.value = result;
 			return result;

@@ -193,7 +193,7 @@ def make_payment_request(**args: dict) -> dict:
 			pr.submit()
 
 	if args.order_type == "Shopping Cart":
-		frappe.db.commit()  # nosemgrep: frappe-manual-commit — Shopping Cart redirect requires immediate commit
+		frappe.db.commit()  # nosemgrep: frappe-manual-commit - Shopping Cart redirect requires immediate commit
 		frappe.local.response["type"] = "redirect"
 		frappe.local.response["location"] = pr.get_payment_url()
 
@@ -341,7 +341,7 @@ def get_available_credit(customer: str, company: str) -> list[dict]:
 		for idx, inv in enumerate(invoice_names):
 			invoice_params[f"inv_{idx}"] = inv
 		inv_placeholders = ", ".join([f"%(inv_{i})s" for i in range(len(invoice_names))])
-		payment_allocations = frappe.db.sql(  # nosemgrep: frappe-sql-format-injection — inv_placeholders is built from %(name)s named params, all values parameterized
+		payment_allocations = frappe.db.sql(  # nosemgrep: frappe-sql-format-injection - inv_placeholders is built from %(name)s named params, all values parameterized
 			f"""
                 select
                     per.reference_name,

@@ -8,7 +8,7 @@ them.
 | What varies | The whole invoice, including item rates | A single payment leg |
 | Setting | `allow_multi_currency` (POS Profile) | `pos_tender_currency` (Mode of Payment) |
 | Rate applies to | Every line and total | Only the tendered notes |
-| Frontend support | **Not implemented** — see below | Implemented |
+| Frontend support | **Not implemented** - see below | Implemented |
 
 If you are looking for "the customer paid in dollars but we bill in pounds", you want the
 payment-mode currency, documented in
@@ -28,7 +28,7 @@ neither has ever existed in the Vue app. The cart is always denominated in the P
 currency.
 
 Invoices in another currency can still be created in the ERPNext Desk UI, and X POS reads them
-correctly — the closing shift's overview groups totals by `(mode of payment, currency)` and
+correctly - the closing shift's overview groups totals by `(mode of payment, currency)` and
 records both transaction and base amounts. What is missing is a way to *ring one up* from the POS.
 
 `allow_multi_currency` should stay **off** for a store using mixed-currency tender. The two are
@@ -46,7 +46,7 @@ Exchange** rate and both figures are recorded on the payment row.
 Key properties:
 
 - The invoice, its items and its totals never leave the company currency
-- The linked Mode of Payment Account must stay in the company currency — there is one shared cash
+- The linked Mode of Payment Account must stay in the company currency - there is one shared cash
   account, and the foreign figure is drawer-reconciliation metadata rather than a second ledger
 - No FX gain or loss is tracked
 - Change can be split across currencies, one `POS Change Leg` row each

@@ -350,7 +350,7 @@ function printThermal() {
 }
 
 function formatSummaryValue(value: unknown): string {
-	if (value === null || value === undefined || value === "") return "—";
+	if (value === null || value === undefined || value === "") return "-";
 	if (Array.isArray(value)) return value.map((item) => String(item)).join(", ");
 	if (typeof value === "number") return formatQty(value);
 	return String(value);

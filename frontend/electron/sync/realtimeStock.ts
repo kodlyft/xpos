@@ -29,7 +29,7 @@ export async function initRealtimeStock(url: string): Promise<void> {
 		const cookies = await session.defaultSession.cookies.get({ url: serverUrl });
 		cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 	} catch {
-		// Continue without cookies — server may reject
+		// Continue without cookies - server may reject
 	}
 
 	socket = io(serverUrl, {
@@ -92,7 +92,7 @@ async function handleBinUpdate(binName?: string): Promise<void> {
 			});
 		}
 	} catch {
-		// Ignore fetch errors — will sync on next cycle
+		// Ignore fetch errors - will sync on next cycle
 	}
 }
 

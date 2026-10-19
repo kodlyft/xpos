@@ -16,7 +16,7 @@ X POS provides a comprehensive Order History view where you can browse, search, 
 ### Order Cards
 Each order is displayed as a card showing:
 - **Invoice name/number**
-- **Status badge** — Draft, Submitted, Paid, Cancelled, Return, etc.
+- **Status badge** - Draft, Submitted, Paid, Cancelled, Return, etc.
 - **Customer name**
 - **Date and time** of the transaction
 - **Grand total** amount
@@ -33,8 +33,8 @@ Each order is displayed as a card showing:
 ## Filtering Orders
 
 ### Date Range
-- **From date** — Shows orders from this date onwards
-- **To date** — Shows orders up to this date
+- **From date** - Shows orders from this date onwards
+- **To date** - Shows orders up to this date
 
 ### Status Filter
 - Filter by invoice status (e.g., Submitted, Paid, Cancelled)
@@ -87,11 +87,11 @@ Click on an order to open its full detail dialog:
 | Additional notes | Per-item notes |
 
 ### Summary Section
-- **Net total** — Before taxes
-- **Taxes & charges** — Breakdown by tax account with rates and amounts
-- **Additional discount** — Order-level discount amount
-- **Loyalty redemption** — Points redeemed and value
-- **Grand total** — Final amount
+- **Net total** - Before taxes
+- **Taxes & charges** - Breakdown by tax account with rates and amounts
+- **Additional discount** - Order-level discount amount
+- **Loyalty redemption** - Points redeemed and value
+- **Grand total** - Final amount
 
 ### Tax Breakdown
 For each tax applied:

@@ -4,6 +4,7 @@ import { getCachedReceiptContext } from "@/services/dbBridge";
 import { buildReceiptHtml } from "@/services/receiptTemplate";
 import type { ReceiptSnapshot } from "@/types/pos.types";
 import { __ } from "@/lib/translate";
+import { get_full_url } from "@/utils";
 
 export interface PrintInvoiceOptions {
 	format?: string;
@@ -51,11 +52,44 @@ export function usePrintInvoice() {
 		return xpos.boot?.pos_settings?.invoice_type === "POS Invoice" ? "POS Invoice" : "Sales Invoice";
 	}
 
+	/** The format the POS Profile's print rules pick for this invoice (online), else the default. */
+	async function resolveInvoicePrintFormat(doctype: string, name: string): Promise<string> {
+		try {
+			const result = await call<{ print_format: string }>(
+				"xpos.api.print_formats.get_invoice_print_format",
+				{ doctype, name },
+			);
+			if (result?.print_format) return result.print_format;
+		} catch {
+			/* offline or no read access: fall back to the profile default */
+		}
+		return posStore?.defaultPrintFormat || "XPOS Thermal Receipt";
+	}
+
+	/**
+	 * Open the server print view (reprints included) with the rule-selected format.
+	 * The window is opened before the lookup so the click still counts as user-initiated.
+	 */
+	async function openInvoicePrintView(
+		name: string,
+		doctype: string = posStore.invoiceType || resolveDoctype(),
+	) {
+		const printWindow = window.open("about:blank", "_blank");
+		const format = await resolveInvoicePrintFormat(doctype, name);
+		const url = get_full_url(
+			`/printview?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(name)}&format=${encodeURIComponent(
+				format,
+			)}&no_letterhead=0&trigger_print=1`,
+		);
+		if (printWindow) printWindow.location.href = url;
+		else window.open(url, "_blank");
+	}
+
 	async function printInvoice(invoiceName: string, options: PrintInvoiceOptions = {}) {
 		try {
-			const printFormat = options.format || posStore?.defaultPrintFormat || "XPOS Thermal Receipt";
-			const letterHead = posStore.printSettings?.letter_head || "";
 			const doctype = options.doctype || resolveDoctype();
+			const printFormat = options.format || (await resolveInvoicePrintFormat(doctype, invoiceName));
+			const letterHead = posStore.printSettings?.letter_head || "";
 
 			const baseUrl = window.location.origin;
 			const printUrl = `${baseUrl}/printview?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(
@@ -154,5 +188,5 @@ export function usePrintInvoice() {
 		}
 	}
 
-	return { printInvoice, printInvoiceLocal, printReceiptOffline };
+	return { printInvoice, printInvoiceLocal, printReceiptOffline, openInvoicePrintView };
 }

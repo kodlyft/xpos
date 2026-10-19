@@ -2,7 +2,7 @@
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from xpos.api.invoices import create_invoice
 
@@ -15,12 +15,15 @@ class TestInvoiceRetry(unittest.TestCase):
 				patch(
 					"xpos.api.invoices.find_invoice_by_local_id", return_value=("Sales Invoice", "INV-1")
 				) as find,
-				patch("xpos.api.invoices._build_invoice_response", return_value={"name": "INV-1"}),
+				patch(
+					"xpos.api.invoices.existing_sale_response",
+					return_value={"name": "INV-1", "duplicate": True},
+				),
 			):
 				api.get_cached_doc.return_value = SimpleNamespace(warehouse="Profile Store")
 				result = create_invoice(
 					{"pos_profile": "Till", "local_id": "same-sale", "warehouse": supplied}
 				)
 				self.assertEqual(result, {"name": "INV-1", "duplicate": True})
-				find.assert_called_once_with("same-sale", expected)
+				find.assert_called_once_with("same-sale", expected, ANY)
 				api.new_doc.assert_not_called()

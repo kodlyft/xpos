@@ -12,7 +12,7 @@ def after_uninstall():
 def clear_custom_fields_and_properties():
 	frappe.db.delete("Custom Field", {"module": "X POS"})
 	frappe.db.delete("Property Setter", {"module": "X POS"})
-	frappe.db.commit()  # nosemgrep: frappe-manual-commit — uninstall must commit deletions immediately
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit - uninstall must commit deletions immediately
 
 
 def drop_pos_query_indexes():
@@ -20,4 +20,4 @@ def drop_pos_query_indexes():
 	for doctype, _columns, index_name in INDEXES:
 		frappe.logger("xpos").info(drop_index(doctype, index_name))
 
-	frappe.db.commit()  # nosemgrep: frappe-manual-commit — uninstall must commit immediately
+	frappe.db.commit()  # nosemgrep: frappe-manual-commit - uninstall must commit immediately

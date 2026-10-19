@@ -90,7 +90,7 @@
 
 					<div
 						v-else
-						class="flex h-full min-h-[18rem] flex-col items-center justify-center text-muted-foreground"
+						class="flex h-full min-h-72 flex-col items-center justify-center text-muted-foreground"
 					>
 						<Users class="w-12 h-12 mb-3 text-muted-foreground/30" />
 						<p class="text-sm font-medium">{{ __("No customers found") }}</p>
@@ -281,7 +281,7 @@ import { ref, computed, watch, onMounted, nextTick } from "vue";
 import { useCartStore } from "@/stores/cartStore";
 import { useCustomerStore } from "@/stores/customerStore";
 import { usePosStore } from "@/stores/posStore";
-import { showSuccess, showError, call } from "@/services/api";
+import { showSuccess, showError, showInfo, call } from "@/services/api";
 import {
 	cacheCustomerGroups,
 	getCachedCustomerGroups,
@@ -518,6 +518,7 @@ async function createAndSelect() {
 			address_line1: newCustomer.value.address_line1 || undefined,
 			city: newCustomer.value.city || undefined,
 			country: newCustomer.value.country || undefined,
+			pos_profile: posStore.profileName || undefined,
 		};
 
 		Object.keys(payload).forEach((key) => {
@@ -526,7 +527,13 @@ async function createAndSelect() {
 
 		const result = await customerStore.createCustomer(payload);
 		cartStore.setCustomer(result);
-		showSuccess(__("Customer created successfully!"));
+		const created = result as Record<string, unknown>;
+		showSuccess(
+			created.referral_code
+				? __("Customer created with referral code {0}", [String(created.referral_code)])
+				: __("Customer created successfully!"),
+		);
+		if (created.referral_note) showInfo(String(created.referral_note));
 		close();
 	} catch (error: unknown) {
 		showError(__("Failed to create customer: ") + ((error as Error)?.message || error));

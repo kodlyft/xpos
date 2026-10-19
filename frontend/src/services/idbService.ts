@@ -23,7 +23,7 @@ export interface PendingInvoice {
 	id?: number;
 	local_id?: string;
 	data: unknown;
-	status: "pending" | "syncing" | "failed" | "dead_letter";
+	status: "pending" | "syncing" | "failed" | "dead_letter" | "needs_review" | "fiscal_uncertain";
 	created_at: string;
 	error?: string;
 	retry_count: number;
@@ -31,6 +31,10 @@ export interface PendingInvoice {
 	grand_total?: number;
 	/** What the till printed. Kept beside `data`, so it is never sent to the server. */
 	receipt?: import("@/types/pos.types").ReceiptSnapshot;
+	/** The server's new prices when it refused to post this sale at the captured ones. */
+	review?: import("@/types/pos.types").RepriceResponse;
+	/** The server draft whose FBR outcome is unknown and must be checked before it is finished. */
+	fiscal?: { name?: string | null; doctype?: string; usin?: string; pos_profile?: string };
 }
 
 export interface StockEntry {

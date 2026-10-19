@@ -38,7 +38,6 @@ export const usePosStore = defineStore("pos", () => {
 	const showOpeningDialog = ref(false);
 	const openingData = ref<OpeningData | null>(null);
 	const showClosingDialog = ref(false);
-	const closingData = ref<ShiftSummary | null>(null);
 	const printFormats = ref<PrintFormat[]>([]);
 	const lastInvoiceName = ref("");
 	const isShiftOpen = computed(() => !!posOpeningShift.value);
@@ -67,6 +66,8 @@ export const usePosStore = defineStore("pos", () => {
 			pos_tender_currency: p.pos_tender_currency || invoiceCurrency.value,
 			type: p.type || "",
 			is_foreign_tender: !!p.is_foreign_tender,
+			takes_reference: !!p.takes_reference,
+			requires_reference: !!p.requires_reference,
 			exchange_rate: p.exchange_rate ?? 1,
 			rate_date: p.rate_date || "",
 		}));
@@ -149,6 +150,16 @@ export const usePosStore = defineStore("pos", () => {
 	const displayItemCode = computed(() => !!posProfile.value?.display_item_code);
 
 	const allowZeroRatedItems = computed(() => !!posProfile.value?.allow_zero_rated_items);
+
+	const useDeliveryCharges = computed(() => !!posProfile.value?.use_delivery_charges);
+
+	const autoSetDeliveryCharges = computed(
+		() => useDeliveryCharges.value && !!posProfile.value?.auto_set_delivery_charges,
+	);
+
+	const forcePriceFromCustomerPriceList = computed(
+		() => !!posProfile.value?.force_price_from_customer_price_list,
+	);
 
 	const maxDiscountAllowed = computed(() => posProfile.value?.max_discount_percentage_allowed || 0);
 
@@ -457,11 +468,9 @@ export const usePosStore = defineStore("pos", () => {
 	async function fetchClosingData(): Promise<ShiftSummary | undefined> {
 		if (!posOpeningShift.value?.name) return;
 		try {
-			const data = await call<ShiftSummary>("xpos.api.shifts.get_shift_summary", {
+			return await call<ShiftSummary>("xpos.api.shifts.get_shift_summary", {
 				opening_shift: posOpeningShift.value.name,
 			});
-			closingData.value = data;
-			return data;
 		} catch (error) {
 			console.error("Error fetching closing data:", error);
 			throw error;
@@ -542,7 +551,6 @@ export const usePosStore = defineStore("pos", () => {
 		showOpeningDialog,
 		openingData,
 		showClosingDialog,
-		closingData,
 		printFormats,
 		lastInvoiceName,
 		invoiceType,
@@ -577,6 +585,9 @@ export const usePosStore = defineStore("pos", () => {
 		allowWriteOffChange,
 		displayItemCode,
 		allowZeroRatedItems,
+		forcePriceFromCustomerPriceList,
+		useDeliveryCharges,
+		autoSetDeliveryCharges,
 		maxDiscountAllowed,
 		inputQty,
 		taxInclusive,

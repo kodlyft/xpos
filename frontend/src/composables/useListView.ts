@@ -245,7 +245,7 @@ export function useListView(options: ListViewOptions) {
 		try {
 			const results = await searchLink(linkDoctype, txt);
 			return results.map((r) => ({
-				label: r.description ? `${r.value} — ${r.description}` : r.value,
+				label: r.description ? `${r.value} - ${r.description}` : r.value,
 				value: r.value,
 				description: r.description,
 			}));

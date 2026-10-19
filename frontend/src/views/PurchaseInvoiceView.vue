@@ -25,7 +25,7 @@ import {
 	ShoppingCart,
 } from "lucide-vue-next";
 import type { SearchItem } from "@/types/pos.types";
-import { showError, showSuccess, call } from "@/services/api";
+import { showError, showSuccess, showInfo, call } from "@/services/api";
 import __ from "@/lib/translate";
 import { CreateItemDialog, CreateSupplierDialog } from "@/components/purchase";
 import { DateTimePicker } from "@/components/ui/datetime-picker";
@@ -238,6 +238,7 @@ async function addItemToInvoice(item: SearchItem): Promise<void> {
 			pos_profile: posStore.profileName,
 		});
 		if (details) {
+			if (details.purchase_uom_note) showInfo(details.purchase_uom_note);
 			invoiceItems.value.push({
 				item_code: details.item_code,
 				item_name: details.item_name,
@@ -295,6 +296,7 @@ async function onItemLinkSelect(payload: {
 			pos_profile: posStore.profileName,
 		});
 		if (details) {
+			if (details.purchase_uom_note) showInfo(details.purchase_uom_note);
 			row.item_code = details.item_code;
 			row.item_name = details.item_name;
 			row.rate = details.buying_rate || 0;
@@ -872,9 +874,7 @@ async function loadPurchaseTaxTemplate(): Promise<void> {
 		if (result?.taxes && result.taxes.length > 0) {
 			defaultTaxRate.value = result.taxes[0].rate || 0;
 		}
-	} catch {
-		// no default purchase tax template found — ok
-	}
+	} catch {}
 }
 
 onMounted(() => {

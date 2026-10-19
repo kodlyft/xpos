@@ -75,7 +75,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { isElectron } from "@/services/electronBridge";
 import { hasPermission } from "@/services/userRights";
 import __ from "@/lib/translate";
-import { get_full_url } from "@/utils";
+import { usePrintInvoice } from "@/composables/usePrintInvoice";
 import AboutDialog from "@/components/dialogs/AboutDialog.vue";
 import KeyboardShortcutsDialog from "@/components/dialogs/KeyboardShortcutsDialog.vue";
 import {
@@ -114,6 +114,7 @@ import {
 
 const router = useRouter();
 const posStore = usePosStore();
+const { openInvoicePrintView } = usePrintInvoice();
 const cartStore = useCartStore();
 const paymentStore = usePaymentStore();
 const customerStore = useCustomerStore();
@@ -379,12 +380,7 @@ const menus = computed<Menu[]>(() => [
 				action: () => {
 					const name = posStore.lastInvoiceName;
 					if (!name) return;
-					window.open(
-						get_full_url(
-							`/printview?doctype=${posStore.invoiceType}&name=${name}&format=${posStore.defaultPrintFormat}&no_letterhead=0&trigger_print=1`,
-						),
-						"_blank",
-					);
+					void openInvoicePrintView(name);
 				},
 			},
 			{ id: "sep-f1", separator: true },

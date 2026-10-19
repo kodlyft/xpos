@@ -26,6 +26,16 @@ class TestCreateInvoice(unittest.TestCase):
 		self.stub("build_change_legs", return_value=([], 0.0))
 		self.stub("invoice_currency_of", return_value="USD")
 		self.stub("get_currency_precision", return_value=2)
+		# Profile access is covered by test_profile_settings; here it resolves through the mocked frappe.
+		self.stub(
+			"resolve_pos_profile",
+			side_effect=lambda name: invoices.frappe.get_cached_doc("POS Profile", name),
+		)
+		# Repricing, discount authority and zero payable run on ERPNext's real calculation;
+		# they are covered live in test_profile_settings_hardening.
+		self.stub("repricing_changes", return_value=None)
+		self.stub("validate_sale_discounts")
+		self.stub("check_zero_payable")
 
 	def stub(self, name, **kwargs):
 		"""Patch `name` in the xpos.api.invoices namespace for the current test."""
@@ -36,9 +46,9 @@ class TestCreateInvoice(unittest.TestCase):
 	@patch("xpos.api.invoices.frappe")
 	def test_create_invoice_requires_pos_profile(self, mock_frappe):
 		"""Test that create_invoice throws error without POS profile."""
-		mock_frappe.throw.side_effect = Exception("POS Profile is required")
+		mock_frappe.throw.side_effect = ValueError("POS Profile is required")
 
-		with self.assertRaises(Exception):
+		with self.assertRaises(ValueError):
 			invoices.create_invoice('{"customer": "C1", "items": []}')
 
 		mock_frappe.throw.assert_called()
@@ -46,9 +56,9 @@ class TestCreateInvoice(unittest.TestCase):
 	@patch("xpos.api.invoices.frappe")
 	def test_create_invoice_requires_customer(self, mock_frappe):
 		"""Test that create_invoice throws error without customer."""
-		mock_frappe.throw.side_effect = Exception("Customer is required")
+		mock_frappe.throw.side_effect = ValueError("Customer is required")
 
-		with self.assertRaises(Exception):
+		with self.assertRaises(ValueError):
 			invoices.create_invoice('{"pos_profile": "POS-1", "items": []}')
 
 		mock_frappe.throw.assert_called()
@@ -56,9 +66,9 @@ class TestCreateInvoice(unittest.TestCase):
 	@patch("xpos.api.invoices.frappe")
 	def test_create_invoice_requires_items(self, mock_frappe):
 		"""Test that create_invoice throws error without items."""
-		mock_frappe.throw.side_effect = Exception("At least one item is required")
+		mock_frappe.throw.side_effect = ValueError("At least one item is required")
 
-		with self.assertRaises(Exception):
+		with self.assertRaises(ValueError):
 			invoices.create_invoice('{"pos_profile": "POS-1", "customer": "C1", "items": []}')
 
 		mock_frappe.throw.assert_called()
@@ -506,3 +516,39 @@ class TestValidateReturnInvoice(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class TestChangeCappedAtOverpayment(unittest.TestCase):
+	"""A client change that rounding made too large is cut to paid minus the total (#178)."""
+
+	def invoice(self, change_amount, paid_amount=96663, grand_total=96663, rounded_total=0):
+		doc = SimpleNamespace(
+			change_amount=change_amount,
+			paid_amount=paid_amount,
+			grand_total=grand_total,
+			rounded_total=rounded_total,
+			write_off_amount=0,
+			precision=lambda field: 0,
+		)
+		doc.validate_change_amount = MagicMock()
+		return doc
+
+	def test_phantom_change_is_dropped(self):
+		doc = self.invoice(change_amount=1)
+		original = doc.validate_change_amount
+		invoices.cap_change_at_overpayment(doc)
+		doc.validate_change_amount()
+		self.assertEqual(doc.change_amount, 0)
+		original.assert_called_once()
+
+	def test_real_change_is_kept(self):
+		doc = self.invoice(change_amount=557000, paid_amount=4000000, grand_total=3443000)
+		invoices.cap_change_at_overpayment(doc)
+		doc.validate_change_amount()
+		self.assertEqual(doc.change_amount, 557000)
+
+	def test_rounded_total_is_what_was_owed(self):
+		doc = self.invoice(change_amount=1, paid_amount=100, grand_total=99.6, rounded_total=100)
+		invoices.cap_change_at_overpayment(doc)
+		doc.validate_change_amount()
+		self.assertEqual(doc.change_amount, 0)

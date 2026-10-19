@@ -19,7 +19,18 @@
 				</div>
 
 				<template v-else-if="summary">
-					<div class="grid grid-cols-3 gap-3">
+					<p
+						v-if="blind"
+						class="text-sm text-muted-foreground bg-muted rounded-lg px-3 py-2"
+						data-testid="blind-closing-note"
+					>
+						{{
+							__(
+								"Count the drawer and enter what you counted. Expected amounts are hidden for this POS Profile.",
+							)
+						}}
+					</p>
+					<div :class="blind ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-3 gap-3'">
 						<Card class="bg-primary/5 border-primary/20">
 							<CardContent class="p-4 text-center">
 								<p class="text-xs font-medium text-primary/70 mb-1">
@@ -30,7 +41,7 @@
 								</p>
 							</CardContent>
 						</Card>
-						<Card class="bg-emerald-500/5 border-emerald-500/20">
+						<Card v-if="!blind" class="bg-emerald-500/5 border-emerald-500/20">
 							<CardContent class="p-4 text-center">
 								<p class="text-xs font-medium text-emerald-600 dark:text-emerald-400 mb-1">
 									{{ __("Grand Total") }}
@@ -40,7 +51,7 @@
 								</p>
 							</CardContent>
 						</Card>
-						<Card class="bg-blue-500/5 border-blue-500/20">
+						<Card v-if="!blind" class="bg-blue-500/5 border-blue-500/20">
 							<CardContent class="p-4 text-center">
 								<p class="text-xs font-medium text-blue-600 dark:text-blue-400 mb-1">
 									{{ __("Net Total") }}
@@ -116,11 +127,13 @@
 												{{ __("Method") }}
 											</th>
 											<th
+												v-if="!blind"
 												class="text-end px-4 py-2.5 text-muted-foreground font-medium"
 											>
 												{{ __("Opening") }}
 											</th>
 											<th
+												v-if="!blind"
 												class="text-end px-4 py-2.5 text-muted-foreground font-medium"
 											>
 												{{ __("Expected") }}
@@ -131,6 +144,7 @@
 												{{ __("Closing") }}
 											</th>
 											<th
+												v-if="!blind"
 												class="text-end px-4 py-2.5 text-muted-foreground font-medium"
 											>
 												{{ __("Difference") }}
@@ -160,10 +174,14 @@
 													{{ __("Taken from gift cards, not counted in the till") }}
 												</span>
 											</td>
-											<td class="px-4 py-2.5 text-end text-muted-foreground">
+											<td
+												v-if="!blind"
+												class="px-4 py-2.5 text-end text-muted-foreground"
+											>
 												{{ formatFor(detail.currency, detail.opening_amount) }}
 											</td>
 											<td
+												v-if="!blind"
 												class="px-4 py-2.5 text-end text-muted-foreground"
 												data-testid="closing-expected"
 											>
@@ -173,6 +191,7 @@
 												<NumberInput
 													v-model="closingDetails[index].closing_amount"
 													:min="0"
+													:max="999999999999"
 													:precision="precisionFor(detail.currency)"
 													class="w-28 text-end text-sm ms-auto"
 													data-testid="closing-input"
@@ -183,6 +202,7 @@
 												/>
 											</td>
 											<td
+												v-if="!blind"
 												class="px-4 py-2.5 text-end font-bold"
 												data-testid="closing-difference"
 												:class="
@@ -206,7 +226,7 @@
 			<DialogFooter class="shrink-0 border-t border-border px-5 py-4">
 				<template v-if="shiftClosed">
 					<Button
-						v-if="closedShiftName"
+						v-if="closedShiftName && !blind"
 						variant="outline"
 						class="gap-1.5"
 						@click="printShiftSummary"
@@ -237,7 +257,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
 import { showSuccess, showError } from "@/services/api";
@@ -265,6 +285,8 @@ interface ClosingSummary {
 	payment_summary?: Record<string, ShiftModeTotal>;
 	opening_balances?: Record<string, ShiftModeTotal>;
 	expected_amounts?: Record<string, ShiftModeTotal>;
+	blind_closing?: boolean;
+	payment_modes?: Record<string, { currency: string }>;
 	[key: string]: unknown;
 }
 
@@ -287,7 +309,25 @@ const closedShiftName = ref("");
 const summary = ref<ClosingSummary | null>(null);
 const closingDetails = ref<ClosingDetail[]>([]);
 
+const blind = computed(() => !!summary.value?.blind_closing);
+
 function buildClosingDetails(data: ClosingSummary): ClosingDetail[] {
+	if (data.blind_closing) {
+		const modes = Object.entries(data.payment_modes || {});
+		const rows = modes.length
+			? modes
+			: [[posStore.cashModeOfPayment || "Cash", { currency: posStore.invoiceCurrency }] as const];
+
+		return rows.map(([mode, row]) => ({
+			mode_of_payment: mode,
+			currency: row.currency || posStore.invoiceCurrency,
+			opening_amount: 0,
+			expected_amount: 0,
+			closing_amount: 0,
+			difference: 0,
+		}));
+	}
+
 	const expectedAmounts = data.expected_amounts || {};
 	const openingBalances = data.opening_balances || {};
 	const modes = Object.keys(expectedAmounts).length
@@ -336,6 +376,7 @@ onMounted(async () => {
 });
 
 function calculateDifference(index: number) {
+	if (blind.value) return;
 	const detail = closingDetails.value[index];
 	detail.difference = roundFor(detail.currency, (detail.closing_amount || 0) - detail.expected_amount);
 }

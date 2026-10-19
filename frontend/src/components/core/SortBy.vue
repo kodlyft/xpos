@@ -4,8 +4,8 @@
 			class="flex items-center justify-center w-7 h-full border-e border-input text-muted-foreground hover:text-foreground hover:bg-accent transition-colors rounded-s-md px-1.5"
 			:title="
 				dir === 'desc'
-					? __('Descending — click to sort ascending')
-					: __('Ascending — click to sort descending')
+					? __('Descending - click to sort ascending')
+					: __('Ascending - click to sort descending')
 			"
 			@click="toggleDir"
 		>
@@ -23,10 +23,10 @@
 		</button>
 
 		<Teleport to="body">
-			<div v-if="showDropdown" class="fixed inset-0 z-[998]" @click="closeDropdown" />
+			<div v-if="showDropdown" class="fixed inset-0 z-998" @click="closeDropdown" />
 			<div
 				v-if="showDropdown"
-				class="fixed z-[999] bg-popover border border-border rounded-lg shadow-lg min-w-[200px] max-h-72 flex flex-col overflow-hidden"
+				class="fixed z-999 bg-popover border border-border rounded-lg shadow-lg min-w-50 max-h-72 flex flex-col overflow-hidden"
 				:style="dropdownStyle"
 			>
 				<div class="px-2 py-1.5 border-b border-border shrink-0">

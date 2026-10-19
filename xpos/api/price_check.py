@@ -75,7 +75,7 @@ def lookup(barcode: str, pos_profile: str | None = None):
 	"""
 	Look up an item from a scanned barcode for the customer price checker.
 
-	Barcode-scan only — returns display-ready item details with the current
+	Barcode-scan only - returns display-ready item details with the current
 	selling price and stock status, or ``None`` when the barcode matches nothing
 	so the terminal can show a friendly "not found" message.
 	"""

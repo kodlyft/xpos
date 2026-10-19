@@ -9,11 +9,11 @@ X POS provides a sophisticated tax engine supporting multiple tax accounts, per-
 ### POS Profile Tax Template
 - Taxes are configured via the **Sales Taxes and Charges Template** assigned to the POS Profile
 - The template defines one or more tax accounts, each with:
-  - **Account Head** — The tax account in the Chart of Accounts
-  - **Rate** — The tax percentage
-  - **Charge Type** — How the tax is calculated:
-    - `On Net Total` — Percentage of item net amounts
-    - `Actual` — Fixed amount
+  - **Account Head** - The tax account in the Chart of Accounts
+  - **Rate** - The tax percentage
+  - **Charge Type** - How the tax is calculated:
+    - `On Net Total` - Percentage of item net amounts
+    - `Actual` - Fixed amount
 
 ### Tax-Inclusive Pricing
 - When enabled in your POS Profile, item prices **include tax**
@@ -38,7 +38,7 @@ X POS provides a sophisticated tax engine supporting multiple tax accounts, per-
 4. Tax categories are matched if applicable
 
 ### Item Tax Map
-- Each item's tax template produces an `item_tax_map` — a mapping of tax account → rate
+- Each item's tax template produces an `item_tax_map` - a mapping of tax account → rate
 - When calculating taxes, the cart engine uses:
   - The item-specific rate (from `item_tax_map`) if available
   - The global POS Profile rate if no item-specific rate exists
@@ -56,25 +56,25 @@ Taxes are calculated in real-time as items are added, modified, or removed from 
    - For `On Net Total`: `tax = item_net_amount × rate / 100`
    - For `Actual`: use the fixed amount
    - Check if tax is `included_in_print_rate`:
-     - **Included**: Back-calculate tax from inclusive price — `tax = amount - (amount / (1 + rate/100))`
-     - **Not included**: Calculate tax additive — `tax = net_amount × rate / 100`
+     - **Included**: Back-calculate tax from inclusive price - `tax = amount - (amount / (1 + rate/100))`
+     - **Not included**: Calculate tax additive - `tax = net_amount × rate / 100`
 2. Extra tax accounts from item tax maps (not in the global template) are added as additional tax lines
 3. All amounts are rounded to 2 decimal places
 
 ### Cart Summary Display
 Each tax line shows:
-- **Description** — Tax account name or label
-- **Rate** — The percentage rate
-- **Amount** — Calculated tax amount
-- **Included indicator** — Whether the tax is already included in item prices
+- **Description** - Tax account name or label
+- **Rate** - The percentage rate
+- **Amount** - Calculated tax amount
+- **Included indicator** - Whether the tax is already included in item prices
 
 ---
 
 ## Bulk Tax Resolution
 
 ### API Endpoints
-- `get_item_tax_template` — Resolves the applicable tax template for a single item
-- `get_item_tax_templates_bulk` — Resolves tax templates for multiple items in one call (used during cart initialization and item loading)
+- `get_item_tax_template` - Resolves the applicable tax template for a single item
+- `get_item_tax_templates_bulk` - Resolves tax templates for multiple items in one call (used during cart initialization and item loading)
 
 ### Offline Tax Caching
 - Item tax templates are cached locally for offline use

@@ -124,7 +124,10 @@
 			</Button>
 		</TooltipWrapper>
 
-		<div v-if="posStore.useOfflineMode || offlineStore.hasPending" class="flex items-center gap-1">
+		<div
+			v-if="posStore.useOfflineMode || offlineStore.hasPending || offlineStore.hasDeadLetters"
+			class="flex items-center gap-1"
+		>
 			<TooltipWrapper :content="offlineStore.statusLabel">
 				<Button
 					variant="ghost"
@@ -284,12 +287,13 @@ import KeyboardShortcutsDialog from "@/components/dialogs/KeyboardShortcutsDialo
 import { useOfflineStore } from "@/stores/offlineStore";
 
 import { useBranding } from "@/composables/useBranding";
-import { get_full_url } from "@/utils";
+import { usePrintInvoice } from "@/composables/usePrintInvoice";
 import { cn } from "@/lib/utils";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
 const posStore = usePosStore();
+const { openInvoicePrintView } = usePrintInvoice();
 const paymentStore = usePaymentStore();
 const authStore = useAuthStore();
 
@@ -373,12 +377,7 @@ onUnmounted(() => {
 function printLastInvoice() {
 	const name = posStore.lastInvoiceName;
 	if (!name) return;
-	window.open(
-		get_full_url(
-			`/printview?doctype=${posStore.invoiceType}&name=${name}&format=${posStore.defaultPrintFormat}&no_letterhead=0&trigger_print=1`,
-		),
-		"_blank",
-	);
+	void openInvoicePrintView(name);
 }
 
 function handleSignOut() {

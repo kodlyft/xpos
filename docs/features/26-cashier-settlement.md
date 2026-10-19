@@ -1,6 +1,6 @@
 # Cashier Settlement
 
-Cashier Settlement separates the act of **creating a bill** from the act of **collecting payment**. A POS terminal operator builds the order and sends it to a cashier, who collects the money and closes the bill from a dedicated screen — typically on a different PC at a central cash counter.
+Cashier Settlement separates the act of **creating a bill** from the act of **collecting payment**. A POS terminal operator builds the order and sends it to a cashier, who collects the money and closes the bill from a dedicated screen - typically on a different PC at a central cash counter.
 
 This mirrors how many pharmacies and high-traffic retail counters operate: sales staff ring up items at the terminal, while a single cashier handles all cash collection.
 
@@ -10,7 +10,7 @@ This mirrors how many pharmacies and high-traffic retail counters operate: sales
 
 1. A POS Profile is configured with **Cashier Settlement** enabled.
 2. At the terminal, the operator builds the cart as usual. The checkout button reads **Send to Cashier** instead of **Pay**.
-3. Pressing **Send to Cashier** saves the order as an **unsettled draft invoice** — no payment is collected. The cart clears, ready for the next customer.
+3. Pressing **Send to Cashier** saves the order as an **unsettled draft invoice** - no payment is collected. The cart clears, ready for the next customer.
 4. The unsettled invoice appears on the **Cashier** screen on any PC signed in to the same POS Profile. The list refreshes automatically.
 5. The cashier selects an invoice, collects payment through the normal payment dialog, and submits it. The settled bill leaves the list, and the genuine tax invoice prints.
 
@@ -57,7 +57,7 @@ Access rules:
 3. Press it to save the unsettled bill. If **Print Backup Receipt** is enabled, a backup copy prints for the customer.
 4. The cart clears immediately for the next sale.
 
-Returns are unaffected — return mode still uses the normal payment flow even when Cashier Settlement is enabled.
+Returns are unaffected - return mode still uses the normal payment flow even when Cashier Settlement is enabled.
 
 ---
 
@@ -65,7 +65,7 @@ Returns are unaffected — return mode still uses the normal payment flow even w
 
 Open the **Cashier** screen from the sidebar, or press `Alt + 0`.
 
-The screen lists every unsettled invoice for the POS Profile — regardless of which terminal or operator created it — and refreshes on its own every few seconds so new bills appear and settled bills disappear without manual reloading.
+The screen lists every unsettled invoice for the POS Profile - regardless of which terminal or operator created it - and refreshes on its own every few seconds so new bills appear and settled bills disappear without manual reloading.
 
 Each row shows the customer, invoice reference, date/time, item count, and grand total.
 
@@ -111,5 +111,5 @@ By granting **Is Cashier** only to trusted staff, businesses ensure that bill cr
 - The collected amount reconciles in the **cashier's** shift, so make sure the cashier has an open shift before settling.
 - Use **Print Backup Receipt** so customers have something to present at the cash counter; it is clearly a draft/backup, not the tax invoice.
 - The Cashier screen refreshes automatically, but the **Refresh** button forces an immediate reload.
-- Ordinary [held orders](07-draft-orders.md) do **not** appear on the Cashier screen — only bills explicitly sent for settlement.
+- Ordinary [held orders](07-draft-orders.md) do **not** appear on the Cashier screen - only bills explicitly sent for settlement.
 - See [POS Profile Configuration](24-pos-profile-config.md) for the related settings and [Keyboard Shortcuts](25-keyboard-shortcuts.md) for the full navigation reference.

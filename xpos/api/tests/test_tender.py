@@ -76,6 +76,8 @@ def tender_patches(func):
 	"""
 	func = patch("xpos.api.tender.frappe")(func)
 	func = patch("xpos.api.tender._", new=lambda message: message)(func)
+	func = patch("xpos.api.tender.reference_required_modes", new=lambda company: set())(func)
+	func = patch("xpos.api.tender.gift_card_mode", new=lambda company: None)(func)
 	func = patch("xpos.api.tender.get_mode_tender_currencies", return_value=cash_modes())(func)
 	func = patch("xpos.api.tender.resolve_tender_rate", side_effect=fake_rate)(func)
 	func = patch("xpos.api.tender.get_currency_precision", side_effect=fake_precision)(func)
@@ -93,6 +95,37 @@ class TestBuildTenderLegs(unittest.TestCase):
 		self.assertEqual(rows, [{"mode_of_payment": "Cash LBP", "amount": 5892300.0}])
 		self.assertEqual(total, 5892300.0)
 		mock_rate.assert_not_called()
+
+	@tender_patches
+	def test_reference_number_rides_on_the_payment_row(self, mock_frappe, mock_modes, mock_rate, mock_prec):
+		rows, _total = build(
+			[
+				{"mode_of_payment": "Card", "amount": 100, "reference_no": "  TRF-881  "},
+				{
+					"mode_of_payment": "Cash USD",
+					"amount": 9000000,
+					"pos_tender_amount": 100,
+					"reference_no": "N1",
+				},
+			]
+		)
+
+		self.assertEqual(rows[0]["reference_no"], "TRF-881")
+		self.assertEqual(rows[1]["reference_no"], "N1")
+
+	@tender_patches
+	def test_per_payment_mode_needs_a_reference_on_a_sale(
+		self, mock_frappe, mock_modes, mock_rate, mock_prec
+	):
+		mock_frappe.throw.side_effect = Exception("no reference")
+		with patch("xpos.api.tender.reference_required_modes", return_value={"Card"}):
+			with self.assertRaises(Exception):
+				build([{"mode_of_payment": "Card", "amount": 100}])
+			mock_frappe.throw.reset_mock()
+			rows, _total = build([{"mode_of_payment": "Card", "amount": -100}], invoice(is_return=1))
+
+		mock_frappe.throw.assert_not_called()
+		self.assertEqual(rows, [{"mode_of_payment": "Card", "amount": -100.0}])
 
 	@tender_patches
 	def test_account_and_type_are_never_emitted(self, mock_frappe, mock_modes, mock_rate, mock_prec):

@@ -8,6 +8,17 @@ from xpos.x_pos.doctype.pos_closing_shift.closing_processing.invoices import (
 	submit_printed_invoices,
 )
 
+
+def ensure_opening_shift_read(pos_opening_shift) -> None:
+	"""Desk shift figures: doctype access is not enough, the user must be able to read this shift.
+
+	Document permission includes Company user permissions, so a Sales Manager
+	restricted to one company cannot read another company's expected amounts.
+	"""
+	frappe.has_permission("POS Closing Shift", "read", throw=True)
+	frappe.has_permission("POS Opening Shift", "read", doc=pos_opening_shift, throw=True)
+
+
 INVOICE_FIELDS = (
 	"name",
 	"posting_date",
@@ -55,6 +66,7 @@ def get_pos_invoices(pos_opening_shift: str, doctype: str | None = None):
 	"""
 	if not pos_opening_shift:
 		return []
+	ensure_opening_shift_read(pos_opening_shift)
 
 	if not doctype:
 		doctype = get_invoice_type()
@@ -120,6 +132,7 @@ def get_child_rows(child_doctype, parenttype, parentfield, parents):
 def get_payments_entries(pos_opening_shift: str):
 	if not pos_opening_shift:
 		return []
+	ensure_opening_shift_read(pos_opening_shift)
 
 	return frappe.get_all(
 		"Payment Entry",

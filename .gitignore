@@ -33,7 +33,7 @@ xpos/public/xpos/
 xpos/public/node_modules/
 xpos/www/xpos.html
 
-# Environment & Secrets — NEVER commit these
+# Environment & Secrets - NEVER commit these
 .env
 .env.*
 !.env.example

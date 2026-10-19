@@ -1,15 +1,30 @@
 # Copyright (c) 2026, Ali Raza and contributors
 # For license information, please see license.txt
 
+import hashlib
 import json
+import re
 from collections import defaultdict
+from contextlib import suppress
 
 import frappe
 from frappe import _, cstr
-from frappe.utils import cint, flt, getdate, now_datetime, nowdate
+from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 from frappe.utils.background_jobs import enqueue
 
+from xpos.api.customer_credit import allocate_customer_credit, credit_total, lock_credit_sources
 from xpos.api.exchange import get_currency_precision
+from xpos.api.profile_rules import (
+	check_zero_payable,
+	get_line_rate,
+	price_unavailable,
+	repricing_changes,
+	resolve_selling_price_list,
+	validate_sale_discounts,
+	verified_offer_free_line,
+	verified_pricing_rule_free_line,
+)
+from xpos.api.profiles import resolve_pos_profile
 from xpos.api.tender import build_change_legs, build_tender_legs, invoice_currency_of
 from xpos.api.utilities import can_recall_other_shift_tabs, get_invoice_type, is_pos_cashier
 from xpos.x_pos.doctype.pos_coupon.pos_coupon import validate_invoice_coupons
@@ -44,12 +59,8 @@ def enforce_stock_availability(invoice_doc):
 
 def _get_item_rate_precision():
 	"""Return item rate precision from System Settings float_precision, default 3."""
-	val = frappe.db.get_default("float_precision")
-	try:
-		p = cint(val)
-		return p if p >= 0 else 3
-	except Exception:
-		return 3
+	p = cint(frappe.db.get_default("float_precision"))
+	return p if p >= 0 else 3
 
 
 def _resolve_invoice_posting_date(pos, requested_posting_date=None, current_posting_date=None):
@@ -63,7 +74,7 @@ def _resolve_invoice_posting_date(pos, requested_posting_date=None, current_post
 
 	try:
 		return str(getdate(candidate))
-	except Exception:
+	except ValueError:
 		frappe.throw(_("Posting Date must be a valid date"))
 
 
@@ -224,20 +235,35 @@ def _guard_stale_draft(doctype: str, invoice_name: str, client_modified) -> None
 		)
 
 
-def _validate_unpaid_balance_permissions(invoice_doc, pos_profile_doc, data: dict):
-	"""Enforce POS Profile permissions before submitting an invoice with a balance due."""
+def _validate_unpaid_balance_permissions(
+	invoice_doc, pos_profile_doc, data: dict, customer_credit: float = 0
+):
+	"""Enforce POS Profile permissions before submitting an invoice with a balance due.
+
+	``customer_credit`` is existing customer credit allocated right after submit,
+	so it settles that much of the balance.
+	"""
 	if cint(getattr(invoice_doc, "is_return", 0)):
 		return
 
 	outstanding_amount = _get_unpaid_balance(invoice_doc)
+	if customer_credit - outstanding_amount > 0.009:
+		frappe.throw(
+			_("Customer credit of {0} is more than the {1} still due.").format(
+				customer_credit, outstanding_amount
+			)
+		)
+	outstanding_amount -= customer_credit
 	if outstanding_amount <= 0.009:
 		return
 
 	allow_credit_sale = cint(pos_profile_doc.get("allow_credit_sale"))
 	allow_partial_payment = cint(pos_profile_doc.get("allow_partial_payment"))
 	requested_credit_sale = cint(data.get("is_credit_sale"))
-	settled_amount = abs(_coerce_amount(getattr(invoice_doc, "paid_amount", 0))) + abs(
-		_coerce_amount(getattr(invoice_doc, "write_off_amount", 0))
+	settled_amount = (
+		abs(_coerce_amount(getattr(invoice_doc, "paid_amount", 0)))
+		+ abs(_coerce_amount(getattr(invoice_doc, "write_off_amount", 0)))
+		+ customer_credit
 	)
 
 	if requested_credit_sale or settled_amount <= 0.009:
@@ -266,10 +292,7 @@ def _ensure_pos_invoice_payment_row(invoice_doc, pos_profile_doc, require_paymen
 
 	existing_payments = None
 	if hasattr(invoice_doc, "get"):
-		try:
-			existing_payments = invoice_doc.get("payments")
-		except Exception:
-			existing_payments = None
+		existing_payments = invoice_doc.get("payments")
 
 	if existing_payments is None:
 		existing_payments = getattr(invoice_doc, "payments", None)
@@ -286,22 +309,111 @@ def _ensure_pos_invoice_payment_row(invoice_doc, pos_profile_doc, require_paymen
 	)
 
 
-def find_invoice_by_local_id(local_id: str | None, warehouse: str | None = None) -> tuple[str, str] | None:
+REPRICE_SAVEPOINT = "xpos_reprice"
+
+
+def request_fingerprint(data: dict, pos_profile: str | None, company: str | None) -> str:
+	"""What makes two submissions with the same ``local_id`` the same sale.
+
+	Payments are left out on purpose: re-tendering after a lost response is the same sale.
+	"""
+	lines = [
+		[
+			cstr(i.get("item_code")),
+			flt(i.get("qty")),
+			cstr(i.get("uom")),
+			flt(i.get("rate")),
+			flt(i.get("discount_percentage")),
+			flt(i.get("discount_amount")),
+			cstr(i.get("batch_no")),
+			cstr(i.get("serial_no")),
+			cstr(i.get("warehouse")),
+			cstr(i.get("item_tax_template")),
+			cint(i.get("is_free_item")),
+			cint(i.get("is_offer")),
+			cstr(i.get("offers")),
+			cstr(i.get("gift_card")),
+		]
+		for i in data.get("items") or []
+	]
+	payload = {
+		"user": cstr(frappe.session.user),
+		"customer": cstr(data.get("customer")),
+		"pos_profile": cstr(pos_profile),
+		"company": cstr(company),
+		"is_return": cint(data.get("is_return")),
+		"return_against": cstr(data.get("return_against")),
+		"lines": lines,
+		"posting_date": cstr(data.get("posting_date")),
+		"currency": cstr(data.get("currency")),
+		"conversion_rate": flt(data.get("conversion_rate")),
+		"selling_price_list": cstr(data.get("selling_price_list")),
+		"additional_discount_percentage": flt(data.get("additional_discount_percentage")),
+		"discount_amount": flt(data.get("discount_amount")),
+		"apply_discount_on": cstr(data.get("apply_discount_on")),
+		"write_off_amount": flt(data.get("write_off_amount")),
+		"delivery_charges": [
+			cstr(data.get("pos_delivery_charges")),
+			flt(data.get("pos_delivery_charges_rate")),
+		],
+		"loyalty": [cint(data.get("redeem_loyalty_points")), flt(data.get("loyalty_points"))],
+		"coupons": sorted(
+			cstr(c.get("coupon_code") or c.get("pos_offer")) for c in data.get("coupons_detail") or []
+		),
+		"offers": sorted(cstr(o.get("offer_name")) for o in data.get("offers_detail") or []),
+		"customer_credit": sorted(
+			[cstr(c.get("source_type")), cstr(c.get("source_name")), flt(c.get("amount"))]
+			for c in data.get("customer_credit") or []
+		),
+	}
+	return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def find_invoice_by_local_id(
+	local_id: str | None, warehouse: str | None = None, fingerprint: str | None = None
+) -> tuple[str, str] | None:
 	"""Return (doctype, name) of an invoice already created for this client local_id.
 
 	The desktop/offline client assigns every cart a stable ``local_id`` and may
 	re-push it after a dropped response. Looking it up here makes invoice creation
 	idempotent so a retry returns the original invoice instead of creating a second
 	real Sales Invoice (double stock depletion + double revenue).
+
+	A ``local_id`` reused for a different sale (customer, company, user, lines or
+	credit) is refused rather than answered with someone else's invoice. Browser
+	ids (``inv_`` + 128 random bits) are global; desktop ids are per warehouse.
 	"""
 	if not local_id:
 		return None
 	for dt in ("Sales Invoice", "POS Invoice"):
-		name = frappe.db.get_value(
-			dt, {"xpos_local_id": local_id, "set_warehouse": warehouse, "docstatus": 1}, "name"
+		filters = {"xpos_local_id": local_id, "docstatus": ("in", (0, 1))}
+		if not cstr(local_id).startswith("inv_"):
+			filters["set_warehouse"] = warehouse
+		row = frappe.db.get_value(
+			dt,
+			filters,
+			["name", "owner", "set_warehouse", "xpos_request_hash"],
+			as_dict=True,
+			order_by="creation asc",
 		)
-		if name:
-			return dt, name
+		if not row:
+			continue
+		# Only the user who created the sale gets it back; older invoices carry no fingerprint.
+		if row.owner != frappe.session.user:
+			frappe.throw(
+				_("Sale id {0} was already used for a different sale. Start a new sale.").format(local_id),
+				title=_("Duplicate sale id"),
+			)
+		if fingerprint and (
+			row.set_warehouse != warehouse or (row.xpos_request_hash and row.xpos_request_hash != fingerprint)
+		):
+			frappe.throw(
+				_("Sale id {0} was already used for a different sale ({1}). Start a new sale.").format(
+					local_id, row.name
+				),
+				title=_("Duplicate sale id"),
+			)
+		return dt, row.name
 	return None
 
 
@@ -321,10 +433,16 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 	warehouse = data.get("warehouse")
 	if not warehouse and data.get("pos_profile"):
 		warehouse = frappe.get_cached_doc("POS Profile", data["pos_profile"]).warehouse
-	existing = find_invoice_by_local_id(local_id, warehouse)
+	fingerprint = request_fingerprint(
+		data,
+		data.get("pos_profile"),
+		frappe.get_cached_value("POS Profile", data["pos_profile"], "company")
+		if data.get("pos_profile") and frappe.db.exists("POS Profile", data["pos_profile"])
+		else None,
+	)
+	existing = find_invoice_by_local_id(local_id, warehouse, fingerprint)
 	if existing:
-		dt, name = existing
-		return {**_build_invoice_response(frappe.get_doc(dt, name)), "duplicate": True}
+		return existing_sale_response(*existing)
 
 	pos_profile = data.get("pos_profile")
 	customer = data.get("customer")
@@ -344,7 +462,7 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 	if not items:
 		frappe.throw(_("At least one item is required"))
 
-	pos = frappe.get_cached_doc("POS Profile", pos_profile)
+	pos = resolve_pos_profile(pos_profile)
 
 	doctype = get_invoice_type()
 
@@ -353,6 +471,14 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 		debit_to = pos.debit_to
 	if not debit_to:
 		debit_to = frappe.db.get_value("Company", pos.company, "default_receivable_account")
+
+	customer_credit = []
+	if data.get("customer_credit"):
+		if is_return:
+			frappe.throw(_("Customer credit cannot be used on a return."))
+		# Locked until this request commits; re-read so a stale till cannot double-spend.
+		customer_credit = lock_credit_sources(pos, customer, debit_to, data["customer_credit"])
+		submit_in_background = 0
 
 	invoice_name = data.get("name")
 	is_existing_draft = False
@@ -383,6 +509,7 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 	invoice_doc.is_pos = 1
 	if local_id:
 		invoice_doc.xpos_local_id = local_id
+		invoice_doc.xpos_request_hash = fingerprint
 	invoice_doc.pos_profile = pos_profile
 	invoice_doc.customer = customer
 	invoice_doc.company = pos.company
@@ -407,7 +534,14 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 		or pos.currency
 		or frappe.db.get_value("Company", pos.company, "default_currency")
 	)
-	invoice_doc.selling_price_list = data.get("selling_price_list") or pos.get("selling_price_list")
+	if customer_credit and invoice_doc.currency != frappe.get_cached_value(
+		"Company", pos.company, "default_currency"
+	):
+		frappe.throw(_("Customer credit can only be spent on sales in the company currency."))
+	if is_return:
+		invoice_doc.selling_price_list = data.get("selling_price_list") or pos.get("selling_price_list")
+	else:
+		invoice_doc.selling_price_list = resolve_selling_price_list(pos, customer)
 
 	if data.get("conversion_rate"):
 		invoice_doc.conversion_rate = flt(data["conversion_rate"])
@@ -467,30 +601,48 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 	from xpos.api.auth import user_has_pos_permission
 
 	allow_rate_change = user_has_pos_permission("allow_change_price", pos_profile=pos.name)
+	coupon_offers = {c.get("pos_offer") for c in data.get("coupons_detail") or [] if c.get("pos_offer")}
+	paid_lines = [
+		i
+		for i in items
+		if not cint(i.get("is_free_item")) and not cint(i.get("is_offer")) and i not in gift_issue_lines
+	]
 
-	for item_data in items:
+	# (row, line as the till sent it, index): compared with ERPNext's result before anything is submitted.
+	quoted = []
+	sale_rows = []
+	for index, item_data in enumerate(items):
 		if item_data in gift_issue_lines:
 			item_data["item_code"] = gift_setting.issue_item
 			item_data["is_free_item"] = 0
+		sent_line = dict(item_data)
 		item_rate = flt(item_data.get("rate", 0), rate_precision)
 		item_qty = flt(item_data.get("qty", 1), 3)
-		is_free_item = cint(item_data.get("is_free_item"))
+		is_free_item = cint(item_data.get("is_free_item")) and verified_pricing_rule_free_line(pos, item_data)
+		verified_free = bool(is_free_item) or bool(
+			not is_return
+			and cint(item_data.get("is_offer"))
+			and verified_offer_free_line(pos, item_data, paid_lines, coupon_offers, invoice_doc.posting_date)
+		)
+		is_sale_line = not is_return and not verified_free and item_data not in gift_issue_lines
 
-		if not allow_rate_change and not is_free_item and item_data not in gift_issue_lines:
-			price_list = pos.get("selling_price_list")
-			if price_list:
-				price_list_rate = frappe.db.get_value(
-					"Item Price",
-					{
-						"item_code": item_data.get("item_code"),
-						"price_list": price_list,
-						"selling": 1,
-						"uom": item_data.get("uom") or item_data.get("stock_uom"),
-					},
-					"price_list_rate",
-				)
-				if price_list_rate is not None and flt(price_list_rate, rate_precision) != item_rate:
-					item_rate = flt(price_list_rate, rate_precision)
+		if is_sale_line and not allow_rate_change:
+			listed_rate = get_line_rate(
+				invoice_doc.selling_price_list,
+				item_data.get("item_code"),
+				item_data.get("uom") or item_data.get("stock_uom"),
+				customer,
+				item_qty,
+				invoice_doc.posting_date,
+				item_data.get("batch_no"),
+			)
+			if listed_rate is not None:
+				item_rate = flt(listed_rate, rate_precision)
+			elif item_rate:
+				# Without price-change rights a cashier cannot invent a price the list does not have.
+				price_unavailable(item_data.get("item_code"), invoice_doc.selling_price_list)
+			# Offers are re-derived from the rates actually charged.
+			item_data["rate"] = item_rate
 
 		item = invoice_doc.append("items", {})
 		item.item_code = item_data.get("item_code")
@@ -515,16 +667,13 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 				"pos_invoice",
 			):
 				if item_data.get(fieldname) is not None:
-					try:
-						setattr(item, fieldname, item_data.get(fieldname))
-					except Exception:
-						pass
+					setattr(item, fieldname, item_data.get(fieldname))
 
 		disc_pct = flt(item_data.get("discount_percentage", 0), 2)
 		disc_amt = flt(item_data.get("discount_amount", 0), 2)
 
 		max_discount = flt(pos.get("max_discount_percentage_allowed", 0))
-		if max_discount > 0 and disc_pct > max_discount and not is_free_item:
+		if max_discount > 0 and disc_pct > max_discount and not verified_free:
 			frappe.throw(
 				_("Item {0}: Discount {1}% exceeds maximum allowed {2}%").format(
 					item_data.get("item_code"), disc_pct, max_discount
@@ -545,6 +694,10 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 			item.rate = flt(item_rate - disc_amt, rate_precision)
 		else:
 			item.rate = item_rate
+		if not is_return and item_data not in gift_issue_lines:
+			quoted.append((item, sent_line, index))
+		if is_sale_line:
+			sale_rows.append(item)
 		if item_data.get("serial_no"):
 			item.serial_no = item_data.get("serial_no")
 		if item_data.get("batch_no"):
@@ -557,10 +710,7 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 				item.xpos_gift_card = item_data.get("gift_card")
 
 		if item_data.get("additional_notes"):
-			try:
-				item.additional_notes = item_data["additional_notes"]
-			except Exception:
-				pass
+			item.additional_notes = item_data["additional_notes"]
 
 	apply_invoice_delivery_dates(invoice_doc, data, items)
 
@@ -637,16 +787,15 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 	change_amount = change_total if change_legs else flt(data.get("change_amount", 0))
 	if change_amount > 0:
 		invoice_doc.change_amount = change_amount
+		if not change_legs and not is_return and doctype == "POS Invoice":
+			cap_change_at_overpayment(invoice_doc)
 
 	if pos_opening_shift:
-		try:
-			invoice_doc.pos_opening_shift = pos_opening_shift
-		except Exception:
-			pass
+		invoice_doc.pos_opening_shift = pos_opening_shift
 
 	pos_coupons_data = data.get("coupons_detail") or []
 	for coupon_row in pos_coupons_data:
-		try:
+		with suppress(AttributeError):
 			invoice_doc.append(
 				"coupons",
 				{
@@ -658,12 +807,10 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 					"customer": coupon_row.get("customer") or customer,
 				},
 			)
-		except Exception:
-			pass
 
 	pos_offers_data = data.get("offers_detail") or []
 	for offer_row in pos_offers_data:
-		try:
+		with suppress(AttributeError):
 			invoice_doc.append(
 				"offers",
 				{
@@ -675,20 +822,13 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 					"coupon": offer_row.get("coupon"),
 				},
 			)
-		except Exception:
-			pass
 
-	try:
-		enforce_return_validity = cint(pos.get("enable_return_validity"))
-		if enforce_return_validity and not is_return:
-			return_days = cint(pos.get("return_validity_days")) or 0
-			if return_days > 0:
-				from datetime import timedelta
+	if cint(pos.get("enable_return_validity")) and not is_return:
+		return_days = cint(pos.get("return_validity_days"))
+		if return_days > 0:
+			invoice_doc.return_valid_upto = add_days(nowdate(), return_days)
 
-				invoice_doc.return_valid_upto = getdate(nowdate()) + timedelta(days=return_days)
-	except Exception:
-		pass
-
+	frappe.db.savepoint(REPRICE_SAVEPOINT)
 	try:
 		if is_existing_draft:
 			invoice_doc.save(ignore_permissions=True)
@@ -697,36 +837,57 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 	except (frappe.exceptions.UniqueValidationError, frappe.QueryDeadlockError):
 		# Concurrent attempts may contend on the naming series before reaching the unique ID.
 		frappe.db.rollback()
-		existing = find_invoice_by_local_id(local_id, warehouse)
+		existing = find_invoice_by_local_id(local_id, warehouse, fingerprint)
 		if existing:
-			dt, name = existing
-			return {**_build_invoice_response(frappe.get_doc(dt, name)), "duplicate": True}
+			return existing_sale_response(*existing)
 		raise
+
+	if not is_return:
+		# ERPNext has now priced the sale. If that differs from what the cashier took payment
+		# for, undo everything (draft, locks, gift card rows) and hand the new prices back.
+		changes = repricing_changes(invoice_doc, quoted, data)
+		if changes:
+			frappe.db.rollback(save_point=REPRICE_SAVEPOINT)
+			return changes
+		validate_sale_discounts(
+			pos,
+			invoice_doc,
+			sale_rows,
+			[i.get("offers") for i in items] + [o.get("offer_name") for o in data.get("offers_detail") or []],
+			paid_lines,
+			coupon_offers,
+		)
+		check_zero_payable(pos, invoice_doc, sale_rows)
 
 	enforce_stock_availability(invoice_doc)
 	validate_invoice_coupons(invoice_doc)
 
-	_validate_unpaid_balance_permissions(invoice_doc, pos, data)
+	_validate_unpaid_balance_permissions(invoice_doc, pos, data, credit_total(customer_credit))
 
 	from xpos.x_pos.integrations import fbr
 
 	client_fbr_number = cstr(data.get("fbr_invoice_number") or "").strip()
 	if client_fbr_number:
+		fbr.record_local_result(invoice_doc, client_fbr_number)
 		fbr.apply_fiscal_number(invoice_doc, client_fbr_number)
 		invoice_doc.save(ignore_permissions=True)
 	else:
 		outcome = fbr.prepare_fiscalization(invoice_doc)
-		if outcome.status == "local_required":
-			return {
-				"status": "fbr_local_required",
-				"name": invoice_doc.name,
-				"doctype": doctype,
-				"fbr_payload": outcome.payload,
-				"fbr_local_service_url": outcome.local_service_url,
-				"grand_total": invoice_doc.grand_total,
-				"customer": invoice_doc.customer,
-				"customer_name": invoice_doc.customer_name,
-			}
+		if outcome.status == "local_required" and customer_credit:
+			# Nothing reached FBR, and finalizing does not allocate credit.
+			frappe.throw(_("Customer credit cannot be combined with local FBR fiscalization."))
+		if outcome.status == "uncertain" and customer_credit:
+			# Not held as a draft: finalizing does not allocate credit. The fiscal ledger keeps the
+			# attempt, so the same sale id is never sent again until an FBR check is recorded.
+			frappe.db.rollback(save_point=REPRICE_SAVEPOINT)
+			return fiscal_uncertain_sale(outcome.payload["USIN"], pos_profile, invoice_doc)
+		if outcome.status in ("local_required", "uncertain"):
+			# Keep the draft and its sale id: a retry resumes it instead of fiscalizing again.
+			invoice_doc.xpos_fiscal_state = (
+				"Awaiting Local" if outcome.status == "local_required" else "Uncertain"
+			)
+			invoice_doc.save(ignore_permissions=True)
+			return fiscal_pending_response(invoice_doc, outcome)
 		if outcome.status == "cloud":
 			fbr.apply_fiscal_number(invoice_doc, outcome.fbr_invoice_number, outcome.posted_on)
 			invoice_doc.save(ignore_permissions=True)
@@ -748,8 +909,242 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 		}
 
 	invoice_doc.submit()
+	allocate_customer_credit(invoice_doc, customer_credit)
+	if customer_credit:
+		invoice_doc.reload()
 
 	return _build_invoice_response(invoice_doc)
+
+
+def cap_change_at_overpayment(invoice_doc):
+	"""The client's change can be off by rounding: never record more than paid minus the total."""
+	validate_change_amount = invoice_doc.validate_change_amount
+
+	def capped():
+		total = flt(invoice_doc.rounded_total) or flt(invoice_doc.grand_total)
+		overpaid = flt(invoice_doc.paid_amount) - total + flt(invoice_doc.write_off_amount)
+		invoice_doc.change_amount = flt(
+			max(0, min(flt(invoice_doc.change_amount), overpaid)), invoice_doc.precision("change_amount")
+		)
+		validate_change_amount()
+
+	invoice_doc.validate_change_amount = capped
+
+
+def existing_sale_response(doctype: str, name: str) -> dict:
+	"""Answer a retry of a sale that already exists, without creating or fiscalizing it again."""
+	doc = frappe.get_doc(doctype, name)
+	if doc.docstatus == 1:
+		return {**_build_invoice_response(doc), "duplicate": True}
+	if doc.get("fbr_invoice_number"):
+		# Fiscalized, but the submit failed earlier: finish it without asking FBR again.
+		return {**submit_fiscalized_draft(doc), "duplicate": True}
+	if doc.get("xpos_fiscal_state"):
+		return {**resume_fiscal_draft(doc), "duplicate": True}
+	from xpos.x_pos.integrations import fbr
+
+	# Queued for background submission; it may have been fiscalized before its submit failed.
+	known = fbr.ledger_outcome(doc)
+	if known and known.status == "cloud":
+		fbr.apply_fiscal_number(doc, known.fbr_invoice_number, known.posted_on)
+		return {**submit_fiscalized_draft(doc), "duplicate": True}
+	if known:
+		doc.db_set("xpos_fiscal_state", "Uncertain")
+		return {**fiscal_pending_response(doc, known), "duplicate": True}
+	return {"name": doc.name, "status": "Queued", "duplicate": True, "grand_total": doc.grand_total}
+
+
+def resume_fiscal_draft(doc) -> dict:
+	"""Continue a draft held for FBR, from what the fiscal ledger knows.
+
+	A number FBR issued is reused. A draft waiting for the local service is handed back to it,
+	never sent to the cloud again. An uncertain draft stays held until an FBR check is
+	recorded; only "not recorded" lets it be sent once more.
+	"""
+	from xpos.x_pos.integrations import fbr
+
+	if doc.xpos_fiscal_state == "Awaiting Local":
+		outcome = fbr.ledger_outcome(doc) or fbr.local_fiscalization_outcome(doc)
+	else:
+		outcome = fbr.prepare_fiscalization(doc)
+	if outcome.status in ("local_required", "uncertain"):
+		state = "Awaiting Local" if outcome.status == "local_required" else "Uncertain"
+		if doc.xpos_fiscal_state != state:
+			doc.xpos_fiscal_state = state
+			doc.save(ignore_permissions=True)
+		return fiscal_pending_response(doc, outcome)
+	if outcome.status == "cloud":
+		fbr.apply_fiscal_number(doc, outcome.fbr_invoice_number, outcome.posted_on)
+	return submit_fiscalized_draft(doc)
+
+
+def fiscal_uncertain_sale(usin: str, pos_profile: str, doc) -> dict:
+	"""A customer-credit sale whose FBR outcome is unknown: nothing was saved, the attempt is kept."""
+	return {
+		"name": None,
+		"usin": usin,
+		"pos_profile": pos_profile,
+		"status": "fbr_uncertain",
+		"grand_total": doc.grand_total,
+		"customer": doc.customer,
+		"message": _(
+			"FBR may have recorded sale {0} without answering. Nothing was saved and no credit was "
+			"used. After the FBR check is recorded, send the same sale again."
+		).format(usin),
+	}
+
+
+def fiscal_pending_response(doc, outcome) -> dict:
+	"""A saved draft that still needs its FBR number: from the local service, or after a check."""
+	response = {
+		"name": doc.name,
+		"doctype": doc.doctype,
+		"grand_total": doc.grand_total,
+		"customer": doc.customer,
+		"customer_name": doc.customer_name,
+	}
+	if outcome.status == "uncertain":
+		return {
+			**response,
+			"status": "fbr_uncertain",
+			"usin": doc.get("xpos_local_id") or doc.name,
+			"pos_profile": doc.get("pos_profile"),
+			"message": _(
+				"FBR may have recorded invoice {0} without answering. Check FBR's records and record "
+				"what they show before it can be finished."
+			).format(doc.name),
+		}
+	return {
+		**response,
+		"status": "fbr_local_required",
+		"fbr_payload": outcome.payload,
+		"fbr_local_service_url": outcome.local_service_url,
+	}
+
+
+def fiscal_draft(name: str, doctype: str | None, action: str):
+	doctype = doctype or get_invoice_type()
+	doc = frappe.get_doc(doctype, name)
+	# The user who rang the sale up may finish it, as may the profile's cashiers.
+	if (
+		doc.get("pos_profile")
+		and doc.owner != frappe.session.user
+		and not is_pos_cashier(frappe.session.user, doc.pos_profile)
+	):
+		frappe.throw(_("Only a cashier can {0} this invoice.").format(action), frappe.PermissionError)
+	# Serialise with any other request finishing this draft.
+	frappe.db.get_value(doctype, name, "name", for_update=True)
+	doc.reload()
+	return doc
+
+
+@frappe.whitelist()
+def mark_fiscalization_uncertain(name: str, doctype: str | None = None) -> dict:
+	"""The local FBR service was asked for a number but did not answer: hold the draft for a check."""
+	from xpos.x_pos.integrations import fbr
+
+	doc = fiscal_draft(name, doctype, _("update"))
+	if doc.docstatus == 0 and not doc.get("fbr_invoice_number"):
+		fbr.record_local_result(doc, None)
+		doc.db_set("xpos_fiscal_state", "Uncertain")
+	return {"name": doc.name, "status": "fbr_uncertain" if doc.docstatus == 0 else "Paid"}
+
+
+@frappe.whitelist()
+def retry_fiscalization(name: str, doctype: str | None = None) -> dict:
+	"""Finish a draft held for an FBR check, once ``resolve_fiscal_check`` has recorded the outcome."""
+	doc = fiscal_draft(name, doctype, _("fiscalize"))
+	if doc.docstatus == 1:
+		return _build_invoice_response(doc)
+	if doc.get("xpos_fiscal_state") != "Uncertain":
+		frappe.throw(_("Invoice {0} is not waiting for an FBR check.").format(doc.name))
+	return resume_fiscal_draft(doc)
+
+
+FISCAL_RESOLUTIONS = ("Recorded", "Not Recorded")
+FBR_NUMBER_PATTERN = re.compile(r"^[A-Za-z0-9*#/_.:-]{4,100}$")
+
+
+@frappe.whitelist(methods=["POST"])
+def resolve_fiscal_check(
+	usin: str, pos_profile: str, resolution: str, evidence: str, fbr_invoice_number: str | None = None
+) -> dict:
+	"""Record what FBR's records show for a sale whose FBR outcome was unknown.
+
+	XPOS cannot ask FBR whether it holds a sale: the IMS API it uses only posts invoices.
+	A person with *Resolve FBR Check* on the sale's profile looks the sale id (USIN) up in
+	FBR's records and records the answer with what they saw. *Recorded* reuses that number
+	when the sale is sent again; *Not Recorded* lets it be sent to FBR once more. Nothing is
+	submitted here: the till sends the same sale again to finish it.
+	"""
+	from xpos.api.auth import user_has_pos_permission
+	from xpos.x_pos.integrations import fbr, fiscal_ledger
+
+	usin, evidence = cstr(usin).strip(), cstr(evidence).strip()
+	number = cstr(fbr_invoice_number).strip() or None
+	if not usin or not pos_profile or not frappe.db.exists("POS Profile", pos_profile):
+		frappe.throw(_("A sale id and its POS Profile are required."))
+	if not user_has_pos_permission("resolve_fiscal_check", pos_profile=pos_profile):
+		frappe.throw(
+			_("You are not permitted to resolve FBR checks on {0}.").format(pos_profile),
+			frappe.PermissionError,
+		)
+	if resolution not in FISCAL_RESOLUTIONS:
+		frappe.throw(_("Resolution must be Recorded or Not Recorded."))
+	if len(evidence) < 10 or len(evidence) > 1000:
+		frappe.throw(
+			_("Describe where you checked FBR's records and what you found (10 to 1000 characters).")
+		)
+	if resolution == "Recorded" and not (number and FBR_NUMBER_PATTERN.match(number)):
+		frappe.throw(_("Enter the FBR invoice number exactly as FBR's records show it."))
+	if resolution == "Not Recorded":
+		number = None
+
+	for doctype in ("Sales Invoice", "POS Invoice"):
+		if number and frappe.db.has_column(doctype, "fbr_invoice_number"):
+			other = frappe.db.get_value(doctype, {"fbr_invoice_number": number, "docstatus": ("<", 2)})
+			if other:
+				frappe.throw(
+					_("FBR number {0} already belongs to {1}. Check the number in FBR's records.").format(
+						number, other
+					),
+					title=_("FBR number in use"),
+				)
+
+	legacy_draft = None
+	for doctype in ("Sales Invoice", "POS Invoice"):
+		name = frappe.db.get_value(
+			doctype,
+			{
+				"xpos_local_id": usin,
+				"pos_profile": pos_profile,
+				"docstatus": 0,
+				"xpos_fiscal_state": "Uncertain",
+			},
+		) or frappe.db.get_value(
+			doctype,
+			{"name": usin, "pos_profile": pos_profile, "docstatus": 0, "xpos_fiscal_state": "Uncertain"},
+		)
+		if name:
+			legacy_draft = frappe.get_doc(doctype, name)
+			break
+	row = fiscal_ledger.resolve(fbr.fbr_pos_id(pos_profile), usin, resolution, number, evidence, legacy_draft)
+	return {
+		"usin": usin,
+		"resolution": row.resolution,
+		"fbr_invoice_number": row.fbr_invoice_number,
+		"attempt": row.name,
+		"resolved_by": row.resolved_by,
+	}
+
+
+def submit_fiscalized_draft(doc) -> dict:
+	"""Submit a draft that carries its FBR number. The number is already kept in the fiscal ledger."""
+	doc.xpos_fiscal_state = ""
+	doc.save(ignore_permissions=True)
+	enforce_stock_availability(doc)
+	doc.submit()
+	return _build_invoice_response(doc)
 
 
 def _submit_invoice_job(invoice_name: str, doctype: str = "Sales Invoice"):
@@ -762,6 +1157,11 @@ def _submit_invoice_job(invoice_name: str, doctype: str = "Sales Invoice"):
 		frappe.db.commit()
 	except Exception as e:
 		frappe.db.rollback()
+		from xpos.x_pos.integrations.fbr import FBRUncertainError
+
+		if isinstance(e, FBRUncertainError):
+			frappe.db.set_value(doctype, invoice_name, "xpos_fiscal_state", "Uncertain")
+			frappe.db.commit()
 		frappe.log_error(f"Failed to submit {doctype} {invoice_name}: {e}", "X POS Invoice Submission")
 		frappe.publish_realtime(
 			"pos_invoice_submit_error",
@@ -785,18 +1185,22 @@ def finalize_fiscal_invoice(name: str, fbr_invoice_number: str, doctype: str | N
 	if not fbr_invoice_number:
 		frappe.throw(_("FBR invoice number is required to finalize this invoice."))
 
-	invoice_doc = frappe.get_doc(doctype, name)
+	invoice_doc = fiscal_draft(name, doctype, _("finalize"))
 	if invoice_doc.docstatus != 0:
 		return _build_invoice_response(invoice_doc)
+	if invoice_doc.get("xpos_fiscal_state") == "Uncertain":
+		# Only a recorded FBR check may supply the number of a sale FBR may already hold.
+		known = fbr.ledger_outcome(invoice_doc)
+		if not (known and known.status == "cloud" and known.fbr_invoice_number == fbr_invoice_number):
+			frappe.throw(
+				_("FBR may already hold invoice {0}. Record the FBR check first.").format(invoice_doc.name),
+				title=_("FBR check required"),
+			)
 
-	if invoice_doc.get("pos_profile") and not is_pos_cashier(frappe.session.user, invoice_doc.pos_profile):
-		frappe.throw(_("Only a cashier can finalize this invoice."), frappe.PermissionError)
-
+	# Kept outside this transaction, so a failed submit never asks the local service again.
+	fbr.record_local_result(invoice_doc, fbr_invoice_number)
 	fbr.apply_fiscal_number(invoice_doc, fbr_invoice_number)
-	invoice_doc.save(ignore_permissions=True)
-	enforce_stock_availability(invoice_doc)
-	invoice_doc.submit()
-	return _build_invoice_response(invoice_doc)
+	return submit_fiscalized_draft(invoice_doc)
 
 
 @frappe.whitelist()
@@ -813,6 +1217,8 @@ def discard_draft_invoice(name: str, doctype: str | None = None) -> dict:
 	invoice_doc = frappe.get_doc(doctype, name)
 	if invoice_doc.docstatus != 0:
 		frappe.throw(_("Only a draft invoice can be discarded."))
+	if invoice_doc.get("xpos_fiscal_state") == "Uncertain":
+		frappe.throw(_("FBR may have recorded invoice {0}. Resolve the FBR check first.").format(name))
 	if invoice_doc.get("pos_profile") and not is_pos_cashier(frappe.session.user, invoice_doc.pos_profile):
 		frappe.throw(_("Only a cashier can discard this invoice."), frappe.PermissionError)
 
@@ -838,7 +1244,7 @@ def save_draft_invoice(data: str | dict):
 	if not pos_profile or not customer or not items:
 		frappe.throw(_("POS Profile, Customer, and Items are required"))
 
-	pos = frappe.get_cached_doc("POS Profile", pos_profile)
+	pos = resolve_pos_profile(pos_profile)
 
 	doctype = get_invoice_type()
 
@@ -884,7 +1290,7 @@ def save_draft_invoice(data: str | dict):
 		or pos.currency
 		or frappe.db.get_value("Company", pos.company, "default_currency")
 	)
-	invoice_doc.selling_price_list = data.get("selling_price_list") or pos.get("selling_price_list")
+	invoice_doc.selling_price_list = resolve_selling_price_list(pos, customer)
 
 	if data.get("additional_discount_percentage"):
 		invoice_doc.additional_discount_percentage = flt(data["additional_discount_percentage"])
@@ -893,10 +1299,7 @@ def save_draft_invoice(data: str | dict):
 		invoice_doc.discount_amount = flt(data["discount_amount"])
 		invoice_doc.apply_discount_on = data.get("apply_discount_on") or "Grand Total"
 
-	try:
-		invoice_doc.pos_notes = data.get("pos_notes") or ""
-	except Exception:
-		pass
+	invoice_doc.pos_notes = data.get("pos_notes") or ""
 
 	apply_sales_person(invoice_doc, data.get("sales_person") or None, pos_profile)
 
@@ -949,10 +1352,7 @@ def save_draft_invoice(data: str | dict):
 	_ensure_pos_invoice_payment_row(invoice_doc, pos, doctype == "POS Invoice")
 
 	if pos_opening_shift:
-		try:
-			invoice_doc.pos_opening_shift = pos_opening_shift
-		except Exception:
-			pass
+		invoice_doc.pos_opening_shift = pos_opening_shift
 
 	if data.get("pos_awaiting_settlement") and frappe.db.has_column(doctype, "pos_awaiting_settlement"):
 		invoice_doc.pos_awaiting_settlement = 1
@@ -1500,7 +1900,7 @@ def search_invoices_for_return(
 		conditions.append(f"({' OR '.join(or_parts)})")
 
 	where_clause = " AND ".join(conditions)
-	# nosemgrep: frappe-sql-format-injection — table/column from validated doctype allowlist, all values parameterized
+	# nosemgrep: frappe-sql-format-injection - table/column from validated doctype allowlist, all values parameterized
 	sql = f"""
 		SELECT
 			{table}.name, {table}.company, {table}.customer, {table}.customer_name,
@@ -1639,7 +2039,7 @@ def get_last_invoice_rates(customer: str, item_codes: str | list, company: str):
 	for idx, code in enumerate(item_codes):
 		item_params[f"item_{idx}"] = code
 	item_placeholders = ", ".join([f"%(item_{i})s" for i in range(len(item_codes))])
-	results = frappe.db.sql(  # nosemgrep: frappe-sql-format-injection — item_placeholders is built from %(name)s named params, all values parameterized
+	results = frappe.db.sql(  # nosemgrep: frappe-sql-format-injection - item_placeholders is built from %(name)s named params, all values parameterized
 		f"""
 		SELECT
 			sii.item_code,
@@ -1726,7 +2126,7 @@ def _validate_return_invoice(return_against: str, customer: str, items: str | li
 
 	link_field = "sales_invoice_item" if doctype == "Sales Invoice" else "pos_invoice_item"
 	child_doctype = "Sales Invoice Item" if doctype == "Sales Invoice" else "POS Invoice Item"
-	# nosemgrep: frappe-sql-format-injection — doctype/child_doctype/link_field from hardcoded allowlist, values parameterized
+	# nosemgrep: frappe-sql-format-injection - doctype/child_doctype/link_field from hardcoded allowlist, values parameterized
 	query = f"""
         SELECT {link_field} AS row_name, COALESCE(SUM(ABS(qty)), 0) AS returned_qty
         FROM `tab{child_doctype}`

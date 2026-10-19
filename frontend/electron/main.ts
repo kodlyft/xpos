@@ -65,7 +65,7 @@ function createWindow(): void {
 		show: false,
 	});
 
-	// Remove the native menu bar entirely — we use our own in-app menu
+	// Remove the native menu bar entirely - we use our own in-app menu
 	mainWindow.setMenu(null);
 
 	mainWindow.once("ready-to-show", () => {
@@ -292,7 +292,7 @@ ipcMain.handle(
 			const storedApiSecret = await getMeta("api_secret");
 
 			log.info(
-				`Sync engine start — url: ${serverUrl}, apiKey: ${storedApiKey ? "set" : "missing"}, apiSecret: ${storedApiSecret ? "set" : "missing"}`,
+				`Sync engine start - url: ${serverUrl}, apiKey: ${storedApiKey ? "set" : "missing"}, apiSecret: ${storedApiSecret ? "set" : "missing"}`,
 			);
 
 			let cookieStr = opts?.sessionCookies || "";
@@ -656,7 +656,7 @@ app.whenReady().then(async () => {
 				}, 3000);
 			} else {
 				log.info(
-					`Sync engine not auto-started — missing: ${!apiKey ? "api_key " : ""}${!apiSecret ? "api_secret " : ""}${!serverUrl ? "server_url" : ""}`,
+					`Sync engine not auto-started - missing: ${!apiKey ? "api_key " : ""}${!apiSecret ? "api_secret " : ""}${!serverUrl ? "server_url" : ""}`,
 				);
 			}
 		} else {

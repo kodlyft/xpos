@@ -107,8 +107,8 @@ See [Cashier Settlement](26-cashier-settlement.md) for the full workflow.
 
 ## Tips
 
-- Barcode scanners function as keyboard input — scanned codes are typed into the focused field and auto-submitted
-- Combine keyboard and mouse for optimal speed — keyboard for search/entry, mouse for selection
+- Barcode scanners function as keyboard input - scanned codes are typed into the focused field and auto-submitted
+- Combine keyboard and mouse for optimal speed - keyboard for search/entry, mouse for selection
 - The `F2` shortcut is essential for quick switching between item search and barcode scanning
 - Train cashiers on `Enter` (Save & Print) vs. `Shift+Enter` (Save Only) for consistent workflow
 - Use arrow keys in the payment dialog to quickly switch between Cash and Card without reaching for the mouse

@@ -16,18 +16,18 @@ POS Offers are the primary way to configure promotions in X POS.
 
 | Offer Type | Description |
 |---|---|
-| **Item Price** | Discounts on specific items — rate override, percentage off, or fixed amount off |
-| **Give Product** | Free item giveaways — buy X, get Y free |
+| **Item Price** | Discounts on specific items - rate override, percentage off, or fixed amount off |
+| **Give Product** | Free item giveaways - buy X, get Y free |
 | **Grand Total** | Discount on the entire order total |
 | **Loyalty Point** | Award bonus loyalty points for qualifying purchases |
 
 ### Qualifying Criteria (Apply On)
 
 Offers can be triggered based on:
-- **Item Code** — Specific item purchased
-- **Item Group** — Any item from a group
-- **Brand** — Any item from a brand
-- **Transaction** — Any transaction meeting thresholds
+- **Item Code** - Specific item purchased
+- **Item Group** - Any item from a group
+- **Brand** - Any item from a brand
+- **Transaction** - Any transaction meeting thresholds
 
 ### Conditions
 
@@ -42,14 +42,14 @@ Offers can be triggered based on:
 | Coupon Based | Requires a coupon code to activate |
 
 ### Automatic vs. Manual Offers
-- **Auto offers** — Applied automatically when conditions are met
-- **Coupon-based offers** — Require the customer to provide a coupon code
+- **Auto offers** - Applied automatically when conditions are met
+- **Coupon-based offers** - Require the customer to provide a coupon code
 - When enabled, auto offers are fetched and applied every time items change in the cart
 
 ### Discount Types for Item Price Offers
-- **Rate** — Override the item price to a fixed rate
-- **Discount Percentage** — Apply a percentage discount on the item
-- **Discount Amount** — Deduct a fixed amount from the item price
+- **Rate** - Override the item price to a fixed rate
+- **Discount Percentage** - Apply a percentage discount on the item
+- **Discount Amount** - Deduct a fixed amount from the item price
 
 ### Give Product Offers
 - Configure the **free item** and **quantity to give**
@@ -128,7 +128,7 @@ X POS integrates with ERPNext's **Promotional Scheme** feature:
 
 ### Automatic Conversion
 - When offers are loaded for the POS, Promotional Scheme rules linked to the POS Profile's price list are included
-- No additional configuration needed — existing ERPNext Promotional Schemes work in X POS
+- No additional configuration needed - existing ERPNext Promotional Schemes work in X POS
 
 ---
 

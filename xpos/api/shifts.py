@@ -3,15 +3,18 @@
 
 import json
 from collections import defaultdict
+from contextlib import suppress
 
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, nowdate, to_timedelta
 
 from xpos.api.exchange import change_leg_table_exists, payment_tender_fields_exist
+from xpos.api.profile_rules import is_blind_closing
+from xpos.api.profiles import user_may_use_profile
 from xpos.api.utilities import can_close_shift, get_invoice_type, is_pos_cashier
 from xpos.utils import row_value
-from xpos.x_pos.gift_cards import gift_card_config
+from xpos.x_pos.gift_cards import gift_card_config, gift_card_mode
 
 CLOSING_INVOICE_FIELDS = [
 	"name",
@@ -36,6 +39,16 @@ SUMMARY_INVOICE_FIELDS = [
 	"customer",
 	"customer_name",
 ]
+
+MAX_COUNTED_AMOUNT = 999_999_999_999
+
+
+def counted_amount(value, mode_of_payment) -> float:
+	"""A till count, refused with a message instead of a database error when it cannot be stored."""
+	amount = flt(value)
+	if amount < 0 or amount > MAX_COUNTED_AMOUNT:
+		frappe.throw(_("The amount for {0} is out of range.").format(mode_of_payment))
+	return amount
 
 
 def resolve_cash_mode_of_payment(pos_profile: str | None) -> str:
@@ -284,7 +297,7 @@ def open_shift(pos_profile: str, company: str, balance_details: str | list[dict]
 			"balance_details",
 			{
 				"mode_of_payment": detail.get("mode_of_payment"),
-				"amount": flt(detail.get("opening_amount")),
+				"amount": counted_amount(detail.get("opening_amount"), detail.get("mode_of_payment")),
 			},
 		)
 
@@ -415,12 +428,11 @@ def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 	- Tax summary per shift
 	- Payment reconciliation with expected vs actual amounts
 	"""
-	if not can_close_shift():
+	opening = frappe.get_doc("POS Opening Shift", opening_shift)
+	if not user_may_use_profile(opening.pos_profile) or not can_close_shift(pos_profile=opening.pos_profile):
 		frappe.throw(_("Only a Supervisor can close a shift."), frappe.PermissionError)
 
 	closing_details = json.loads(closing_details) if isinstance(closing_details, str) else closing_details
-
-	opening = frappe.get_doc("POS Opening Shift", opening_shift)
 	doctype = get_invoice_type()
 
 	invoices = get_shift_invoices(opening, doctype, CLOSING_INVOICE_FIELDS)
@@ -451,12 +463,16 @@ def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 	if closing_details:
 		expected_amounts = get_shift_expected_amounts(opening, doctype, invoices)
 		opening_amounts = {detail.mode_of_payment: flt(detail.amount) for detail in opening.balance_details}
+		gift_mode = gift_card_mode(opening.company)
 
 		for detail in closing_details:
 			mode_of_payment = detail.get("mode_of_payment")
-			closing_amount = flt(detail.get("closing_amount", 0))
+			closing_amount = counted_amount(detail.get("closing_amount"), mode_of_payment)
 			server_row = expected_amounts.get(mode_of_payment) or {}
 			expected_amount = flt(server_row.get("amount", 0))
+			if mode_of_payment == gift_mode:
+				# Redeemed gift cards are not counted in the till (also under blind closing).
+				closing_amount = expected_amount
 
 			closing_shift.append(
 				"payment_reconciliation",
@@ -472,7 +488,7 @@ def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 
 	tax_summary = _get_shift_tax_summary(invoices, doctype)
 	for tax in tax_summary:
-		try:
+		with suppress(AttributeError):
 			closing_shift.append(
 				"taxes",
 				{
@@ -481,8 +497,6 @@ def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 					"amount": flt(tax.get("amount")),
 				},
 			)
-		except Exception:
-			pass
 
 	invoice_link_field = "pos_invoice" if doctype == "POS Invoice" else "sales_invoice"
 	for inv in invoices:
@@ -497,26 +511,42 @@ def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 	closing_shift.insert(ignore_permissions=True)
 	closing_shift.submit()
 
-	return {
+	result = {
 		"name": closing_shift.name,
 		"pos_closing_shift": closing_shift.name,
-		"grand_total": grand_total,
-		"net_total": net_total,
 		"total_invoices": total_qty,
 		"returns_count": returns_count,
 	}
+	if not is_blind_closing(opening.pos_profile):
+		result.update(grand_total=grand_total, net_total=net_total)
+	return result
 
 
 @frappe.whitelist()
 def get_shift_summary(opening_shift: str):
 	"""Get summary of the current shift for closing.
 
-	Enhanced version with tax breakdown and return info.
+	Enhanced version with tax breakdown and return info. On a blind-closing
+	profile the totals that reveal what the drawer should hold are left out.
 	"""
 	opening = frappe.get_doc("POS Opening Shift", opening_shift)
+	ensure_shift_access(opening)
 	doctype = get_invoice_type()
 
 	invoices = get_shift_invoices(opening, doctype, SUMMARY_INVOICE_FIELDS)
+
+	if is_blind_closing(opening.pos_profile):
+		expected = get_shift_expected_amounts(opening, doctype, invoices)
+		return {
+			"blind_closing": True,
+			"total_invoices": len(invoices),
+			"returns_count": sum(1 for inv in invoices if inv.get("is_return")),
+			"payment_modes": {
+				mode: {"currency": row.get("currency") or ""} for mode, row in expected.items()
+			},
+			"pos_profile": opening.pos_profile,
+			"company": opening.company,
+		}
 
 	grand_total = sum(flt(row_value(inv, "grand_total", 0)) for inv in invoices)
 	net_total = sum(flt(row_value(inv, "net_total", 0)) for inv in invoices)
@@ -560,6 +590,15 @@ def get_shift_summary(opening_shift: str):
 	}
 
 
+def ensure_shift_access(opening) -> None:
+	"""Shift figures are for the shift's own cashier or someone allowed to close shifts."""
+	user = frappe.session.user
+	if not user_may_use_profile(opening.pos_profile, user) or (
+		opening.user != user and not can_close_shift(user, opening.pos_profile)
+	):
+		frappe.throw(_("You are not permitted to view this shift."), frappe.PermissionError)
+
+
 def attach_tender_currencies(data: dict, profile_doc):
 	"""Decorate the profile's payment rows with their tender currency, type and current rate."""
 	from xpos.api.exchange import build_tender_rate_payload, get_currency_meta
@@ -578,6 +617,8 @@ def attach_tender_currencies(data: dict, profile_doc):
 		row["pos_tender_currency"] = entry["currency"]
 		row["type"] = entry["type"]
 		row["is_foreign_tender"] = entry["is_foreign_tender"]
+		row["takes_reference"] = bool(entry.get("takes_reference"))
+		row["requires_reference"] = bool(entry.get("requires_reference"))
 		row["exchange_rate"] = entry["exchange_rate"]
 		row["rate_date"] = entry["rate_date"]
 		row["precision"] = entry["precision"]
@@ -591,7 +632,7 @@ def _enrich_shift_data(data: dict, pos_profile: str):
 	"""Add profile, company, settings, and tax template data to shift response."""
 	try:
 		profile = frappe.get_cached_doc("POS Profile", pos_profile)
-	except (AttributeError, Exception):
+	except AttributeError:
 		frappe.clear_cache(doctype="POS Profile")
 		profile = frappe.get_doc("POS Profile", pos_profile)
 	data["pos_profile"] = profile.as_dict()
@@ -624,7 +665,7 @@ def _enrich_shift_data(data: dict, pos_profile: str):
 				for tax in tax_template.taxes
 			]
 			data["tax_inclusive"] = cint(profile.get("tax_inclusive")) or 0
-		except Exception:
+		except frappe.DoesNotExistError:
 			data["taxes"] = []
 			data["tax_inclusive"] = 0
 	else:
@@ -704,7 +745,9 @@ def create_opening_shift(data: str | dict, local_id: str | None = None) -> dict:
 			"balance_details",
 			{
 				"mode_of_payment": detail.get("mode_of_payment"),
-				"amount": flt(detail.get("opening_amount") or detail.get("amount", 0)),
+				"amount": counted_amount(
+					detail.get("opening_amount") or detail.get("amount"), detail.get("mode_of_payment")
+				),
 			},
 		)
 
@@ -744,6 +787,8 @@ def create_closing_shift(data: str | dict, local_id: str | None = None) -> dict:
 		opening = frappe.get_doc("POS Opening Shift", opening_shift)
 	except frappe.DoesNotExistError:
 		frappe.throw(_("POS Opening Shift {0} not found").format(opening_shift))
+	if not user_may_use_profile(opening.pos_profile) or not can_close_shift(pos_profile=opening.pos_profile):
+		frappe.throw(_("Only a Supervisor can close a shift."), frappe.PermissionError)
 
 	closing_shift = frappe.get_doc(
 		{
@@ -764,15 +809,25 @@ def create_closing_shift(data: str | dict, local_id: str | None = None) -> dict:
 	)
 
 	payment_details = data.get("payment_reconciliation") or data.get("closing_details") or []
+	# The till's own expected figures are never trusted: they are what the count is reconciled against.
+	expected_amounts = get_shift_expected_amounts(
+		opening, get_invoice_type(), get_shift_invoices(opening, get_invoice_type(), CLOSING_INVOICE_FIELDS)
+	)
+	opening_amounts = {d.mode_of_payment: flt(d.amount) for d in opening.balance_details}
 	for detail in payment_details:
+		mode_of_payment = detail.get("mode_of_payment")
+		closing_amount = counted_amount(detail.get("closing_amount"), mode_of_payment)
+		server_row = expected_amounts.get(mode_of_payment) or {}
+		expected_amount = flt(server_row.get("amount", 0))
 		closing_shift.append(
 			"payment_reconciliation",
 			{
-				"mode_of_payment": detail.get("mode_of_payment"),
-				"opening_amount": flt(detail.get("opening_amount", 0)),
-				"expected_amount": flt(detail.get("expected_amount", 0)),
-				"closing_amount": flt(detail.get("closing_amount", 0)),
-				"difference": flt(detail.get("difference", 0)),
+				"mode_of_payment": mode_of_payment,
+				"currency": server_row.get("currency") or None,
+				"opening_amount": flt(opening_amounts.get(mode_of_payment, 0)),
+				"expected_amount": expected_amount,
+				"closing_amount": closing_amount,
+				"difference": closing_amount - expected_amount,
 			},
 		)
 

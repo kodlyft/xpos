@@ -8,6 +8,30 @@
 			{{ __("Prices calculated offline, will be confirmed when the invoice syncs") }}
 		</div>
 
+		<div
+			v-if="cartStore.repriceReview"
+			role="alert"
+			class="rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-[11px] text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200 space-y-1.5"
+		>
+			<p class="font-semibold">{{ __("Prices changed - nothing was charged or saved") }}</p>
+			<p>
+				{{
+					__(
+						"The server priced this sale at {0}. Check the marked lines, then take payment again.",
+						[money(cartStore.repriceReview.rounded_total || cartStore.repriceReview.grand_total)],
+					)
+				}}
+			</p>
+			<Button
+				size="sm"
+				variant="outline"
+				class="h-7 text-[11px]"
+				@click="cartStore.acknowledgeRepricing()"
+			>
+				{{ __("I have reviewed the new prices") }}
+			</Button>
+		</div>
+
 		<div class="space-y-1.5">
 			<div class="flex items-center justify-between text-sm">
 				<span class="text-muted-foreground">{{ __("Subtotal") }}</span>
@@ -224,7 +248,10 @@
 					<Trash2 class="w-4 h-4" />
 				</Button>
 			</TooltipWrapper>
-			<TooltipWrapper v-if="!cartStore.isReturnMode" :content="__('Delivery charge')">
+			<TooltipWrapper
+				v-if="!cartStore.isReturnMode && posStore.useDeliveryCharges"
+				:content="__('Delivery charge')"
+			>
 				<Button
 					variant="outline"
 					size="lg"
@@ -398,7 +425,7 @@ import { hasPermission } from "@/services/userRights";
 import { useCartStore } from "@/stores/cartStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useOfferStore } from "@/stores/offerStore";
-import { call, showSuccess, showError } from "@/services/api";
+import { call, showSuccess, showError, showInfo } from "@/services/api";
 import { __ } from "@/lib/translate";
 import { isElectron } from "@/services/electronBridge";
 import { isTabConflictError } from "@/utils";
@@ -563,9 +590,14 @@ function syncSelectedDeliveryCharge(charges: DeliveryCharge[]) {
 
 	if (currentCharge) {
 		cartStore.setDeliveryCharge(null);
+		showInfo(
+			__("Delivery charge {0} is no longer available and was removed.", [
+				currentCharge.label || currentCharge.name,
+			]),
+		);
 	}
 
-	if (posStore.posProfile?.auto_set_delivery_charges && charges.length > 0) {
+	if (posStore.autoSetDeliveryCharges && charges.length > 0) {
 		cartStore.setDeliveryCharge(charges[0]);
 	}
 }
@@ -577,7 +609,17 @@ async function syncAutoDeliveryCharge() {
 		return;
 	}
 
-	if (!posStore.posProfile?.auto_set_delivery_charges) {
+	if (!posStore.useDeliveryCharges) {
+		availableDeliveryCharges.value = [];
+		showDelivery.value = false;
+		if (cartStore.selectedDeliveryCharge) {
+			cartStore.setDeliveryCharge(null);
+			showInfo(__("Delivery charges are disabled for this POS Profile; the charge was removed."));
+		}
+		return;
+	}
+
+	if (!posStore.autoSetDeliveryCharges && !cartStore.selectedDeliveryCharge) {
 		return;
 	}
 
@@ -587,7 +629,8 @@ async function syncAutoDeliveryCharge() {
 
 watch(
 	[
-		() => posStore.posProfile?.auto_set_delivery_charges,
+		() => posStore.useDeliveryCharges,
+		() => posStore.autoSetDeliveryCharges,
 		() => posStore.profileName,
 		() => posStore.companyName,
 		() => cartStore.customer?.name || "",

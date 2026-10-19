@@ -160,6 +160,7 @@ def get_pos_items(
 			"has_variants",
 			"variant_of",
 			"is_stock_item",
+			"allow_negative_stock",
 			"brand",
 			"max_discount",
 		],
@@ -225,7 +226,6 @@ def get_items_count(pos_profile: str, search_term: str = "", item_group: str = "
 			values["lft"] = ig.lft
 			values["rgt"] = ig.rgt
 	elif pos.item_groups:
-		# POS Profile restricts to specific item groups — apply as baseline filter
 		allowed_names = [ig.item_group for ig in pos.item_groups]
 		all_groups: set[str] = set()
 		for group_name in allowed_names:
@@ -548,6 +548,7 @@ def get_item_variants(
 			"has_batch_no",
 			"has_serial_no",
 			"is_stock_item",
+			"allow_negative_stock",
 			"brand",
 			"max_discount",
 		],

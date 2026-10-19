@@ -427,7 +427,6 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 	if (isInput) return;
 	if (isInDialog) return;
 
-	// When the cart zone is active, don't steal arrow/enter keys — the cart handles its own navigation
 	if (activeZone.value === "cart") {
 		if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter") return;
 	}

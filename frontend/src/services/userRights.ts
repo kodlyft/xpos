@@ -7,6 +7,8 @@ export interface PosPermissions {
 	allow_reprint_invoice: boolean;
 	print_draft_invoice: boolean;
 	shift_report: boolean;
+	view_expected_amount: boolean;
+	resolve_fiscal_check: boolean;
 	apply_additional_discount: boolean;
 	show_edit_discount_field: boolean;
 	allow_change_price: boolean;
@@ -26,6 +28,8 @@ const DEFAULT_PERMISSIONS: PosPermissions = {
 	allow_reprint_invoice: false,
 	print_draft_invoice: false,
 	shift_report: false,
+	view_expected_amount: false,
+	resolve_fiscal_check: false,
 	apply_additional_discount: false,
 	show_edit_discount_field: false,
 	allow_change_price: false,

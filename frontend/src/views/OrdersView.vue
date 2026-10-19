@@ -61,6 +61,7 @@
 					'grand_total',
 					'net_total',
 					'paid_amount',
+					'change_amount',
 					'outstanding_amount',
 					'total_taxes_and_charges',
 					'status',
@@ -124,7 +125,8 @@
 								</div>
 								<div class="flex flex-col items-end gap-0 text-xs">
 									<span class="text-muted-foreground whitespace-nowrap">
-										Paid: {{ money(order.paid_amount) }}
+										Paid:
+										{{ money((order.paid_amount || 0) - (order.change_amount || 0)) }}
 									</span>
 									<span
 										v-if="order.total_taxes_and_charges"

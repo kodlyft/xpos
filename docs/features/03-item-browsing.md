@@ -1,6 +1,6 @@
 # Item Browsing & Search
 
-X POS provides multiple ways to find and add items to the cart — from visual browsing to barcode scanning and text search.
+X POS provides multiple ways to find and add items to the cart - from visual browsing to barcode scanning and text search.
 
 ---
 
@@ -43,9 +43,9 @@ X POS provides multiple ways to find and add items to the cart — from visual b
 - Results update in real-time as you type (debounced)
 
 ### Keyboard Navigation
-- **Arrow Up / Arrow Down** — Navigate between highlighted items in the search results
-- **Enter** — Add the currently highlighted item to the cart
-- **Any alphanumeric key** (when no input is focused) — Automatically focuses the search bar and starts typing, so you can begin searching immediately
+- **Arrow Up / Arrow Down** - Navigate between highlighted items in the search results
+- **Enter** - Add the currently highlighted item to the cart
+- **Any alphanumeric key** (when no input is focused) - Automatically focuses the search bar and starts typing, so you can begin searching immediately
 
 ---
 
@@ -53,7 +53,7 @@ X POS provides multiple ways to find and add items to the cart — from visual b
 
 - **Pill filters** shown above the item grid for quick group switching (e.g., "Beverages", "Food", "Electronics")
 - An **autocomplete dropdown** for selecting item groups when there are many groups
-- Groups support hierarchical filtering — selecting a parent group shows items from all child groups
+- Groups support hierarchical filtering - selecting a parent group shows items from all child groups
 - Item groups can be restricted at the POS Profile level
 
 ---
@@ -61,9 +61,9 @@ X POS provides multiple ways to find and add items to the cart — from visual b
 ## Barcode Scanning
 
 ### Supported Input Methods
-1. **Physical barcode scanner** — Scanner types characters into the barcode input field and auto-submits
-2. **Manual entry** — Type a barcode number and press Enter
-3. **Clipboard paste** — Paste a barcode value directly
+1. **Physical barcode scanner** - Scanner types characters into the barcode input field and auto-submits
+2. **Manual entry** - Type a barcode number and press Enter
+3. **Clipboard paste** - Paste a barcode value directly
 
 ### Using the Barcode Scanner
 - Press **F2** to focus the barcode input field at any time
@@ -74,8 +74,8 @@ X POS provides multiple ways to find and add items to the cart — from visual b
   - Scale barcodes (for weighted items, see [Scale Barcode Support](22-scale-barcodes.md))
 
 ### Visual Feedback
-- **Green flash** — Successful barcode scan, item added to cart
-- **Red flash** — Barcode not found, no item matched
+- **Green flash** - Successful barcode scan, item added to cart
+- **Red flash** - Barcode not found, no item matched
 
 ### Automatic Cart Addition
 - When a barcode resolves to an item, it is immediately added to the cart

@@ -210,8 +210,13 @@
   }
  ],
  "is_submittable": 1,
- "links": [],
- "modified": "2026-10-04 22:09:22.429740",
+ "links": [
+  {
+   "link_doctype": "Journal Entry",
+   "link_fieldname": "pos_closing_shift"
+  }
+ ],
+ "modified": "2026-10-16 22:09:12.917777",
  "modified_by": "Administrator",
  "module": "X POS",
  "name": "POS Closing Shift",
@@ -244,25 +249,12 @@
    "share": 1,
    "submit": 1,
    "write": 1
-  },
-  {
-   "cancel": 1,
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Administrator",
-   "share": 1,
-   "submit": 1,
-   "write": 1
   }
  ],
  "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
+ "title_field": "user",
  "track_changes": 1
 }

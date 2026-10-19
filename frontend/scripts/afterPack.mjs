@@ -8,13 +8,13 @@
  * For Windows it:
  *   1. Embeds the multi-resolution build/icon.ico into the .exe (taskbar,
  *      Explorer, alt-tab, title bar).
- *   2. Sets the Win32 version-info resource — the fields shown on the .exe's
+ *   2. Sets the Win32 version-info resource - the fields shown on the .exe's
  *      "Details" tab: File description, Company, Product name, Version,
  *      Copyright, etc.
  *   3. Flips the EnableEmbeddedAsarIntegrityValidation fuse OFF.
  *
  * This is done with resedit + @electron/fuses (both pure JS), so it works on
- * Linux/CI without Wine — the reason the previous Linux build shipped a default
+ * Linux/CI without Wine - the reason the previous Linux build shipped a default
  * icon and blank .exe properties.
  */
 
@@ -100,6 +100,6 @@ export default async function afterPack(context) {
 		});
 		console.log("[afterPack] ASAR integrity fuse disabled (built on non-Windows host).");
 	} else {
-		console.log("[afterPack] Native Windows build — ASAR integrity fuse left intact.");
+		console.log("[afterPack] Native Windows build - ASAR integrity fuse left intact.");
 	}
 }

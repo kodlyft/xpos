@@ -12,13 +12,13 @@ X POS uses a shift-based workflow. Every POS session starts with opening a shift
 - If no shift is found, the **Opening Dialog** appears
 
 ### Opening Dialog
-1. **Select POS Profile** — Choose from available POS Profiles assigned to your user account
+1. **Select POS Profile** - Choose from available POS Profiles assigned to your user account
    - If only one profile is available, it is auto-selected
    - The company name auto-fills based on the selected profile
-2. **Enter Opening Balances** — For each payment method (Cash, Card, Bank Transfer, etc.), enter the starting cash/balance amount
+2. **Enter Opening Balances** - For each payment method (Cash, Card, Bank Transfer, etc.), enter the starting cash/balance amount
    - Cash amount typically reflects the float (starting cash in the register)
    - Other payment modes can have zero opening balances
-3. **Click "Open Shift"** — This creates a POS Opening Shift document and initializes the POS session
+3. **Click "Open Shift"** - This creates a POS Opening Shift document and initializes the POS session
 
 ### What Happens on Shift Open
 - A **POS Opening Shift** document is created and submitted
@@ -55,11 +55,11 @@ Before closing, you can review a complete summary of the shift:
 
 ### Closing Dialog
 1. The dialog shows a **payment reconciliation table** with columns:
-   - **Payment Method** — Each mode of payment used during the shift
-   - **Opening Amount** — Balance entered at shift start
-   - **Expected Amount** — System-calculated amount based on invoices
-   - **Closing Amount** — The actual amount you count and enter
-   - **Difference** — Calculated surplus or shortage (over/short)
+   - **Payment Method** - Each mode of payment used during the shift
+   - **Opening Amount** - Balance entered at shift start
+   - **Expected Amount** - System-calculated amount based on invoices
+   - **Closing Amount** - The actual amount you count and enter
+   - **Difference** - Calculated surplus or shortage (over/short)
 2. Enter the **actual closing amounts** for each payment method
 3. Review any discrepancies between expected and actual amounts
 4. Click **Close Shift** to finalize
@@ -80,7 +80,7 @@ Gift cards sold for cash count in the Cash row. Gift-card payments appear on the
 
 ## Tips
 
-- Always reconcile cash carefully before closing the shift — discrepancies are recorded permanently
+- Always reconcile cash carefully before closing the shift - discrepancies are recorded permanently
 - If you need to leave temporarily, you can hold orders and return to the same shift later
 - The shift closing document serves as a complete audit trail for the POS session
 - Multiple users can have separate open shifts on different POS Profiles simultaneously

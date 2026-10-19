@@ -546,10 +546,9 @@ def create_purchase_order(data: str | dict) -> dict:
 		meta = item_map.get(item_code)
 		stock_uom = row.get("stock_uom") or (meta.stock_uom if meta else None)
 		item_name = row.get("item_name") or (meta.item_name if meta else item_code)
-		uom = row.get("uom") or stock_uom
-		conversion_factor = flt(row.get("conversion_factor") or 1)
-		if not conversion_factor:
-			conversion_factor = 1
+		uom, stock_uom, conversion_factor = resolve_purchase_uom(
+			item_code, row.get("uom"), profile.get("name")
+		)[:3]
 
 		po_doc.append(
 			"items",
@@ -697,10 +696,9 @@ def create_purchase_invoice_direct(data: str | dict) -> dict:
 		meta = item_map.get(item_code)
 		stock_uom = row.get("stock_uom") or (meta.stock_uom if meta else None)
 		item_name = row.get("item_name") or (meta.item_name if meta else item_code)
-		uom = row.get("uom") or stock_uom
-		conversion_factor = flt(row.get("conversion_factor") or 1)
-		if not conversion_factor:
-			conversion_factor = 1
+		uom, stock_uom, conversion_factor = resolve_purchase_uom(
+			item_code, row.get("uom"), profile.get("name")
+		)[:3]
 
 		invoice_item = {
 			"item_code": item_code,
@@ -800,7 +798,7 @@ def search_items(search_text: str | None = None, limit: int = 20) -> list[dict]:
 		items = frappe.db.sql(
 			"""
             SELECT DISTINCT i.name, i.item_name, i.stock_uom, i.standard_rate,
-                   i.item_group
+                   i.item_group, i.purchase_uom
             FROM `tabItem` i
             LEFT JOIN `tabItem Barcode` ib ON ib.parent = i.name
             WHERE i.disabled = 0
@@ -819,7 +817,7 @@ def search_items(search_text: str | None = None, limit: int = 20) -> list[dict]:
 		items = frappe.get_all(
 			"Item",
 			filters={"disabled": 0},
-			fields=["name", "item_name", "stock_uom", "standard_rate", "item_group"],
+			fields=["name", "item_name", "stock_uom", "standard_rate", "item_group", "purchase_uom"],
 			limit_page_length=limit,
 			order_by="item_name asc",
 		)
@@ -861,6 +859,7 @@ def search_items(search_text: str | None = None, limit: int = 20) -> list[dict]:
 				"item_code": item_code,
 				"item_name": it.get("item_name"),
 				"stock_uom": stock_uom,
+				"purchase_uom": it.get("purchase_uom"),
 				"item_uoms": uoms,
 				"standard_rate": it.get("standard_rate"),
 				"barcode": barcodes[0] if barcodes else None,
@@ -1597,8 +1596,7 @@ def save_po_draft(data: str | dict, pos_profile: str) -> dict:
 		qty = flt(row.get("qty", 0))
 		if qty <= 0:
 			continue
-		uom = row.get("uom") or row.get("stock_uom") or "Nos"
-		stock_uom = row.get("stock_uom") or uom
+		uom, stock_uom, conversion_factor = resolve_purchase_uom(item_code, row.get("uom"), pos_profile)[:3]
 		po_doc.append(
 			"items",
 			{
@@ -1607,7 +1605,7 @@ def save_po_draft(data: str | dict, pos_profile: str) -> dict:
 				"qty": qty,
 				"uom": uom,
 				"stock_uom": stock_uom,
-				"conversion_factor": flt(row.get("conversion_factor") or 1),
+				"conversion_factor": conversion_factor,
 				"rate": flt(row.get("rate") or 0),
 				"warehouse": row.get("warehouse") or warehouse,
 				"schedule_date": schedule_date,
@@ -1828,8 +1826,9 @@ def save_pi_draft(data: str | dict) -> dict:
 		meta = item_map.get(item_code)
 		stock_uom = row.get("stock_uom") or (meta.stock_uom if meta else None)
 		item_name = row.get("item_name") or (meta.item_name if meta else item_code)
-		uom = row.get("uom") or stock_uom
-		conversion_factor = flt(row.get("conversion_factor") or 1) or 1
+		uom, stock_uom, conversion_factor = resolve_purchase_uom(
+			item_code, row.get("uom"), payload.get("pos_profile")
+		)[:3]
 
 		pi_item = {
 			"item_code": item_code,
@@ -2174,6 +2173,46 @@ def update_item_prices(items: list, pos_profile: dict):
 			)
 
 
+def resolve_purchase_uom(item_code: str, uom: str | None = None, pos_profile: str | None = None):
+	"""UOM and conversion factor for a purchase line.
+
+	Order: explicit line UOM, the profile's ``default_purchase_uom``, the item's
+	purchase UOM, its stock UOM. Factors always come from the Item; an explicit
+	UOM without one is rejected rather than given an invented factor. Returns
+	``(uom, stock_uom, conversion_factor, note)``; ``note`` explains a fallback.
+	"""
+	item = frappe.get_cached_doc("Item", item_code)
+	factors = {
+		row.uom: flt(row.conversion_factor) for row in item.uoms or [] if flt(row.conversion_factor) > 0
+	}
+	factors[item.stock_uom] = 1
+
+	if uom:
+		if uom not in factors:
+			frappe.throw(_("UOM {0} has no conversion factor for item {1}.").format(uom, item_code))
+		return uom, item.stock_uom, factors[uom], None
+
+	profile_uom = (
+		frappe.db.get_value("POS Profile", pos_profile, "default_purchase_uom") if pos_profile else None
+	)
+	skipped = None
+	for candidate in (profile_uom, item.purchase_uom):
+		if not candidate:
+			continue
+		if candidate in factors:
+			break
+		skipped = skipped or candidate
+	else:
+		candidate = item.stock_uom
+
+	note = None
+	if skipped:
+		note = _("Item {0} has no conversion factor for {1}; {2} is used instead.").format(
+			item_code, skipped, candidate
+		)
+	return candidate, item.stock_uom, factors[candidate], note
+
+
 @frappe.whitelist()
 def get_item_purchase_details(item_code: str, pos_profile: str | None = None) -> dict | None:
 	"""Fetch full item details for purchase invoice including prices, UOMs, and tax info.
@@ -2198,36 +2237,44 @@ def get_item_purchase_details(item_code: str, pos_profile: str | None = None) ->
 	if item.stock_uom and not any(u["uom"] == item.stock_uom for u in uoms):
 		uoms.append({"uom": item.stock_uom, "conversion_factor": 1})
 
-	purchase_uom = item.purchase_uom or get("purchase_uom", pos_profile) or item.stock_uom
-	purchase_cf = 1
-	for u in uoms:
-		if u["uom"] == purchase_uom:
-			purchase_cf = flt(u["conversion_factor"]) or 1
-			break
+	purchase_uom, stock_uom, purchase_cf, uom_note = resolve_purchase_uom(item_code, None, pos_profile)
 
-	buying_price_list = get("buying_price_list", pos_profile) or frappe.db.get_value(
-		"Price List", {"buying": 1, "company": item.company}, "name"
-	)
+	buying_price_list = frappe.db.get_single_value(
+		"Buying Settings", "buying_price_list"
+	) or frappe.db.get_value("Price List", {"buying": 1, "enabled": 1}, "name", order_by="creation asc")
 	buying_rate = 0
 	if buying_price_list:
-		bp = frappe.db.get_value(
-			"Item Price",
-			{
-				"item_code": item_code,
-				"price_list": buying_price_list,
-				"buying": 1,
-			},
-			"price_list_rate",
-		)
-		if not bp:
-			bp = frappe.db.get_value(
-				"Item Price",
-				{"item_code": item_code, "price_list": buying_price_list, "buying": 1},
-				"price_list_rate",
+		from erpnext.setup.utils import get_exchange_rate
+		from erpnext.stock.get_item_details import get_price_list_rate_for
+
+		# Priced in the line's UOM: its own Item Price, else the stock-UOM price times the factor.
+		buying_rate = flt(
+			get_price_list_rate_for(
+				frappe._dict(
+					price_list=buying_price_list,
+					uom=purchase_uom,
+					stock_uom=item.stock_uom,
+					conversion_factor=purchase_cf,
+					qty=1,
+					transaction_date=nowdate(),
+				),
+				item_code,
 			)
-		buying_rate = flt(bp)
+		)
+		# The purchase invoice is in company currency; a price in another currency is converted,
+		# or not used when no exchange rate exists.
+		company = (
+			frappe.db.get_value("POS Profile", pos_profile, "company") if pos_profile else None
+		) or frappe.defaults.get_user_default("Company")
+		list_currency = frappe.db.get_value("Price List", buying_price_list, "currency")
+		company_currency = (
+			frappe.get_cached_value("Company", company, "default_currency") if company else None
+		)
+		if buying_rate and list_currency and company_currency and list_currency != company_currency:
+			buying_rate *= flt(get_exchange_rate(list_currency, company_currency, nowdate(), "for_buying"))
 	if not buying_rate:
-		buying_rate = flt(item.last_purchase_rate) or flt(item.standard_rate) or flt(item.valuation_rate)
+		stock_rate = flt(item.last_purchase_rate) or flt(item.standard_rate) or flt(item.valuation_rate)
+		buying_rate = stock_rate * purchase_cf
 
 	selling_price_list = get("selling_price_list", pos_profile) or frappe.db.get_value(
 		"Price List", {"selling": 1, "company": item.company}, "name"
@@ -2252,6 +2299,7 @@ def get_item_purchase_details(item_code: str, pos_profile: str | None = None) ->
 		"stock_uom": item.stock_uom,
 		"purchase_uom": purchase_uom,
 		"purchase_cf": purchase_cf,
+		"purchase_uom_note": uom_note,
 		"item_uoms": uoms,
 		"buying_rate": buying_rate,
 		"selling_rate": selling_rate,

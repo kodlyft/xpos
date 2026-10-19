@@ -491,7 +491,7 @@ function columnCurrency(column: ReportColumn): string {
 }
 
 function formatReportDateTime(value: unknown): string {
-	if (!value) return "—";
+	if (!value) return "-";
 	const date = new Date(String(value));
 	if (Number.isNaN(date.getTime())) return String(value);
 	return new Intl.DateTimeFormat(undefined, {
@@ -504,7 +504,7 @@ function formatReportDateTime(value: unknown): string {
 }
 
 export function formatReportCell(column: ReportColumn, value: unknown, currency = ""): string {
-	if (value === null || value === undefined || value === "") return "—";
+	if (value === null || value === undefined || value === "") return "-";
 
 	if (Array.isArray(value)) {
 		return value.map((item) => String(item)).join(", ");

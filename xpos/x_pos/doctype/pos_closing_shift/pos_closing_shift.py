@@ -15,6 +15,10 @@ from xpos.x_pos.doctype.pos_closing_shift.closing_processing.invoices import (
 from xpos.x_pos.doctype.pos_closing_shift.closing_processing.overview import (
 	get_payment_reconciliation_details,
 )
+from xpos.x_pos.doctype.pos_closing_shift.closing_processing.reclass import (
+	cancel_reclass_journal_entry,
+	create_reclass_journal_entry,
+)
 
 
 class POSClosingShift(Document):
@@ -86,11 +90,14 @@ class POSClosingShift(Document):
 		opening_entry.pos_closing_shift = self.name
 		opening_entry.set_status()
 		delete_draft_invoices(self.pos_opening_shift, self.pos_profile)
+		opening_entry.flags.ignore_permissions = True
 		opening_entry.save()
 		_set_closing_entry_invoices(self)
 		consolidate_closing_shift_invoices(self)
+		create_reclass_journal_entry(self)
 
 	def on_cancel(self):
+		cancel_reclass_journal_entry(self)
 		if frappe.db.exists("POS Opening Shift", self.pos_opening_shift):
 			opening_entry = frappe.get_doc("POS Opening Shift", self.pos_opening_shift)
 			if opening_entry.pos_closing_shift == self.name:

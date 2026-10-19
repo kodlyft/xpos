@@ -1,6 +1,6 @@
 # Scale Barcode Support
 
-X POS supports barcode parsing for weighing scales — used in retail environments where items are weighed and a barcode label is printed containing the item code and weight (and optionally price).
+X POS supports barcode parsing for weighing scales - used in retail environments where items are weighed and a barcode label is printed containing the item code and weight (and optionally price).
 
 ---
 
@@ -150,8 +150,8 @@ node scripts/run-cypress.mjs run --with-server --demo --spec tests/e2e/specs/sca
 
 ## Tips
 
-- Scale barcode formats vary by manufacturer — consult your scale's manual for the exact format
+- Scale barcode formats vary by manufacturer - consult your scale's manual for the exact format
 - Use the prefix to distinguish scale barcodes from regular product barcodes
 - Test thoroughly with actual scale-printed barcodes before going live
-- Weight decimals are critical — incorrect decimal placement will result in wrong quantities
+- Weight decimals are critical - incorrect decimal placement will result in wrong quantities
 - This feature works offline when items are pre-cached

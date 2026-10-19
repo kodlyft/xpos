@@ -21,55 +21,13 @@ from xpos.api.utilities import can_settle_outstanding
 
 
 @frappe.whitelist()
-def get_available_credit(customer: str, company: str) -> list[dict]:
-	"""Return all available credit (outstanding returns + unallocated advances) for a customer."""
-	if not customer or not company:
-		return []
+def get_available_credit(
+	customer: str, company: str | None = None, pos_profile: str | None = None
+) -> list[dict]:
+	"""Spendable credit rows for a customer; same rules as xpos.api.customer_credit."""
+	from xpos.api.customer_credit import get_customer_credit
 
-	credits = []
-
-	unallocated = frappe.db.sql(
-		"""
-		SELECT
-			pe.name AS credit_origin,
-			(pe.paid_amount - pe.total_allocated_amount) AS total_credit,
-			'Payment Entry' AS type,
-			pe.posting_date
-		FROM `tabPayment Entry` pe
-		WHERE pe.party_type = 'Customer'
-			AND pe.party = %(customer)s
-			AND pe.company = %(company)s
-			AND pe.docstatus = 1
-			AND pe.payment_type = 'Receive'
-			AND (pe.paid_amount - pe.total_allocated_amount) > 0
-		ORDER BY pe.posting_date ASC
-		""",
-		{"customer": customer, "company": company},
-		as_dict=True,
-	)
-	credits.extend(unallocated)
-
-	credit_notes = frappe.db.sql(
-		"""
-		SELECT
-			si.name AS credit_origin,
-			ABS(si.outstanding_amount) AS total_credit,
-			'Sales Invoice' AS type,
-			si.posting_date
-		FROM `tabSales Invoice` si
-		WHERE si.customer = %(customer)s
-			AND si.company = %(company)s
-			AND si.docstatus = 1
-			AND si.is_return = 1
-			AND si.outstanding_amount < 0
-		ORDER BY si.posting_date ASC
-		""",
-		{"customer": customer, "company": company},
-		as_dict=True,
-	)
-	credits.extend(credit_notes)
-
-	return credits
+	return get_customer_credit(customer, pos_profile=pos_profile)["sources"]
 
 
 @frappe.whitelist()

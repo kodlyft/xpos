@@ -81,7 +81,6 @@ const POS_PERMISSION_GROUPS = [
 
 frappe.ui.form.on("POS Role", {
 	refresh(frm) {
-		// The matrix is the editing surface — hide the raw child grid.
 		frm.set_df_property("permissions", "hidden", 1);
 		render_permission_matrix(frm);
 	},

@@ -191,11 +191,12 @@ import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
 import { isElectron } from "@/services/electronBridge";
 import ErrorInspector from "@/components/errors/ErrorInspector.vue";
 import { unseenCount as errorUnseenCount } from "@/services/errorLog";
-import { get_full_url } from "@/utils";
+import { usePrintInvoice } from "@/composables/usePrintInvoice";
 import { getCustomer } from "./utils";
 
 const route = useRoute();
 const posStore = usePosStore();
+const { openInvoicePrintView } = usePrintInvoice();
 const cartStore = useCartStore();
 const customerStore = useCustomerStore();
 const itemStore = useItemStore();
@@ -311,12 +312,7 @@ function handleCashDeposit() {
 function handlePrintLast() {
 	const name = posStore.lastInvoiceName;
 	if (!name) return;
-	window.open(
-		get_full_url(
-			`/printview?doctype=${posStore.invoiceType}&name=${name}&format=${posStore.defaultPrintFormat}&no_letterhead=0&trigger_print=1`,
-		),
-		"_blank",
-	);
+	void openInvoicePrintView(name);
 }
 
 function handleShowShortcutsDialog() {

@@ -35,8 +35,8 @@ X POS supports configurable receipt printing with thermal printer compatibility,
 
 ### Built-in Print Formats
 X POS ships with:
-- **XPOS Thermal Receipt** — Optimized for 80mm thermal printers, compact layout
-- **XPOS Item Barcode Label** — Barcode labels for items
+- **XPOS Thermal Receipt** - Optimized for 80mm thermal printers, compact layout
+- **XPOS Item Barcode Label** - Barcode labels for items
 
 ### Custom Print Formats
 - Create custom Jinja or HTML print formats in ERPNext
@@ -67,8 +67,8 @@ X POS provides Jinja template helpers for generating barcodes in print formats:
 ### `xpos_barcode(data, barcode_type)`
 - Generates an SVG barcode element
 - Parameters:
-  - `data` — The string to encode (e.g., invoice number, item code)
-  - `barcode_type` — Barcode format (e.g., "Code128", "EAN13")
+  - `data` - The string to encode (e.g., invoice number, item code)
+  - `barcode_type` - Barcode format (e.g., "Code128", "EAN13")
 - Returns: SVG markup for embedding in print templates
 
 ### `xpos_barcode_uri(data, barcode_type)`
@@ -86,7 +86,7 @@ X POS provides Jinja template helpers for generating barcodes in print formats:
 
 ### `xpos_qrcode(data)`
 - Generates an SVG QR code element
-- Parameter: `data` — The string to encode (e.g., invoice URL, payment link)
+- Parameter: `data` - The string to encode (e.g., invoice URL, payment link)
 - Returns: SVG markup
 
 ### `xpos_qrcode_uri(data)`
@@ -161,5 +161,5 @@ When designing print formats, the following data is available:
 ## Invoice Type Support
 
 X POS supports printing for both:
-- **Sales Invoice** — Standard invoice type
-- **POS Invoice** — POS-specific invoice type (when configured in your profile)
+- **Sales Invoice** - Standard invoice type
+- **POS Invoice** - POS-specific invoice type (when configured in your profile)

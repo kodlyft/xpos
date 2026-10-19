@@ -7,6 +7,7 @@ from frappe import _
 from frappe.model.mapper import get_mapped_doc
 from frappe.utils import add_days, flt
 
+from xpos.api.profile_rules import validate_delivery_charge
 from xpos.api.tender import validate_tender_currency_legs
 from xpos.x_pos.api.payments import get_pos_credit_redeem_remark
 from xpos.x_pos.api.utilities import get_company_domain
@@ -25,6 +26,7 @@ from xpos.x_pos.integrations.fbr import fiscalize_invoice
 def validate(doc, method):
 	validate_shift(doc)
 	set_patient(doc)
+	validate_delivery_charge(doc)
 	auto_set_delivery_charges(doc)
 	calc_delivery_charges(doc)
 	apply_tax_inclusive(doc)
@@ -200,7 +202,10 @@ def auto_set_delivery_charges(doc):
 
 	if getattr(getattr(doc, "flags", None), "xpos_skip_auto_delivery_charges", False):
 		return
-	if not frappe.get_cached_value("POS Profile", doc.pos_profile, "auto_set_delivery_charges"):
+	use_delivery, auto_set = frappe.get_cached_value(
+		"POS Profile", doc.pos_profile, ["use_delivery_charges", "auto_set_delivery_charges"]
+	)
+	if not use_delivery or not auto_set:
 		return
 
 	delivery_charges = get_applicable_delivery_charges(

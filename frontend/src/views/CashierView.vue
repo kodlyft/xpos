@@ -5,7 +5,7 @@
 			<div class="flex items-center gap-2 min-w-0">
 				<Banknote class="w-5 h-5 text-primary shrink-0" />
 				<h1 class="font-semibold text-base sm:text-lg truncate">
-					{{ __("Cashier — Unsettled Invoices") }}
+					{{ __("Cashier - Unsettled Invoices") }}
 				</h1>
 				<Badge v-if="invoices.length" variant="secondary" class="shrink-0">
 					{{ invoices.length }}

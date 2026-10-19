@@ -22,8 +22,10 @@ def make_closing_shift_from_opening(opening_shift: str | dict):
 	`opening_shift` arrives as a dict on JSON requests and as a JSON string on
 	form-encoded ones, so both are accepted.
 	"""
+	frappe.has_permission("POS Closing Shift", "create", throw=True)
 	if isinstance(opening_shift, str):
 		opening_shift = json.loads(opening_shift)
+	frappe.has_permission("POS Opening Shift", "read", doc=opening_shift.get("name"), throw=True)
 	doctype = get_invoice_type()
 	submit_printed_invoices(opening_shift.get("name"), doctype)
 	closing_shift = frappe.new_doc("POS Closing Shift")
@@ -193,6 +195,7 @@ def make_closing_shift_from_opening(opening_shift: str | dict):
 
 @frappe.whitelist()
 def submit_closing_shift(closing_shift: dict):
+	frappe.has_permission("POS Closing Shift", "submit", throw=True)
 	closing_shift = json.loads(closing_shift)
 	closing_shift_doc = frappe.get_doc(closing_shift)
 	closing_shift_doc.flags.ignore_permissions = True

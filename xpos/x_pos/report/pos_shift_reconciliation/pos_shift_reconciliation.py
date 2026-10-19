@@ -13,6 +13,7 @@ from frappe import _
 from frappe.utils import flt
 
 from xpos.api.exchange import get_currency_precision
+from xpos.api.profile_rules import is_blind_closing
 from xpos.api.shifts import get_shift_payment_totals, resolve_cash_mode_of_payment
 from xpos.api.utilities import get_invoice_type
 
@@ -21,6 +22,7 @@ def execute(filters=None):
 	filters = frappe.parse_json(filters) if filters else {}
 	doctype = get_invoice_type()
 	invoices = _get_invoices(filters, doctype)
+	ensure_not_blind({inv["pos_profile"] for inv in invoices})
 	return (
 		get_columns(),
 		_get_items_sold(invoices, doctype),
@@ -48,8 +50,16 @@ def _get_invoices(filters, doctype):
 	return frappe.get_all(
 		doctype,
 		filters=conditions,
-		fields=["name", "currency", "grand_total", "net_total", "change_amount", "is_return"],
+		fields=["name", "currency", "grand_total", "net_total", "change_amount", "is_return", "pos_profile"],
 	)
+
+
+def ensure_not_blind(pos_profiles):
+	"""Per-mode totals reveal the expected drawer, so blind-closing profiles need desk access."""
+	if frappe.has_permission("POS Closing Shift", "read"):
+		return
+	if any(is_blind_closing(p) for p in pos_profiles):
+		frappe.throw(_("Shift totals are hidden for blind-closing POS Profiles."), frappe.PermissionError)
 
 
 def _get_items_sold(invoices, doctype):

@@ -9,12 +9,12 @@ X POS supports flexible payment processing with multiple payment methods, split 
 Clicking the **Pay** button opens a full-screen payment dialog where you complete the transaction.
 
 ### Dialog Layout
-- **Amount Due / Refund Amount** — Large, prominent display of the total amount to be paid (or refunded for returns)
-- **Tax Summary** — Subtotal, individual tax lines with inclusive indicators
-- **Payment Method Selector** — Buttons for each configured mode of payment
-- **Amount Input** — Editable field for the tendered amount
-- **Quick Amount Buttons** — Pre-calculated rounded amounts near the total
-- **On-Screen Numpad** — Touch-friendly number pad (hidden on mobile devices for space)
+- **Amount Due / Refund Amount** - Large, prominent display of the total amount to be paid (or refunded for returns)
+- **Tax Summary** - Subtotal, individual tax lines with inclusive indicators
+- **Payment Method Selector** - Buttons for each configured mode of payment
+- **Amount Input** - Editable field for the tendered amount
+- **Quick Amount Buttons** - Pre-calculated rounded amounts near the total
+- **On-Screen Numpad** - Touch-friendly number pad (hidden on mobile devices for space)
 
 ---
 
@@ -29,7 +29,7 @@ Payment modes are configured in the POS Profile and typically include:
 | Bank Transfer | Building | Direct bank transfers |
 | Mobile Money | Phone | Mobile money payments |
 | Check | Document | Payment by check |
-| Custom modes | — | Any other mode defined in ERPNext |
+| Custom modes | - | Any other mode defined in ERPNext |
 
 ### Selecting a Payment Method
 - Click the payment method button to select it
@@ -44,10 +44,10 @@ Payment modes are configured in the POS Profile and typically include:
 2. The **tendered amount** auto-fills with the grand total
 3. Adjust the amount if the customer pays a different amount
 4. **Quick amount buttons** offer convenient options:
-   - **Exact amount** — Matches the grand total exactly
-   - **Next 10** — Rounds up to the nearest 10
-   - **Next 50** — Rounds up to the nearest 50
-   - **Next 100** — Rounds up to the nearest 100
+   - **Exact amount** - Matches the grand total exactly
+   - **Next 10** - Rounds up to the nearest 10
+   - **Next 50** - Rounds up to the nearest 50
+   - **Next 100** - Rounds up to the nearest 100
 5. If the tendered amount exceeds the grand total, the **change amount** is automatically calculated and displayed
 
 ---
@@ -106,7 +106,7 @@ LBP but accepts US dollar notes at a rate the owner sets by hand each morning. T
 lets the change go back as a mix of both.
 
 **The invoice itself stays single-currency.** Only the payment legs are mixed. This is not the same
-feature as `allow_multi_currency`, which switches the whole invoice into another currency — see
+feature as `allow_multi_currency`, which switches the whole invoice into another currency - see
 [Multi-Currency](19-multi-currency.md) for the distinction.
 
 ### Setup
@@ -149,9 +149,9 @@ Invoice 5,892,300 LBP. Customer hands over a $100 note at 90,000.
 
 | Leg | Native | In LBP |
 |---|---|---|
-| Tender — Cash USD | $100.00 | 9,000,000 |
-| Change — Cash USD | $30.00 | 2,700,000 |
-| Change — Cash LBP | 407,700 | 407,700 |
+| Tender - Cash USD | $100.00 | 9,000,000 |
+| Change - Cash USD | $30.00 | 2,700,000 |
+| Change - Cash LBP | 407,700 | 407,700 |
 
 The drawer nets **+$70 and −407,700 LBP**, and `70 × 90,000 − 407,700` is 5,892,300 exactly.
 
@@ -171,7 +171,7 @@ loudly and has to be re-rung.
 
 ### At shift close
 
-The count sheet asks for each mode in its own currency — `$270` and `592,300 LBP` as separate
+The count sheet asks for each mode in its own currency - `$270` and `592,300 LBP` as separate
 lines, never one blended figure. Change is subtracted from the mode that actually gave it, not
 spread across every mode used on the invoice.
 
@@ -207,7 +207,7 @@ The Gift Card mode never appears as a plain payment button: it can only be used 
 
 - A small **write-off** field is available when `allow_write_off_change` is enabled
 - Use it to write off minor rounding differences
-- Example: Order total is $10.02, customer pays $10.00 — write off $0.02
+- Example: Order total is $10.02, customer pays $10.00 - write off $0.02
 - Written-off amounts appear as an amber badge in the cart summary
 
 ---
@@ -218,10 +218,12 @@ When `use_customer_credit` is enabled:
 
 1. Available customer credits are shown in the payment dialog
 2. Credits come from:
-   - **Unallocated Payment Entries** — Advance payments from the customer
-   - **Credit Notes** — Refunds or return credits
-3. Select credits to apply toward the current payment
+   - **Unallocated Payment Entries** - Advance payments from the customer
+   - **Credit Notes** - Refunds or return credits
+3. Enter how much to use from each source; the rest can be paid by any other method
 4. The applied credit reduces the amount due
+
+Credit needs a live connection (it is not offered offline or on the desktop app) and Sales Invoice mode. The server re-checks every amount when the sale is saved, so two tills cannot spend the same credit. See [POS Profile Settings: Implementation Status](pos-profile-settings-status.md#business-rules).
 
 ---
 
@@ -235,8 +237,8 @@ When `use_customer_credit` is enabled:
 - Stock validation: checks batch quantities and stock availability
 
 ### Submit Actions
-- **Save & Print** — Creates and submits the invoice, then opens print preview (keyboard: **Enter**)
-- **Save Only** — Creates and submits the invoice without printing (keyboard: **Shift+Enter**)
+- **Save & Print** - Creates and submits the invoice, then opens print preview (keyboard: **Enter**)
+- **Save Only** - Creates and submits the invoice without printing (keyboard: **Shift+Enter**)
 
 ### What Happens After Submit
 1. The invoice is created via the `create_invoice` API

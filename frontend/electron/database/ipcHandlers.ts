@@ -3,7 +3,7 @@
  * Registered in Electron main process, called from renderer via preload bridge.
  *
  * Each handler maps to a "db:*" IPC channel.
- * The renderer never touches MariaDB directly — all access goes through here.
+ * The renderer never touches MariaDB directly - all access goes through here.
  */
 
 import { ipcMain } from "electron";

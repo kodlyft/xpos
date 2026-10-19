@@ -49,3 +49,30 @@ def create_referral_code(company, customer, customer_offer, primary_offer=None, 
 	doc.campaign = campaign
 	doc.save(ignore_permissions=True)
 	return doc
+
+
+UNIQUE_CUSTOMER_COMPANY = "unique_referral_customer_company"
+
+
+def on_doctype_update():
+	add_customer_company_unique()
+
+
+def add_customer_company_unique() -> list:
+	"""One referral code per customer and company, enforced by the database.
+
+	Existing duplicates are left alone and returned: the index is only added
+	once an admin has resolved them, so migrate never fails on old data.
+	"""
+	duplicates = frappe.db.sql(
+		"""SELECT customer, company, COUNT(*) AS n FROM `tabReferral Code`
+		GROUP BY customer, company HAVING COUNT(*) > 1""",
+		as_dict=True,
+	)
+	if not duplicates:
+		frappe.db.add_unique("Referral Code", ["customer", "company"], UNIQUE_CUSTOMER_COMPANY)
+	return duplicates
+
+
+def has_customer_company_unique() -> bool:
+	return bool(frappe.db.has_index("tabReferral Code", UNIQUE_CUSTOMER_COMPANY))

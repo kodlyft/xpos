@@ -62,8 +62,8 @@ When auto-apply is enabled:
 ## Rate Resolution
 
 The system resolves the delivery rate in this order:
-1. **Per-profile rate** — If the POS Profile has an override rate, use it
-2. **Default rate** — If no profile override exists, use the default rate
+1. **Per-profile rate** - If the POS Profile has an override rate, use it
+2. **Default rate** - If no profile override exists, use the default rate
 3. Only active (non-disabled) delivery charges are shown
 
 ---

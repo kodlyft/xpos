@@ -114,9 +114,99 @@
 
 					<p v-if="inv.error" class="text-xs text-destructive">Error: {{ inv.error }}</p>
 
+					<div v-if="inv.status === 'needs_review' && inv.review" class="text-xs space-y-0.5">
+						<p class="font-medium">
+							{{
+								__("Server price total: {0}", [
+									money(inv.review.rounded_total || inv.review.grand_total),
+								])
+							}}
+						</p>
+						<p
+							v-for="change in inv.review.lines"
+							:key="change.index"
+							class="text-muted-foreground"
+						>
+							{{ change.item_code }}: {{ money(change.quoted_rate) }} &rarr;
+							{{ change.rate === null ? __("removed") : money(change.rate) }}
+						</p>
+						<p v-if="inv.review.offer_conflict" class="text-muted-foreground">
+							{{
+								__(
+									"A pricing rule sets the invoice discount, which replaces this sale's POS Offer discounts. It can only be posted at the new prices.",
+								)
+							}}
+						</p>
+					</div>
+
+					<div v-if="inv.status === 'fiscal_uncertain' && inv.fiscal" class="text-xs space-y-1.5">
+						<p class="text-muted-foreground">
+							{{
+								__(
+									"Look up sale {0} in FBR's records. If it is there, enter its fiscal number. If it is not, record that and it is sent to FBR again.",
+									[inv.fiscal.usin || inv.local_id || ""],
+								)
+							}}
+						</p>
+						<template v-if="canResolveFiscal">
+							<input
+								v-model="fiscalNumbers[inv.id!]"
+								class="w-full rounded-md border bg-background px-2 py-1 text-xs"
+								:placeholder="__('FBR fiscal number')"
+								:aria-label="__('FBR fiscal number')"
+							/>
+							<textarea
+								v-model="fiscalEvidence[inv.id!]"
+								rows="2"
+								class="w-full rounded-md border bg-background px-2 py-1 text-xs"
+								:placeholder="__('Where you checked and what you found')"
+								:aria-label="__('Where you checked and what you found')"
+							/>
+						</template>
+						<p v-else class="text-muted-foreground">
+							{{ __("A supervisor with Resolve FBR Check records the result.") }}
+						</p>
+					</div>
+
 					<div class="flex gap-2 pt-1">
+						<template v-if="inv.status === 'fiscal_uncertain' && inv.fiscal">
+							<template v-if="canResolveFiscal">
+								<Button
+									variant="default"
+									size="sm"
+									class="flex-1 text-xs"
+									:disabled="
+										!offlineStore.isOnline ||
+										!fiscalNumbers[inv.id!]?.trim() ||
+										!hasEvidence(inv.id)
+									"
+									@click="resolveFiscal(inv.id, true)"
+								>
+									{{ __("Recorded: save fiscal number") }}
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									class="flex-1 text-xs"
+									:disabled="!offlineStore.isOnline || !hasEvidence(inv.id)"
+									@click="resolveFiscal(inv.id, false)"
+								>
+									{{ __("Not in FBR records: send again") }}
+								</Button>
+							</template>
+							<Button
+								v-else
+								variant="outline"
+								size="sm"
+								class="flex-1 text-xs"
+								:disabled="!offlineStore.isOnline"
+								@click="inv.id && offlineStore.recheckFiscalSale(inv.id)"
+							>
+								{{ __("Check again") }}
+							</Button>
+						</template>
 						<Button
-							v-if="isDraft(inv)"
+							v-else-if="isDraft(inv)"
 							variant="default"
 							size="sm"
 							class="flex-1 gap-1 text-xs bg-amber-500 hover:bg-amber-600"
@@ -125,6 +215,27 @@
 							<ShoppingCart class="w-3.5 h-3.5" />
 							{{ __("Load to Cart") }}
 						</Button>
+						<template v-else-if="inv.status === 'needs_review'">
+							<Button
+								variant="default"
+								size="sm"
+								class="flex-1 text-xs"
+								:disabled="!offlineStore.isOnline || offlineStore.isSyncing"
+								@click="inv.id && offlineStore.resolveReview(inv.id, false)"
+							>
+								{{ __("Post at new prices") }}
+							</Button>
+							<Button
+								v-if="hasPermission('allow_change_price') && !inv.review?.offer_conflict"
+								variant="outline"
+								size="sm"
+								class="flex-1 text-xs"
+								:disabled="!offlineStore.isOnline || offlineStore.isSyncing"
+								@click="inv.id && offlineStore.resolveReview(inv.id, true)"
+							>
+								{{ __("Keep charged prices") }}
+							</Button>
+						</template>
 						<Button
 							v-else-if="inv.status === 'dead_letter'"
 							variant="outline"
@@ -148,7 +259,7 @@
 							{{ __("Retry") }}
 						</Button>
 						<Button
-							v-if="posStore.allowDeleteOfflineInvoice"
+							v-if="posStore.allowDeleteOfflineInvoice && inv.status !== 'fiscal_uncertain'"
 							variant="ghost"
 							size="sm"
 							class="text-destructive gap-1 text-xs"
@@ -169,12 +280,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { computed, onMounted, reactive } from "vue";
 import { useOfflineStore } from "@/stores/offlineStore";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
 import { useCartStore } from "@/stores/cartStore";
 import { showSuccess, showError } from "@/services/api";
+import { hasPermission } from "@/services/userRights";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -195,6 +307,20 @@ defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 
 const offlineStore = useOfflineStore();
+const fiscalNumbers = reactive<Record<number, string>>({});
+const fiscalEvidence = reactive<Record<number, string>>({});
+const canResolveFiscal = computed(() => hasPermission("resolve_fiscal_check"));
+
+function hasEvidence(id: number | undefined) {
+	return !!id && (fiscalEvidence[id]?.trim().length ?? 0) >= 10;
+}
+
+function resolveFiscal(id: number | undefined, recorded: boolean) {
+	if (!id || !hasEvidence(id)) return;
+	const number = recorded ? fiscalNumbers[id]?.trim() : null;
+	if (recorded && !number) return;
+	offlineStore.resolveFiscalCheck(id, number || null, fiscalEvidence[id].trim());
+}
 const posStore = usePosStore();
 const { money } = useMoney();
 const cartStore = useCartStore();
@@ -252,12 +378,20 @@ async function loadToCart(inv: (typeof offlineStore.pendingInvoices)[number]) {
 function statusVariant(status: string) {
 	if (status === "pending") return "secondary" as const;
 	if (status === "syncing") return "default" as const;
-	if (status === "failed" || status === "dead_letter") return "destructive" as const;
+	if (
+		status === "failed" ||
+		status === "dead_letter" ||
+		status === "needs_review" ||
+		status === "fiscal_uncertain"
+	)
+		return "destructive" as const;
 	return "secondary" as const;
 }
 
 function statusLabel(status: string): string {
 	if (status === "dead_letter") return __("Needs attention");
+	if (status === "needs_review") return __("Price review");
+	if (status === "fiscal_uncertain") return __("FBR check");
 	return status;
 }
 

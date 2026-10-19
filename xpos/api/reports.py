@@ -201,7 +201,7 @@ def _apply_company_defaults(filters: list) -> list:
 def get_report_meta(report: str) -> dict:
 	"""Return the JSON filter configuration for a report.
 
-	Columns are intentionally omitted — they arrive with the data from
+	Columns are intentionally omitted - they arrive with the data from
 	``frappe.desk.query_report.run`` so no report execution is needed here.
 	"""
 	registry = _filters()

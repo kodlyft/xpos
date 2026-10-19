@@ -1,0 +1,224 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-17 00:00:00",
+ "description": "One request for an FBR fiscal number, kept even when the sale it belongs to is rolled back. Written by XPOS only.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "usin",
+  "fbr_pos_id",
+  "attempt_no",
+  "channel",
+  "status",
+  "column_break_main",
+  "pos_profile",
+  "company",
+  "invoice_doctype",
+  "invoice",
+  "result_section",
+  "fbr_invoice_number",
+  "posted_on",
+  "content_hash",
+  "column_break_result",
+  "response",
+  "resolution_section",
+  "resolution",
+  "resolved_by",
+  "resolved_on",
+  "column_break_resolution",
+  "resolution_evidence",
+  "payload_section",
+  "payload"
+ ],
+ "fields": [
+  {
+   "description": "The sale id sent to FBR as USIN.",
+   "fieldname": "usin",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "USIN",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "fbr_pos_id",
+   "fieldtype": "Data",
+   "label": "FBR POS ID",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "attempt_no",
+   "fieldtype": "Int",
+   "label": "Attempt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "label": "Channel",
+   "options": "Cloud\nLocal Service\nUnknown",
+   "read_only": 1
+  },
+  {
+   "description": "Sent: no answer yet (treated as uncertain if it never gets one). Accepted: FBR issued a number. Uncertain: FBR may have it. Rejected: FBR refused it. Not Sent: the request never reached FBR.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Sent\nAccepted\nUncertain\nRejected\nNot Sent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "POS Profile",
+   "options": "POS Profile",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "invoice_doctype",
+   "fieldtype": "Data",
+   "label": "Invoice Type",
+   "read_only": 1
+  },
+  {
+   "description": "The invoice at the time of the request. It may not exist if the sale was rolled back.",
+   "fieldname": "invoice",
+   "fieldtype": "Data",
+   "label": "Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "result_section",
+   "fieldtype": "Section Break",
+   "label": "Result"
+  },
+  {
+   "fieldname": "fbr_invoice_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "FBR Invoice Number",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "posted_on",
+   "fieldtype": "Datetime",
+   "label": "Posted On",
+   "read_only": 1
+  },
+  {
+   "description": "Hash of what was sent, without the date and time. A retry may only reuse this result if it sends the same.",
+   "fieldname": "content_hash",
+   "fieldtype": "Data",
+   "label": "Content Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_result",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "response",
+   "fieldtype": "Small Text",
+   "label": "Response",
+   "read_only": 1
+  },
+  {
+   "fieldname": "resolution_section",
+   "fieldtype": "Section Break",
+   "label": "FBR Check"
+  },
+  {
+   "fieldname": "resolution",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Resolution",
+   "options": "\nRecorded\nNot Recorded",
+   "read_only": 1
+  },
+  {
+   "fieldname": "resolved_by",
+   "fieldtype": "Link",
+   "label": "Resolved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "resolved_on",
+   "fieldtype": "Datetime",
+   "label": "Resolved On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_resolution",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Where the resolver looked in FBR's records and what they found.",
+   "fieldname": "resolution_evidence",
+   "fieldtype": "Small Text",
+   "label": "Evidence",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "payload_section",
+   "fieldtype": "Section Break",
+   "label": "Request"
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "Code",
+   "label": "Payload",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "links": [],
+ "modified": "2026-10-17 00:00:00",
+ "modified_by": "Administrator",
+ "module": "X POS",
+ "name": "XPOS Fiscal Attempt",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "usin"
+}

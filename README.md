@@ -10,6 +10,9 @@ License: MIT · Frappe v16 · ERPNext v16
 
 </div>
 
+> [!IMPORTANT]
+> **Contributors: choose the right branch.** `develop` is where **XPOS v3** is being prepared (Pearl redesign, browser/PWA architecture changes, breaking changes). It is not a stable release. Fixes for the existing ERPNext v16 release go to `version-16-hotfix`, which is not published yet. Until it is, open an issue first. See [CONTRIBUTING.md](CONTRIBUTING.md#choosing-a-branch) before opening a pull request.
+
 ---
 
 X POS is a feature-rich, offline-first Point of Sale application built on Frappe and ERPNext. It delivers a fast, keyboard-driven, and fully offline-capable POS experience for retail, hospitality, and service businesses, deployable as a web app, PWA, or Electron desktop application.
@@ -145,9 +148,11 @@ X POS is available on Frappe Cloud. Add it as a marketplace app to your site.
 
 ```bash
 cd $PATH_TO_YOUR_BENCH
-bench get-app xpos
+bench get-app xpos --branch version-16
 bench --site your-site.com install-app xpos
 ```
+
+Releases are published from the `version-16` branch. The default `develop` branch is preparing XPOS v3 and is not intended for production sites.
 
 Then open your site and launch **X POS** from the app launcher.
 
@@ -180,16 +185,33 @@ Then open your site and launch **X POS** from the app launcher.
 
 We welcome contributions from the community! Whether it's bug reports, feature requests, documentation improvements, or code contributions every bit helps.
 
-Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull request.
+Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull request. It explains which branch to use:
+
+| Work | Branch from and target |
+|---|---|
+| Fixes for the existing ERPNext v16 release | `version-16-hotfix` (not published yet; open an issue first) |
+| XPOS v3 features and breaking changes | `develop` |
+| Security vulnerabilities | Private report, see [SECURITY.md](SECURITY.md) |
 
 ### Quick Start for Contributors
 
 ```bash
 cd $PATH_TO_YOUR_BENCH
-bench get-app xpos
+bench get-app https://github.com/kodlyft/xpos.git --branch develop
 bench --site your-site.com install-app xpos
 cd apps/xpos
 pre-commit install
+```
+
+This sets up `develop` for XPOS v3 work. For v16 maintenance fixes, follow the branch steps in [CONTRIBUTING.md](CONTRIBUTING.md#getting-started).
+
+### Translations
+
+```
+bench generate-pot-file --app <app> - extracted each app's own translatable strings into locale/main.pot.
+bench migrate-csv-to-po --app <app> --locale ar - merged the CSV translations into locale/ar.po.
+bench compile-po-to-mo --app <app> --locale ar --force
+bench update-csv-from-po <app> --locale ar
 ```
 
 ### Code Quality

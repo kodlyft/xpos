@@ -121,7 +121,7 @@ export async function initDatabase(config?: Partial<DbConfig>): Promise<void> {
 	currentConfig = { ...persisted, ...(config || {}) };
 
 	log.info(
-		`DB init — host: ${currentConfig.host}, port: ${currentConfig.port}, user: ${currentConfig.user}, db: ${currentConfig.database}`,
+		`DB init - host: ${currentConfig.host}, port: ${currentConfig.port}, user: ${currentConfig.user}, db: ${currentConfig.database}`,
 	);
 
 	saveDbConfig(currentConfig);
@@ -233,6 +233,25 @@ async function runMigrations(): Promise<void> {
 		log.warn("Migration for items.local_item_name failed", err);
 	}
 
+	const customerMigrations: [string, string][] = [
+		["discount", "DECIMAL(10,4) NOT NULL DEFAULT 0"],
+		["default_price_list", "VARCHAR(255) DEFAULT NULL"],
+	];
+	for (const [col, typedef] of customerMigrations) {
+		try {
+			const [existing] = await db.execute<RowDataPacket[]>(
+				"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = ?",
+				[col],
+			);
+			if ((existing as RowDataPacket[]).length === 0) {
+				await db.execute(`ALTER TABLE \`customers\` ADD COLUMN \`${col}\` ${typedef}`);
+				log.info(`Migration: added customers.${col}`);
+			}
+		} catch (err) {
+			log.warn(`Migration for customers.${col} failed`, err);
+		}
+	}
+
 	const posProfileMigrations: [string, string][] = [
 		["allow_rate_change", "TINYINT(1) NOT NULL DEFAULT 0"],
 		["allow_change_posting_date", "TINYINT(1) NOT NULL DEFAULT 0"],
@@ -243,6 +262,13 @@ async function runMigrations(): Promise<void> {
 		["apply_customer_discount", "TINYINT(1) NOT NULL DEFAULT 0"],
 		["allow_print_draft_invoices", "TINYINT(1) NOT NULL DEFAULT 0"],
 		["use_offline_mode", "TINYINT(1) NOT NULL DEFAULT 0"],
+		["force_price_from_customer_price_list", "TINYINT(1) NOT NULL DEFAULT 0"],
+		["allow_zero_rated_items", "TINYINT(1) NOT NULL DEFAULT 0"],
+		["use_delivery_charges", "TINYINT(1) NOT NULL DEFAULT 0"],
+		["auto_set_delivery_charges", "TINYINT(1) NOT NULL DEFAULT 0"],
+		["max_discount_percentage_allowed", "DECIMAL(10,4) NOT NULL DEFAULT 0"],
+		["hide_expected_amount", "TINYINT(1) NOT NULL DEFAULT 0"],
+		["use_customer_credit", "TINYINT(1) NOT NULL DEFAULT 0"],
 	];
 	for (const [col, typedef] of posProfileMigrations) {
 		try {
@@ -264,6 +290,7 @@ async function runMigrations(): Promise<void> {
 		["close_shift", "TINYINT(1) DEFAULT 0"],
 		["allow_reprint_invoice", "TINYINT(1) DEFAULT 0"],
 		["shift_report", "TINYINT(1) DEFAULT 0"],
+		["view_expected_amount", "TINYINT(1) DEFAULT 0"],
 		["allow_cancel_invoice", "TINYINT(1) DEFAULT 0"],
 		["unsettled_invoices", "TINYINT(1) DEFAULT 0"],
 		["apply_additional_discount", "TINYINT(1) DEFAULT 0"],

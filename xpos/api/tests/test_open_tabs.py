@@ -139,6 +139,15 @@ class TestStaleDraftGuard(unittest.TestCase):
 class TestSaveDraftInvoiceConcurrency(unittest.TestCase):
 	"""``save_draft_invoice`` guards the update and re-homes the tab to the saver."""
 
+	def setUp(self):
+		# Profile access is covered by test_profile_settings; here it resolves through the mocked frappe.
+		patcher = patch(
+			"xpos.api.invoices.resolve_pos_profile",
+			side_effect=lambda name: invoices.frappe.get_cached_doc("POS Profile", name),
+		)
+		patcher.start()
+		self.addCleanup(patcher.stop)
+
 	def _pos_profile(self):
 		pos = MagicMock()
 		pos.name = PROFILE

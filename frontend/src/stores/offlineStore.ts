@@ -14,8 +14,13 @@ import {
 	adjustCachedStock,
 } from "@/services/dbBridge";
 import type { PendingInvoice } from "@/services/idbService";
-import type { InvoiceData, ReceiptSnapshot } from "@/types/pos.types";
+import type { InvoiceData, InvoiceItem, ReceiptSnapshot, RepriceResponse } from "@/types/pos.types";
 import __ from "@/lib/translate";
+import {
+	completeLocalFiscalization,
+	FiscalUncertainError,
+	type FiscalPending,
+} from "@/services/fbrLocalService";
 
 export type OfflineInvoice = PendingInvoice;
 
@@ -37,6 +42,164 @@ export const useOfflineStore = defineStore("offline", () => {
 		const msg = error instanceof Error ? error.message : String(error ?? "");
 		return /insufficient stock|not enough stock/i.test(msg);
 	}
+	/**
+	 * Send one queued sale. A sale the server repriced is held for review (nothing was
+	 * posted); any answer without a finished invoice keeps the entry so it is never lost.
+	 */
+	async function pushPending(
+		invoice: OfflineInvoice,
+	): Promise<"synced" | "needs_review" | "fiscal_uncertain"> {
+		let result = await call<{ name?: string; status?: string; message?: string }>(
+			"xpos.api.invoices.create_invoice",
+			{ data: JSON.stringify(invoice.data), local_id: invoice.local_id },
+		);
+		result = await finishFiscalization(invoice, result);
+		if (result?.status === "fbr_uncertain") return "fiscal_uncertain";
+		if (result?.status === "reprice_required") {
+			invoice.status = "needs_review";
+			invoice.review = result as unknown as RepriceResponse;
+			invoice.error = result.message;
+			if (invoice.id)
+				await updatePendingInvoice(invoice.id, {
+					status: "needs_review",
+					review: invoice.review,
+					error: invoice.error,
+				});
+			return "needs_review";
+		}
+		if (!result?.name) {
+			throw new Error(__("The server did not confirm this sale. It stays queued."));
+		}
+		if (invoice.id) await deletePendingInvoice(invoice.id);
+		return "synced";
+	}
+
+	/**
+	 * A sale the server saved as a draft waiting for FBR: get the number from the local service,
+	 * or, when FBR may already have it, hold the entry for a check (status ``fiscal_uncertain``).
+	 */
+	async function finishFiscalization<T extends { name?: string; status?: string; message?: string }>(
+		invoice: OfflineInvoice,
+		result: T,
+	): Promise<T> {
+		let message = result?.message;
+		if (result?.status === "fbr_local_required") {
+			try {
+				return await completeLocalFiscalization<T>(result as unknown as FiscalPending);
+			} catch (error) {
+				if (!(error instanceof FiscalUncertainError)) throw error;
+				message = error.message;
+			}
+		} else if (result?.status !== "fbr_uncertain") {
+			return result;
+		}
+		const pending = result as unknown as FiscalPending;
+		invoice.status = "fiscal_uncertain";
+		invoice.fiscal = {
+			name: pending.name,
+			doctype: pending.doctype,
+			usin: pending.usin || invoice.local_id,
+			pos_profile: pending.pos_profile || (invoice.data as { pos_profile?: string })?.pos_profile,
+		};
+		invoice.error = message;
+		if (invoice.id)
+			await updatePendingInvoice(invoice.id, {
+				status: "fiscal_uncertain",
+				fiscal: invoice.fiscal,
+				error: message,
+			});
+		return { ...result, status: "fbr_uncertain", message };
+	}
+
+	/**
+	 * Record what FBR's records show for a sale whose FBR outcome was unknown (the found
+	 * number, or that it is not there), then send the same sale again to finish it. The
+	 * server reuses a recorded number and sends to FBR again only after "not recorded".
+	 */
+	async function resolveFiscalCheck(
+		id: number,
+		fiscalNumber: string | null,
+		evidence: string,
+	): Promise<boolean> {
+		const invoice = pendingInvoices.value.find((i) => i.id === id);
+		if (!invoice?.fiscal) return false;
+		try {
+			await call("xpos.api.invoices.resolve_fiscal_check", {
+				usin: invoice.fiscal.usin || invoice.local_id,
+				pos_profile:
+					invoice.fiscal.pos_profile || (invoice.data as { pos_profile?: string })?.pos_profile,
+				resolution: fiscalNumber ? "Recorded" : "Not Recorded",
+				fbr_invoice_number: fiscalNumber || undefined,
+				evidence,
+			});
+		} catch (error: unknown) {
+			showError(error instanceof Error ? error.message : String(error));
+			return false;
+		}
+		return recheckFiscalSale(id);
+	}
+
+	/** Send a sale held for an FBR check again; it finishes only once the check was recorded. */
+	async function recheckFiscalSale(id: number): Promise<boolean> {
+		const invoice = pendingInvoices.value.find((i) => i.id === id);
+		if (!invoice?.fiscal) return false;
+		try {
+			const outcome = await pushPending(invoice);
+			if (outcome !== "synced") {
+				showError(invoice.error || __("FBR has still not confirmed this sale."));
+				return false;
+			}
+			showSuccess(
+				__("Sale {0} fiscalized and saved.", [invoice.fiscal.usin || invoice.local_id || ""]),
+			);
+			return true;
+		} catch (error: unknown) {
+			showError(error instanceof Error ? error.message : String(error));
+			return false;
+		} finally {
+			await refreshPendingCount();
+			await loadPendingInvoices();
+		}
+	}
+
+	/**
+	 * Settle a sale held for review: post it at the server's prices, or (with price-change
+	 * rights) at the prices the customer was actually charged.
+	 */
+	async function resolveReview(id: number, keepCaptured: boolean): Promise<boolean> {
+		const invoice = pendingInvoices.value.find((i) => i.id === id);
+		// ERPNext re-applies its own invoice discount, so charged prices cannot be kept here.
+		if (!invoice?.review || (keepCaptured && invoice.review.offer_conflict)) return false;
+		const data = invoice.data as InvoiceData;
+		if (!keepCaptured) {
+			for (const change of invoice.review.lines) {
+				const line: InvoiceItem | undefined =
+					(change.row_id && data.items.find((i) => i.row_id === change.row_id)) ||
+					data.items[change.index];
+				if (!line || line.item_code !== change.item_code || change.rate === null) continue;
+				line.rate = change.price_list_rate ?? change.rate;
+				line.price_list_rate = line.rate;
+				line.discount_percentage = change.discount_percentage || 0;
+				line.discount_amount = line.discount_percentage ? 0 : change.discount_amount || 0;
+			}
+			if (invoice.review.discount_changed) {
+				data.additional_discount_percentage = invoice.review.additional_discount_percentage || 0;
+				data.discount_amount = data.additional_discount_percentage
+					? 0
+					: invoice.review.discount_amount || 0;
+			}
+		}
+		await updatePendingInvoice(id, {
+			data,
+			status: "pending",
+			review: undefined,
+			error: undefined,
+			retry_count: 0,
+		});
+		await loadPendingInvoices();
+		return retrySingle(id);
+	}
+
 	const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 	let syncIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -212,10 +375,12 @@ export const useOfflineStore = defineStore("offline", () => {
 	async function loadPendingInvoices() {
 		try {
 			pendingInvoices.value = (await getAllPendingInvoices()) as OfflineInvoice[];
-			pendingCount.value = pendingInvoices.value.filter((inv) => inv.status !== "dead_letter").length;
-			deadLetterCount.value = pendingInvoices.value.filter(
-				(inv) => inv.status === "dead_letter",
-			).length;
+			const needsAttention = (inv: OfflineInvoice) =>
+				inv.status === "dead_letter" ||
+				inv.status === "needs_review" ||
+				inv.status === "fiscal_uncertain";
+			pendingCount.value = pendingInvoices.value.filter((inv) => !needsAttention(inv)).length;
+			deadLetterCount.value = pendingInvoices.value.filter(needsAttention).length;
 		} catch {
 			pendingInvoices.value = [];
 			pendingCount.value = 0;
@@ -247,18 +412,30 @@ export const useOfflineStore = defineStore("offline", () => {
 				if ((invoice.data as Record<string, unknown>)?.is_draft) {
 					continue;
 				}
-				if (invoice.status === "dead_letter") {
+				if (
+					invoice.status === "dead_letter" ||
+					invoice.status === "needs_review" ||
+					invoice.status === "fiscal_uncertain"
+				) {
 					continue;
 				}
 				try {
 					invoice.status = "syncing";
 					if (invoice.id) await updatePendingInvoice(invoice.id, { status: "syncing" });
 
-					await call<{ name: string }>("xpos.api.invoices.create_invoice", {
-						data: JSON.stringify(invoice.data),
-						local_id: invoice.local_id,
-					});
-					if (invoice.id) await deletePendingInvoice(invoice.id);
+					const outcome = await pushPending(invoice);
+					if (outcome !== "synced") {
+						syncErrors.value.push(
+							outcome === "needs_review"
+								? __("Invoice for {0}: prices changed, held for review", [
+										invoice.customer_name || __("Unknown"),
+									])
+								: __("Invoice for {0}: FBR did not confirm it, check needed", [
+										invoice.customer_name || __("Unknown"),
+									]),
+						);
+						continue;
+					}
 					synced++;
 				} catch (error: unknown) {
 					invoice.error = error instanceof Error ? error.message : String(error);
@@ -342,14 +519,19 @@ export const useOfflineStore = defineStore("offline", () => {
 			invoice.status = "syncing";
 			await updatePendingInvoice(invoice.id!, { status: "syncing" });
 
-			await call<{ name: string }>("xpos.api.invoices.create_invoice", {
-				data: JSON.stringify(invoice.data),
-				local_id: invoice.local_id,
-			});
-
-			await deletePendingInvoice(id);
+			const outcome = await pushPending(invoice);
 			await refreshPendingCount();
 			await loadPendingInvoices();
+			if (outcome === "needs_review") {
+				showError(__("Prices changed since this sale was rung up. Review it in the pending list."));
+				return false;
+			}
+			if (outcome === "fiscal_uncertain") {
+				showError(
+					invoice.error || __("FBR did not confirm this sale. Check it in the pending list."),
+				);
+				return false;
+			}
 			showSuccess(__("Invoice synced successfully"));
 			return true;
 		} catch (error: unknown) {
@@ -396,10 +578,11 @@ export const useOfflineStore = defineStore("offline", () => {
 
 		const invoices = await getAllPendingInvoices();
 		for (const inv of invoices) {
+			if ((inv as any).status === "fiscal_uncertain") continue;
 			if ((inv as any).id) await deletePendingInvoice((inv as any).id);
 		}
 		await refreshPendingCount();
-		pendingInvoices.value = [];
+		await loadPendingInvoices();
 	}
 
 	function startPeriodicSync(): void {
@@ -467,6 +650,9 @@ export const useOfflineStore = defineStore("offline", () => {
 		loadPendingInvoices,
 		syncPendingInvoices,
 		retrySingle,
+		resolveReview,
+		resolveFiscalCheck,
+		recheckFiscalSale,
 		consumePending,
 		deletePending,
 		clearAll,

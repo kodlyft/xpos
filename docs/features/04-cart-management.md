@@ -23,20 +23,20 @@ The cart is the central workspace of X POS where items are collected, quantities
 - The customer selection is locked during return mode
 
 ### Special Item Types
-- **Serialized items** — Each serial number creates a separate cart line item
-- **Batch items** — The batch selection dialog opens before adding
-- **Bundle items** — Product bundle components are expanded and tracked automatically
-- **Variant items** — The variant picker opens for template items
+- **Serialized items** - Each serial number creates a separate cart line item
+- **Batch items** - The batch selection dialog opens before adding
+- **Bundle items** - Product bundle components are expanded and tracked automatically
+- **Variant items** - The variant picker opens for template items
 
 ---
 
 ## Cart Item Controls
 
 ### Quantity Adjustment
-- **+/- Buttons** — Click the plus or minus buttons on each line item to adjust quantity
-- **Inline Quantity Edit** — Click the quantity value to type a custom quantity directly
-- **Arrow Keys** — Use Arrow Up/Down while focused on a quantity input to navigate between cart items
-- **Minimum Quantity** — Quantity cannot go below 1 (use Delete to remove items)
+- **+/- Buttons** - Click the plus or minus buttons on each line item to adjust quantity
+- **Inline Quantity Edit** - Click the quantity value to type a custom quantity directly
+- **Arrow Keys** - Use Arrow Up/Down while focused on a quantity input to navigate between cart items
+- **Minimum Quantity** - Quantity cannot go below 1 (use Delete to remove items)
 
 ### Rate Editing
 - If `allow_rate_change` is enabled in the POS Profile, the rate/price field is editable
@@ -52,14 +52,14 @@ The cart is the central workspace of X POS where items are collected, quantities
 
 ### Item-Level Discount
 - Toggle between **percentage (%)** and **amount** discount per line item
-- Enter the discount value — the line total updates in real time
+- Enter the discount value - the line total updates in real time
 - The POS Profile can set a `max_discount_percentage_allowed` to cap discounts
 - Cashiers choose the discount mode directly in the cart when editing a line item
 
 ### Delete Item
 - Hover over a cart item to reveal the **Delete** (trash) button
 - Click to remove the item from the cart
-- No confirmation prompt — removal is instant
+- No confirmation prompt - removal is instant
 
 ---
 
@@ -75,15 +75,15 @@ The cart summary at the bottom of the cart area displays a real-time breakdown o
 
 ### Tax Lines
 Each tax from the POS Profile's Sales Taxes and Charges template is shown as a separate row:
-- **Description** — Tax account name or label
-- **Rate** — The tax rate percentage
-- **Amount** — Calculated tax amount
-- **Included indicator** — Shows if the tax is already included in the price (tax-inclusive pricing)
+- **Description** - Tax account name or label
+- **Rate** - The tax rate percentage
+- **Amount** - Calculated tax amount
+- **Included indicator** - Shows if the tax is already included in the price (tax-inclusive pricing)
 - Supports:
-  - **On Net Total** — Percentage tax applied to item net amounts
-  - **Actual** — Fixed tax amounts
-  - **Per-item tax templates** — Items with their own tax template override the global rate
-  - **Tax-inclusive pricing** — When `tax_inclusive` is enabled, taxes are back-calculated from prices
+  - **On Net Total** - Percentage tax applied to item net amounts
+  - **Actual** - Fixed tax amounts
+  - **Per-item tax templates** - Items with their own tax template override the global rate
+  - **Tax-inclusive pricing** - When `tax_inclusive` is enabled, taxes are back-calculated from prices
 
 ### Additional Discount
 - Available when `allow_user_to_edit_additional_discount` is enabled

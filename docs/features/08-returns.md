@@ -20,37 +20,37 @@ There are two ways to initiate a return:
 
 ---
 
-## Return Dialog — Step 1: Search Invoices
+## Return Dialog - Step 1: Search Invoices
 
 ### Search Fields
 You can search for the original invoice by multiple criteria:
-- **Invoice number** — Direct invoice name/number lookup
-- **Customer name** — Search by who made the purchase
-- **Customer ID** — Search by customer ID
-- **Mobile number** — Search by the customer's phone number
-- **Date range** — Filter by from/to dates
-- **Amount range** — Filter by minimum/maximum invoice amount
+- **Invoice number** - Direct invoice name/number lookup
+- **Customer name** - Search by who made the purchase
+- **Customer ID** - Search by customer ID
+- **Mobile number** - Search by the customer's phone number
+- **Date range** - Filter by from/to dates
+- **Amount range** - Filter by minimum/maximum invoice amount
 
 ### Search Results
 - Results show invoice name, customer, date, and grand total
 - Paginated results with "Load More" option
 - Only submitted, non-cancelled invoices are shown
-- Return validity is checked — expired invoices are flagged
+- Return validity is checked - expired invoices are flagged
 
 ---
 
-## Return Dialog — Step 2: Select Return Items
+## Return Dialog - Step 2: Select Return Items
 
 After selecting an invoice:
 
 ### Item Table
 For each item on the original invoice:
-- **Item name** — The product being returned
-- **Original qty** — Quantity originally sold
-- **Already returned qty** — Quantity from previous returns against this invoice
-- **Remaining returnable qty** — Maximum quantity that can still be returned
-- **Return qty** — Adjustable input (capped at remaining returnable qty)
-- **Calculated refund amount** — Return qty × original rate
+- **Item name** - The product being returned
+- **Original qty** - Quantity originally sold
+- **Already returned qty** - Quantity from previous returns against this invoice
+- **Remaining returnable qty** - Maximum quantity that can still be returned
+- **Return qty** - Adjustable input (capped at remaining returnable qty)
+- **Calculated refund amount** - Return qty × original rate
 
 ### Selecting Items to Return
 1. Enter the **return quantity** for each item (cannot exceed remaining returnable qty)
@@ -71,8 +71,8 @@ Once a return is initiated, the POS enters **return mode**:
 - Grand total is negative (refund)
 
 ### Locked State
-- **Customer is locked** — Cannot change the customer during a return (matches the original invoice)
-- **Return against** reference is set — Links the return to the original invoice
+- **Customer is locked** - Cannot change the customer during a return (matches the original invoice)
+- **Return against** reference is set - Links the return to the original invoice
 - All items have **negative quantities** by default
 
 ### Payment in Return Mode
@@ -90,10 +90,10 @@ Once a return is initiated, the POS enters **return mode**:
 X POS enforces several validations before processing a return:
 
 ### Pre-Return Checks
-- **Stock availability** — Ensures items can be received back into stock
-- **Quantity limits** — Return qty cannot exceed the original qty minus already-returned qty
-- **Customer match** — Return customer must match the original invoice customer
-- **Item existence** — All return items must exist on the original invoice
+- **Stock availability** - Ensures items can be received back into stock
+- **Quantity limits** - Return qty cannot exceed the original qty minus already-returned qty
+- **Customer match** - Return customer must match the original invoice customer
+- **Item existence** - All return items must exist on the original invoice
 
 ### Return Validity
 When `enable_return_validity` is enabled on the POS Profile:

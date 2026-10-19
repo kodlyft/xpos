@@ -23,12 +23,12 @@ A Product Bundle (also known as a "kit" or "combo") is a parent item that repres
 The `get_bundle_components` API:
 - Takes a list of bundle item codes
 - Returns the component items for each bundle with:
-  - **Item code** — The component item
-  - **Quantity** — Qty of the component per bundle
-  - **UOM** — Unit of measure
-  - **Is batch item** — Whether the component uses batch tracking
-  - **Is serial item** — Whether the component uses serial numbers
-  - **Is stock item** — Whether the component is a stock item
+  - **Item code** - The component item
+  - **Quantity** - Qty of the component per bundle
+  - **UOM** - Unit of measure
+  - **Is batch item** - Whether the component uses batch tracking
+  - **Is serial item** - Whether the component uses serial numbers
+  - **Is stock item** - Whether the component is a stock item
 
 ### Example
 A "Breakfast Combo" bundle might contain:
@@ -69,7 +69,7 @@ When the cashier adds "Breakfast Combo" to the cart, X POS knows it needs 1 Coff
 ### Setting Up Product Bundles
 1. In ERPNext, navigate to **Product Bundle** doctype
 2. Create a new Product Bundle
-3. Set the **Parent Item** — the bundle item customers see
+3. Set the **Parent Item** - the bundle item customers see
 4. Add **Component Items** with quantities
 5. Save and use the parent item in your POS
 
@@ -85,5 +85,5 @@ When the cashier adds "Breakfast Combo" to the cart, X POS knows it needs 1 Coff
 - Product bundles are great for combo deals, kits, and gift sets
 - Combine with POS Offers for "buy this bundle, get a discount" promotions
 - Use different bundles for different meal deals or seasonal combos
-- Monitor component stock levels — running out of any component affects the bundle's availability
+- Monitor component stock levels - running out of any component affects the bundle's availability
 - Bundle pricing can be set independently of component prices (allowing bundle discounts)

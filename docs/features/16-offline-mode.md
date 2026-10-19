@@ -96,6 +96,7 @@ The app stores offline data in your browser with dedicated storage for:
 ### Invoice Creation
 - Full invoices are created and validated locally
 - Saved to the `pendingInvoices` queue in IndexedDB
+- Lines whose customer price is not cached are marked *needs connection* (not *no price configured*); the cart is kept and the lines are re-priced as soon as the connection returns
 - Includes all data: items, customer, payments, discounts, taxes, offers
 - **Exception:** sales that sell or spend a [gift card](29-gift-cards.md) are never saved offline. They need a live connection, and the server refuses any that arrive late through the sync queue
 
@@ -124,15 +125,19 @@ The app stores offline data in your browser with dedicated storage for:
 1. Pending invoices are retrieved from IndexedDB
 2. Status changes to "syncing"
 3. Each invoice is submitted to the server via `create_invoice` API
-4. On success: invoice is removed from the queue
-5. On failure: status changes to "failed", error details are stored
-6. Retry logic: up to **3 retries** per invoice
+4. On success (the server returns a finished invoice): invoice is removed from the queue
+5. If the server's current prices differ from the prices charged offline, nothing is posted and the entry becomes **Price review**. In the Offline Pending panel the cashier posts it at the new prices, or keeps the charged prices (needs *Allow Change Price*); both resubmit with the same sale id
+6. A sale that needs the local FBR service keeps its server draft and sale id. The queue asks the local service for the number and finalizes the draft; a number already issued is reused, never requested twice. If FBR or the local service may have recorded the sale without answering, the entry becomes **FBR check**: it is never retried on its own. A user with **Resolve FBR Check** looks the sale id up in FBR's records and records what they found: the fiscal number shown there, or that it is not there. The queue then sends the same sale again; the server reuses the recorded number, or sends it to FBR once more only after "not there". A cashier without that permission can only press **Check again** after a supervisor records the check
+7. On failure: status changes to "failed", error details are stored
+8. Retry logic: up to **3 retries** per invoice
 
 ### Status Tracking
 Pending invoices progress through states:
-- **pending** — Awaiting sync
-- **syncing** — Currently being submitted
-- **failed** — Submission failed (with error details)
+- **pending** - Awaiting sync
+- **syncing** - Currently being submitted
+- **failed** - Submission failed (with error details)
+- **needs_review** - Held for price review (nothi\ng was posted)
+- **fiscal_uncertain** - FBR check: FBR may hold the sale. The server keeps the attempt in its fiscal ledger, and a draft too unless the sale spends customer credit
 
 ---
 
@@ -151,18 +156,18 @@ A dedicated dialog for managing queued offline data.
   - Status badge (pending/syncing/failed)
   - Item count
   - Payment methods used
-- **Sync All** button — Attempts to sync all pending invoices immediately
-- **Clear All** button — Removes all pending items when `Allow Delete Offline Invoice` is enabled
+- **Sync All** button - Attempts to sync all pending invoices immediately
+- **Clear All** button - Removes all pending items when `Allow Delete Offline Invoice` is enabled
 - Per-invoice actions:
-  - **Retry** — Manually retry a failed invoice
-  - **Delete** — Remove a specific pending invoice when `Allow Delete Offline Invoice` is enabled
-  - **Load to Cart** — Reopens an offline draft in the cart for editing/resubmission
+  - **Retry** - Manually retry a failed invoice
+  - **Delete** - Remove a specific pending invoice when `Allow Delete Offline Invoice` is enabled
+  - **Load to Cart** - Reopens an offline draft in the cart for editing/resubmission
 
 ### Status Indicators
-- **"Online"** — Connected and synced
-- **"Offline"** — No internet connection
-- **"Syncing..."** — Sync in progress
-- **"{N} pending"** — Number of invoices awaiting sync
+- **"Online"** - Connected and synced
+- **"Offline"** - No internet connection
+- **"Syncing..."** - Sync in progress
+- **"{N} pending"** - Number of invoices awaiting sync
 
 ---
 
@@ -195,8 +200,8 @@ When connectivity returns:
 ## Tips
 
 - Enable offline mode for stores with unreliable internet connectivity
-- Pre-caching occurs at shift open — expect a brief loading period for large catalogs
+- Pre-caching occurs at shift open - expect a brief loading period for large catalogs
 - Monitor the pending panel during the day to ensure invoices are syncing properly
-- Failed invoices can be retried manually — check error details for troubleshooting
+- Failed invoices can be retried manually - check error details for troubleshooting
 - Stock levels in offline mode are approximate; consider this for stock-critical businesses
 - The 5-minute sync interval keeps data reasonably fresh without excessive bandwidth use

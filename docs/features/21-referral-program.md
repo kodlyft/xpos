@@ -7,9 +7,9 @@ X POS includes a referral system where existing customers can refer new customer
 ## Overview
 
 The referral system works through:
-- **Referral Codes** — Unique codes assigned to customers
-- **POS Offers** — Rewards for both the referrer and the referred customer
-- **POS Coupons** — Auto-generated coupons linked to referral codes
+- **Referral Codes** - Unique codes assigned to customers
+- **POS Offers** - Rewards for both the referrer and the referred customer
+- **POS Coupons** - Auto-generated coupons linked to referral codes
 
 ---
 
@@ -44,8 +44,8 @@ Each referral code is defined with:
 4. The new customer can redeem this coupon on their first purchase
 
 ### Reward Distribution
-- **Customer Offer** — The reward (discount, free item, etc.) given to the new customer
-- **Primary Offer** — The reward given to the existing customer who made the referral
+- **Customer Offer** - The reward (discount, free item, etc.) given to the new customer
+- **Primary Offer** - The reward given to the existing customer who made the referral
 - Both offers are configured as POS Offers with full flexibility (percentage discount, free product, etc.)
 
 ---

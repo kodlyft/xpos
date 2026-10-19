@@ -144,6 +144,11 @@ def resolve_mode_tender_currency(mode_of_payment: str) -> str | None:
 
 def build_tender_rate_payload(pos_profile_doc, posting_date: str | None = None) -> list[dict]:
 	"""Return one row per payment mode on the profile, with its currency and today's rate."""
+	from xpos.x_pos.doctype.pos_closing_shift.closing_processing.reclass import (
+		per_payment_modes,
+		reference_required_modes,
+	)
+
 	posting_date = posting_date or nowdate()
 	company_currency = frappe.get_cached_value("Company", pos_profile_doc.company, "default_currency")
 
@@ -152,6 +157,8 @@ def build_tender_rate_payload(pos_profile_doc, posting_date: str | None = None) 
 
 	rate_cache: dict = {}
 	meta_cache: dict = {}
+	takes_reference = per_payment_modes(pos_profile_doc.company)
+	needs_reference = reference_required_modes(pos_profile_doc.company)
 	payload = []
 
 	for mode in modes:
@@ -167,6 +174,8 @@ def build_tender_rate_payload(pos_profile_doc, posting_date: str | None = None) 
 				"mode_of_payment": mode,
 				"type": details.get("type") or "",
 				"is_foreign_tender": currency != company_currency,
+				"takes_reference": mode in takes_reference,
+				"requires_reference": mode in needs_reference,
 				"exchange_rate": rate,
 				"rate_date": rate_date,
 				**meta_cache[currency],

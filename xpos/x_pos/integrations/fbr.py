@@ -5,6 +5,7 @@ from typing import Any
 
 import frappe
 import requests
+import urllib3
 from frappe import _
 from frappe.utils import cint, cstr, flt, now_datetime
 
@@ -28,8 +29,15 @@ class FBRConnectionError(FBRIntegrationError):
 	"""Raised specifically when the FBR cloud API is unreachable (internet down).
 
 	Distinct from a business rejection so callers can fall back to the local
-	fiscalization service instead of failing the sale.
+	fiscalization service instead of failing the sale. ``sent`` is True when the
+	request may have reached FBR (e.g. a read timeout): the outcome is then unknown.
 	"""
+
+	sent = False
+
+
+class FBRUncertainError(FBRIntegrationError):
+	"""FBR may have recorded the invoice but did not answer; it must not be fiscalized again blindly."""
 
 
 @dataclass(frozen=True)
@@ -48,10 +56,12 @@ class FiscalizationOutcome:
 	"""Result of attempting to obtain an FBR fiscal invoice number.
 
 	status:
-	  - "disabled"       — FBR is off, not a POS invoice, or already fiscalized.
-	  - "cloud"          — number obtained from the FBR cloud API.
-	  - "local_required" — cloud is unreachable; the client should call the local
+	  - "disabled"       - FBR is off, not a POS invoice, or already fiscalized.
+	  - "cloud"          - number obtained from the FBR cloud API.
+	  - "local_required" - cloud is unreachable; the client should call the local
 	                       fiscalization service with ``payload`` and finalize.
+	  - "uncertain"      - the request may have reached FBR but no answer came back,
+	                       or the invoice is already marked so. Nothing is retried.
 	"""
 
 	status: str
@@ -64,10 +74,14 @@ class FiscalizationOutcome:
 def prepare_fiscalization(doc: Any) -> FiscalizationOutcome:
 	"""Attempt cloud fiscalization; report whether a local fallback is needed.
 
-	Does not mutate the document. When the FBR cloud API is unreachable, returns a
-	``local_required`` outcome carrying the built payload and the configured local
-	service URL so the client can obtain the invoice number from the local service.
+	Does not mutate the document. Every request is recorded in the fiscal ledger first, so
+	a number FBR issued survives a rollback: a later attempt for the same sale id reuses it
+	without calling FBR. A request that may have reached FBR is never sent again until an
+	FBR check records that it is not there. When the FBR cloud API is unreachable, returns
+	a ``local_required`` outcome with the payload for the local service.
 	"""
+	from xpos.x_pos.integrations import fiscal_ledger
+
 	if not cint(_get_doc_value(doc, "is_pos", 0)):
 		return FiscalizationOutcome("disabled")
 
@@ -83,28 +97,115 @@ def prepare_fiscalization(doc: Any) -> FiscalizationOutcome:
 		return FiscalizationOutcome("disabled")
 
 	payload = _build_payload(doc, settings)
+	known = fiscal_ledger.begin_cloud_attempt(
+		doc,
+		settings.pos_id,
+		payload["USIN"],
+		payload,
+		held_uncertain=_get_doc_value(doc, "xpos_fiscal_state", "") == "Uncertain",
+	)
+	if known.kind == "recorded":
+		return recorded_outcome(known, payload)
+	if known.kind == "pending":
+		return FiscalizationOutcome("uncertain", payload=payload)
 
 	try:
 		response_data = _post_invoice(doc, payload, settings)
-	except FBRConnectionError:
+	except FBRConnectionError as exc:
+		fiscal_ledger.finish_attempt(known.attempt, "Uncertain" if exc.sent else "Not Sent", response=exc)
+		if exc.sent:
+			return FiscalizationOutcome("uncertain", payload=payload)
 		return FiscalizationOutcome(
 			"local_required", payload=payload, local_service_url=settings.local_service_url
 		)
+	except FBRIntegrationError as exc:
+		fiscal_ledger.finish_attempt(known.attempt, "Rejected", response=exc)
+		raise
+	except Exception as exc:
+		fiscal_ledger.finish_attempt(known.attempt, "Uncertain", response=exc)
+		raise
 
-	invoice_number = _extract_value(response_data, "FBRInvoiceNumber", "InvoiceNumber")
+	invoice_number = cstr(_extract_value(response_data, "FBRInvoiceNumber", "InvoiceNumber") or "").strip()
 	response_code = cstr(_extract_value(response_data, "Code", default="")).strip()
 	response_message = cstr(
 		_extract_value(response_data, "Response", "Message", "message", default="")
 	).strip()
 
-	if not invoice_number or (
-		response_code and response_code not in {str(code) for code in FBR_SUCCESS_CODES}
-	):
-		message = response_message or _("FBR did not return a fiscal invoice number.")
-		raise FBRIntegrationError(message)
+	if response_code and response_code not in {str(code) for code in FBR_SUCCESS_CODES}:
+		fiscal_ledger.finish_attempt(known.attempt, "Rejected", response=json.dumps(response_data))
+		raise FBRIntegrationError(response_message or _("FBR did not return a fiscal invoice number."))
+	if not invoice_number:
+		# FBR answered without saying whether it recorded the sale.
+		fiscal_ledger.finish_attempt(known.attempt, "Uncertain", response=json.dumps(response_data))
+		return FiscalizationOutcome("uncertain", payload=payload)
 
+	posted_on = now_datetime()
+	fiscal_ledger.finish_attempt(
+		known.attempt, "Accepted", invoice_number, posted_on, json.dumps(response_data)
+	)
+	return FiscalizationOutcome("cloud", fbr_invoice_number=invoice_number, posted_on=posted_on)
+
+
+def recorded_outcome(known: Any, payload: dict[str, Any]) -> FiscalizationOutcome:
+	"""Reuse the number FBR already issued for this sale id, if the sale still matches it."""
+	from xpos.x_pos.integrations import fiscal_ledger
+
+	if known.content_hash and known.content_hash != fiscal_ledger.content_hash(payload):
+		raise FBRIntegrationError(
+			_(
+				"FBR already holds sale {0} as invoice {1}, with different lines, amounts or payment "
+				"mode. Ring it up exactly as it was first sent, or ask a supervisor to review attempt {2}."
+			).format(payload.get("USIN"), known.number, known.attempt)
+		)
+	return FiscalizationOutcome("cloud", fbr_invoice_number=known.number, posted_on=known.posted_on)
+
+
+def ledger_outcome(doc: Any) -> FiscalizationOutcome | None:
+	"""What the fiscal ledger already knows for this draft, without sending anything.
+
+	``cloud`` when FBR holds a number for it, ``uncertain`` when it may, else ``None``.
+	"""
+	from xpos.x_pos.integrations import fiscal_ledger
+
+	pos_profile = cstr(_get_doc_value(doc, "pos_profile", "")).strip()
+	if not cint(_get_doc_value(doc, "is_pos", 0)) or not pos_profile:
+		return None
+	settings = _get_fbr_settings(pos_profile)
+	if not settings.enabled:
+		return None
+	payload = _build_payload(doc, settings)
+	known = fiscal_ledger.lookup(settings.pos_id, payload["USIN"])
+	if known.kind == "recorded":
+		return recorded_outcome(known, payload)
+	if known.kind == "pending":
+		return FiscalizationOutcome("uncertain", payload=payload)
+	return None
+
+
+def record_local_result(doc: Any, invoice_number: str | None) -> None:
+	"""Keep what the local FBR service answered (``None``: no answer) in the fiscal ledger."""
+	from xpos.x_pos.integrations import fiscal_ledger
+
+	settings = _get_fbr_settings(cstr(_get_doc_value(doc, "pos_profile", "")).strip())
+	if not settings.enabled:
+		return
+	payload = _build_payload(doc, settings)
+	fiscal_ledger.record_local(doc, settings.pos_id, payload["USIN"], payload, invoice_number)
+
+
+def fbr_pos_id(pos_profile: str) -> str:
+	"""The profile's FBR POS ID; FBR must be enabled on it."""
+	settings = _get_fbr_settings(pos_profile)
+	if not settings.enabled:
+		frappe.throw(_("FBR integration is not enabled on POS Profile {0}.").format(pos_profile))
+	return settings.pos_id
+
+
+def local_fiscalization_outcome(doc: Any) -> FiscalizationOutcome:
+	"""The local-service handshake for a draft already waiting for it; FBR's cloud is not called again."""
+	settings = _get_fbr_settings(cstr(_get_doc_value(doc, "pos_profile", "")).strip())
 	return FiscalizationOutcome(
-		"cloud", fbr_invoice_number=cstr(invoice_number).strip(), posted_on=now_datetime()
+		"local_required", payload=_build_payload(doc, settings), local_service_url=settings.local_service_url
 	)
 
 
@@ -119,13 +220,20 @@ def fiscalize_invoice(doc: Any) -> None:
 
 	Used by the ``before_submit`` hook. The interactive POS flow pre-fiscalizes in
 	``create_invoice`` (which can fall back to the local service), setting the number
-	first — so this becomes a no-op there. For any other submit path (e.g. background
+	first - so this becomes a no-op there. For any other submit path (e.g. background
 	submit) it fiscalizes against the FBR cloud and hard-fails if unreachable, since
 	no client is present to drive the local fallback.
 	"""
 	outcome = prepare_fiscalization(doc)
 	if outcome.status == "cloud":
 		apply_fiscal_number(doc, outcome.fbr_invoice_number, outcome.posted_on)
+	elif outcome.status == "uncertain":
+		raise FBRUncertainError(
+			_(
+				"FBR may have received invoice {0} without answering. Check the FBR records "
+				"before fiscalizing it again."
+			).format(_get_doc_value(doc, "name", ""))
+		)
 	elif outcome.status == "local_required":
 		raise FBRConnectionError(
 			_(
@@ -296,9 +404,20 @@ def _post_invoice(doc: Any, payload: dict[str, Any], settings: FBRSettings) -> d
 			f"Invoice: {_get_doc_value(doc, 'name', '')}\nURL: {settings.api_url}\nError: {exc}\nPayload: {json.dumps(payload, default=str)}",
 			"X POS FBR Request Error",
 		)
-		raise FBRConnectionError(_("FBR API call failed: {0}").format(cstr(exc))) from exc
+		error = FBRConnectionError(_("FBR API call failed: {0}").format(cstr(exc)))
+		error.sent = request_may_have_reached_fbr(exc)
+		raise error from exc
 
 	response_data = _parse_response(response)
+	if response.status_code >= 500:
+		# A gateway error can come after FBR recorded the invoice.
+		frappe.log_error(
+			f"Invoice: {_get_doc_value(doc, 'name', '')}\nStatus: {response.status_code}\nResponse: {response.text}",
+			"X POS FBR Response Error",
+		)
+		error = FBRConnectionError(_("FBR answered HTTP {0}.").format(response.status_code))
+		error.sent = True
+		raise error
 	if response.status_code >= 400:
 		message = cstr(
 			_extract_value(
@@ -322,6 +441,18 @@ def _post_invoice(doc: Any, payload: dict[str, Any], settings: FBRSettings) -> d
 		raise FBRIntegrationError(message or _("FBR rejected the invoice request."))
 
 	return response_data
+
+
+def request_may_have_reached_fbr(exc: requests.RequestException) -> bool:
+	"""False only when the connection itself failed, so FBR cannot have seen the invoice."""
+	if isinstance(
+		exc, requests.ConnectTimeout | requests.exceptions.SSLError | requests.exceptions.InvalidURL
+	):
+		return False
+	if isinstance(exc, requests.ConnectionError):
+		reason = getattr(exc.args[0], "reason", None) if exc.args else None
+		return not isinstance(reason, urllib3.exceptions.NewConnectionError)
+	return not isinstance(exc, requests.exceptions.MissingSchema | requests.exceptions.InvalidSchema)
 
 
 def _parse_response(response: requests.Response) -> dict[str, Any]:

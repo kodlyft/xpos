@@ -38,10 +38,10 @@ let a cashier pull tabs raised on *other* shifts, which is how a bar keeps a cus
 alive across a shift change. See [Open Tabs](27-open-tabs.md).
 
 Each entry shows:
-- **Customer name** — Who the order belongs to
-- **Date & time** — When the order was held
-- **Item count** — Number of items in the order
-- **Grand total** — Total amount of the draft
+- **Customer name** - Who the order belongs to
+- **Date & time** - When the order was held
+- **Item count** - Number of items in the order
+- **Grand total** - Total amount of the draft
 
 ### Loading a Draft
 - Click on a draft to **fully restore** it into the cart
@@ -96,4 +96,4 @@ Each entry shows:
 - Draft invoices are automatically cleaned up based on your profile settings
 - Use draft orders to manage busy periods efficiently
 - Each draft shows the customer name, item count, and total for quick identification
-- Held orders and [Cashier Settlement](26-cashier-settlement.md) bills are kept separate — bills sent to a cashier do not appear in the held-orders list, and vice versa
+- Held orders and [Cashier Settlement](26-cashier-settlement.md) bills are kept separate - bills sent to a cashier do not appear in the held-orders list, and vice versa

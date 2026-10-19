@@ -20,7 +20,6 @@ class POSPermission(Document):
 	# end: auto-generated types
 
 	def on_update(self):
-		# The catalog changed — every cached role map may be stale.
 		clear_role_permission_cache()
 
 	def on_trash(self):

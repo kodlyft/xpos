@@ -135,6 +135,33 @@ describe("leg consolidation", () => {
 	});
 });
 
+describe("referenced transfers", () => {
+	it("keeps each referenced transfer on its own row, and merges a repeat of the same one", () => {
+		const legs: TenderLeg[] = [];
+		mergeTenderLeg(legs, { ...buildTenderLeg("Cash LBP", 100000, ctx), reference_no: "TRF-1" }, ctx);
+		mergeTenderLeg(legs, { ...buildTenderLeg("Cash LBP", 200000, ctx), reference_no: "TRF-2" }, ctx);
+		mergeTenderLeg(legs, { ...buildTenderLeg("Cash LBP", 50000, ctx), reference_no: "TRF-1" }, ctx);
+
+		expect(legs.map((leg) => [leg.reference_no, leg.native_amount])).toEqual([
+			["TRF-1", 150000],
+			["TRF-2", 200000],
+		]);
+	});
+
+	it("carries the reference onto the payment row only when one was taken", () => {
+		const rows = toInvoicePayments(
+			[
+				{ ...buildTenderLeg("Cash LBP", 100000, ctx), reference_no: "TRF-1" },
+				buildTenderLeg("Cash LBP", 5000, ctx),
+			],
+			"LBP",
+		);
+
+		expect(rows[0].reference_no).toBe("TRF-1");
+		expect(rows[1]).not.toHaveProperty("reference_no");
+	});
+});
+
 describe("tender totals", () => {
 	it("sums mixed-currency legs in the invoice currency (acceptance criterion 2)", () => {
 		// $50 plus 500,000 LBP toward one invoice.

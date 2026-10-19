@@ -1,6 +1,6 @@
 # Purchasing Module
 
-X POS includes a built-in purchasing module that allows POS operators to create purchase orders, receive stock, and manage in-transit transfers — all from the POS interface.
+X POS includes a built-in purchasing module that allows POS operators to create purchase orders, receive stock, and manage in-transit transfers - all from the POS interface.
 
 ---
 
@@ -20,9 +20,9 @@ The purchasing module provides a complete procurement workflow directly from the
 
 - Navigate to the **Purchase** tab from the POS navigation bar
 - The Purchase View has a three-tab layout:
-  1. **Suppliers** — Select or create a supplier
-  2. **Items** — Browse and add items to the purchase cart
-  3. **Receive** — Receive incoming stock
+  1. **Suppliers** - Select or create a supplier
+  2. **Items** - Browse and add items to the purchase cart
+  3. **Receive** - Receive incoming stock
 
 ---
 
@@ -84,9 +84,9 @@ When enabled in your profile:
   - Cart total and item count
 
 ### Options
-- **Receive Immediately** (toggle) — Auto-create a Purchase Receipt along with the Purchase Order
-- **Create Invoice** (toggle) — Auto-create a Purchase Invoice along with the Purchase Order
-- **Warehouse Selection** — Defaults to the POS Profile's warehouse, can be changed
+- **Receive Immediately** (toggle) - Auto-create a Purchase Receipt along with the Purchase Order
+- **Create Invoice** (toggle) - Auto-create a Purchase Invoice along with the Purchase Order
+- **Warehouse Selection** - Defaults to the POS Profile's warehouse, can be changed
 
 ---
 
@@ -100,9 +100,9 @@ When enabled in your profile:
 
 ### What Gets Created
 Depending on the options selected:
-- **Purchase Order** — Always created
-- **Purchase Receipt** (optional) — If "Receive Immediately" is enabled
-- **Purchase Invoice** (optional) — If "Create Invoice" is enabled
+- **Purchase Order** - Always created
+- **Purchase Receipt** (optional) - If "Receive Immediately" is enabled
+- **Purchase Invoice** (optional) - If "Create Invoice" is enabled
 
 ### Success Confirmation
 - A compound success message shows all created document names

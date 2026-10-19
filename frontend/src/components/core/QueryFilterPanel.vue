@@ -247,7 +247,7 @@ async function onLinkSearch(fieldname: string, txt: string) {
 	try {
 		const results = await searchLink(doctype, txt, undefined, 20);
 		linkOptions[fieldname] = results.map((r) => ({
-			label: r.description ? `${r.value} — ${r.description}` : r.value,
+			label: r.description ? `${r.value} - ${r.description}` : r.value,
 			value: r.value,
 			description: r.description,
 		}));

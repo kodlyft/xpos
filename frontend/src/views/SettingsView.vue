@@ -149,11 +149,11 @@
 						</div>
 						<div class="flex items-center justify-between text-sm">
 							<span class="text-muted-foreground">Company:</span>
-							<span class="text-foreground">{{ posStore.companyName || "—" }}</span>
+							<span class="text-foreground">{{ posStore.companyName || "-" }}</span>
 						</div>
 						<div class="flex items-center justify-between text-sm">
 							<span class="text-muted-foreground">Warehouse:</span>
-							<span class="text-foreground">{{ posStore.warehouse || "—" }}</span>
+							<span class="text-foreground">{{ posStore.warehouse || "-" }}</span>
 						</div>
 					</div>
 				</Card>
@@ -192,7 +192,7 @@
 					<div class="space-y-2 text-sm">
 						<div class="flex items-center justify-between">
 							<span class="text-muted-foreground">Version</span>
-							<span class="text-foreground">{{ platformInfo.version || "—" }}</span>
+							<span class="text-foreground">{{ platformInfo.version || "-" }}</span>
 						</div>
 						<div class="flex items-center justify-between">
 							<span class="text-muted-foreground">Platform</span>

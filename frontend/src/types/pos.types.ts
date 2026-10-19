@@ -77,6 +77,13 @@ export interface POSProfile {
 	use_customer_credit?: boolean;
 	use_cashback?: boolean;
 	apply_customer_discount?: boolean;
+	force_price_from_customer_price_list?: boolean;
+	use_delivery_charges?: boolean;
+	auto_set_delivery_charges?: boolean;
+	hide_expected_amount?: boolean;
+	auto_create_referral_for_new_customers?: boolean;
+	default_purchase_uom?: string;
+	print_format_rules?: { customer_group: string; print_format: string }[];
 	show_template_items?: boolean;
 	hide_variants_items?: boolean;
 	hide_unavailable_items?: boolean;
@@ -102,6 +109,8 @@ export interface POSPaymentMethod {
 	pos_tender_currency?: string;
 	type?: string;
 	is_foreign_tender?: boolean;
+	takes_reference?: boolean;
+	requires_reference?: boolean;
 	exchange_rate?: number;
 	rate_date?: string;
 	precision?: number;
@@ -186,6 +195,7 @@ export interface POSItem {
 	barcode?: string;
 	item_tax_template?: string;
 	is_stock_item?: boolean;
+	allow_negative_stock?: boolean | number;
 	has_variants?: boolean;
 	variant_of?: string;
 	is_template?: boolean;
@@ -210,6 +220,12 @@ export interface CartItem extends POSItem {
 	uid?: string;
 	pos_pricing_rules?: string[];
 	pos_rate_overridden?: boolean;
+	pos_price_key?: string;
+	pos_price_unavailable?: boolean;
+	/** Why the price is unavailable: offline without this customer's prices, or no price configured. */
+	pos_price_state?: "needs_connection" | "no_price";
+	/** Net rate the cashier last saw, when the server repriced this line. */
+	pos_repriced_from?: number;
 	pos_is_free_item?: boolean;
 	pos_free_item_rule?: string;
 	/** A stored-value gift card being sold, not a stock item. */
@@ -307,10 +323,17 @@ export interface CustomerAddress {
 	is_shipping_address?: boolean;
 }
 
+export interface CustomerCreditSource {
+	source_type: "Payment Entry" | "Sales Invoice";
+	source_name: string;
+	posting_date?: string;
+	available: number;
+}
+
 export interface CustomerCredit {
 	total_credit: number;
-	credit_notes: CreditNote[];
-	unallocated_payments: UnallocatedPayment[];
+	currency?: string | null;
+	sources: CustomerCreditSource[];
 	loyalty_points?: number;
 	loyalty_amount?: number;
 }
@@ -404,6 +427,7 @@ export interface InvoicePayment {
 	gift_card_auth?: string;
 	/** On a return: the card that paid the original sale, refunded here. */
 	gift_card?: string;
+	reference_no?: string;
 }
 
 export interface TenderLeg {
@@ -416,6 +440,7 @@ export interface TenderLeg {
 	gift_card?: string;
 	gift_card_auth?: string;
 	masked_code?: string;
+	reference_no?: string;
 }
 
 export interface GiftCardCheck {
@@ -462,6 +487,8 @@ export interface InvoiceData {
 	posting_date?: string;
 	additional_discount_percentage?: number;
 	discount_amount?: number;
+	customer_credit?: { source_type: string; source_name: string; amount: number }[];
+	discount_source?: "customer";
 	apply_discount_on?: string;
 	payments?: InvoicePayment[];
 	pos_notes?: string;
@@ -1023,6 +1050,7 @@ export interface SearchItem {
 	item_name: string;
 	local_item_name?: string;
 	stock_uom: string;
+	purchase_uom?: string;
 	item_uoms?: ItemUOMDetail[];
 	standard_rate?: number;
 	selling_price?: number;
@@ -1252,3 +1280,29 @@ export const DOCSTATUS_MAP: Record<number, string> = {
 	1: "Submitted",
 	2: "Cancelled",
 };
+
+/** create_invoice answer when ERPNext's prices differ from what the cashier took payment for. */
+export interface RepriceLine {
+	row_id?: string;
+	index: number;
+	item_code: string;
+	quoted_rate: number;
+	rate: number | null;
+	price_list_rate: number | null;
+	discount_percentage: number | null;
+	discount_amount: number | null;
+}
+
+export interface RepriceResponse {
+	status: "reprice_required";
+	price_list?: string;
+	lines: RepriceLine[];
+	additional_discount_percentage: number;
+	discount_amount: number;
+	discount_changed: boolean;
+	/** A pricing rule set the invoice discount on a sale that has POS Offer discounts. */
+	offer_conflict?: boolean;
+	grand_total: number;
+	rounded_total: number;
+	message: string;
+}

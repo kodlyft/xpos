@@ -1,4 +1,4 @@
-# X POS — Feature Overview
+# X POS - Feature Overview
 
 **X POS** is a modern, full-featured Point of Sale application built on Frappe Framework and ERPNext. It delivers a fast, touch-friendly, and fully offline-capable POS experience designed for retail, restaurant, and service businesses.
 
@@ -54,9 +54,9 @@
 
 X POS consists of:
 
-- **Vue.js 3 Frontend** — A single-page application (SPA) with Pinia state management, served at `/xpos`
-- **Python Backend API** — 56+ whitelisted API endpoints built on Frappe
-- **13 Custom Doctypes** — POS Offer, POS Coupon, POS Cash Movement, Delivery Charges, Referral Code, Scale Barcode Settings, and more
-- **80+ Custom Fields** — Added to POS Profile, Sales Invoice, Customer, and Sales Order for extended POS functionality
-- **IndexedDB Offline Storage** — 8 object stores for items, customers, invoices, stock, and metadata caching
-- **ERPNext Integration** — Deep integration with Sales Invoice, POS Profile, Payment Entry, Pricing Rules, Loyalty Programs, and Inventory
+- **Vue.js 3 Frontend** - A single-page application (SPA) with Pinia state management, served at `/xpos`
+- **Python Backend API** - 56+ whitelisted API endpoints built on Frappe
+- **13 Custom Doctypes** - POS Offer, POS Coupon, POS Cash Movement, Delivery Charges, Referral Code, Scale Barcode Settings, and more
+- **80+ Custom Fields** - Added to POS Profile, Sales Invoice, Customer, and Sales Order for extended POS functionality
+- **IndexedDB Offline Storage** - 8 object stores for items, customers, invoices, stock, and metadata caching
+- **ERPNext Integration** - Deep integration with Sales Invoice, POS Profile, Payment Entry, Pricing Rules, Loyalty Programs, and Inventory

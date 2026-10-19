@@ -18,9 +18,9 @@ X POS allows you to quickly duplicate a past invoice to serve repeat customers w
 ## Searching Past Invoices
 
 ### Search Criteria
-- **Invoice number** — Search by direct invoice name
-- **Customer name** — Search by who placed the order
-- **Date range** — Filter by from/to dates
+- **Invoice number** - Search by direct invoice name
+- **Customer name** - Search by who placed the order
+- **Date range** - Filter by from/to dates
 
 ### Search Results
 - Paginated list of matching past invoices
@@ -40,11 +40,11 @@ X POS allows you to quickly duplicate a past invoice to serve repeat customers w
 2. Click on the invoice to select it
 
 ### What Gets Cloned
-- **Customer** — The original customer is set on the cart
-- **All items** — Each item from the original invoice is added to the cart
-- **Quantities** — Original quantities are preserved
-- **Rates** — Items use **current prices** (not historical prices from the original invoice)
-- **Discounts** — Item-level discounts from the original are applied
+- **Customer** - The original customer is set on the cart
+- **All items** - Each item from the original invoice is added to the cart
+- **Quantities** - Original quantities are preserved
+- **Rates** - Items use **current prices** (not historical prices from the original invoice)
+- **Discounts** - Item-level discounts from the original are applied
 
 ### What Doesn't Get Cloned
 - Payment information (the original payment methods are not duplicated)
@@ -81,5 +81,5 @@ X POS allows you to quickly duplicate a past invoice to serve repeat customers w
 
 - Search by customer name to quickly find their most recent orders
 - The repeat order uses **current pricing**, so price changes since the original order are reflected
-- You can combine repeat orders with additional items — just add more items after cloning
+- You can combine repeat orders with additional items - just add more items after cloning
 - This feature works best for customers with predictable ordering patterns

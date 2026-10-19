@@ -536,6 +536,40 @@ class TestCloseShift(unittest.TestCase):
 		self.assertIn("pos_closing_shift", result)
 
 
+class TestCountedAmount(unittest.TestCase):
+	"""Till counts that cannot be stored are refused with a message, not a database error (#179)."""
+
+	def test_accepts_a_storable_count(self):
+		self.assertEqual(shifts.counted_amount("1500.5", "Cash"), 1500.5)
+		self.assertEqual(shifts.counted_amount(None, "Cash"), 0)
+
+	@patch("xpos.api.shifts.frappe")
+	def test_refuses_negative_and_overflowing_counts(self, mock_frappe):
+		mock_frappe.throw.side_effect = ValueError
+		for value in (-1, 52944125294000):
+			with self.assertRaises(ValueError):
+				shifts.counted_amount(value, "Cash")
+
+	@patch("xpos.api.shifts.get_shift_expected_amounts", return_value={})
+	@patch("xpos.api.shifts.frappe")
+	def test_close_shift_refuses_before_saving(self, mock_frappe, mock_expected):
+		mock_frappe.throw.side_effect = ValueError
+		opening = MagicMock(balance_details=[])
+		closing = MagicMock()
+		mock_frappe.get_doc.side_effect = lambda *a, **kw: (
+			opening if a and a[0] == "POS Opening Shift" else closing
+		)
+		mock_frappe.get_all.return_value = []
+
+		with self.assertRaises(ValueError):
+			shifts.close_shift(
+				opening_shift="POS-OPEN-001",
+				closing_details='[{"mode_of_payment": "Cash", "closing_amount": 52944125294000}]',
+			)
+		closing.insert.assert_not_called()
+		closing.submit.assert_not_called()
+
+
 class TestShiftAmountCalculations(unittest.TestCase):
 	"""Tests for shift amount calculation helpers."""
 

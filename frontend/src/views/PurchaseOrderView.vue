@@ -146,12 +146,13 @@ async function onItemLinkSelect(payload: {
 	const row = purchaseStore.cartItems[rowIndex];
 	if (!row) return;
 
+	const lineUom = purchaseStore.defaultPurchaseUom(item);
 	row.item_code = item.item_code;
 	row.item_name = item.item_name;
-	row.rate = item.standard_rate || 0;
-	row.uom = item.stock_uom;
+	row.rate = (item.standard_rate || 0) * lineUom.conversion_factor;
+	row.uom = lineUom.uom;
 	row.stock_uom = item.stock_uom;
-	row.conversion_factor = 1;
+	row.conversion_factor = lineUom.conversion_factor;
 	row.qty = row.qty || 1;
 	row.item_group = item.item_group || "";
 	row.class = item.custom_class || "";

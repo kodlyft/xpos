@@ -527,7 +527,7 @@ defineExpose({ focus, select, getInputEl, inputRef });
 						v-if="filteredOptions.length > maxVisible"
 						class="px-3 py-2 text-xs text-center text-muted-foreground border-t border-border bg-muted/30 rounded-b-lg"
 					>
-						{{ filteredOptions.length - maxVisible }} more — type to refine
+						{{ filteredOptions.length - maxVisible }} more - type to refine
 					</div>
 
 					<div

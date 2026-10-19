@@ -56,7 +56,7 @@ function cleanOldLogs(): void {
 			fs.unlinkSync(path.join(dir, files[i]));
 		}
 	} catch {
-		// Non-critical — ignore cleanup failures
+		// Non-critical - ignore cleanup failures
 	}
 }
 

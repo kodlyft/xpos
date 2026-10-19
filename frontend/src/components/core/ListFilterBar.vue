@@ -12,14 +12,14 @@
 				:clearable="true"
 				:max-visible="20"
 				:empty-text="__('No results')"
-				class="w-[160px]"
+				class="w-40"
 				@search="(q: string) => onLinkSearch(field, q)"
 				@update:model-value="(val: string | undefined) => onFilterChange(field.fieldname, val || '')"
 			/>
 
 			<Select
 				v-else-if="field.fieldtype === 'Select'"
-				class="w-[160px]"
+				class="w-40"
 				:model-value="(modelFilters[field.fieldname] as string) || '__all__'"
 				@update:model-value="(val: string | undefined) => onFilterChange(field.fieldname, val || '')"
 				:items="[
@@ -30,7 +30,7 @@
 
 			<Select
 				v-else-if="field.fieldtype === 'Check'"
-				class="w-[160px]"
+				class="w-40"
 				:model-value="(modelFilters[field.fieldname] as string) || '__all__'"
 				@update:model-value="(val: string | undefined) => onFilterChange(field.fieldname, val || '')"
 				:items="[
@@ -43,7 +43,7 @@
 				v-else
 				:model-value="(modelFilters[field.fieldname] as string) || ''"
 				:placeholder="field.label || field.fieldname"
-				class="h-8 w-[140px] text-sm"
+				class="h-8 w-35 text-sm"
 				@change="
 					(e: Event) => onTextFilterChange(field.fieldname, (e.target as HTMLInputElement).value)
 				"
@@ -101,7 +101,7 @@ async function onLinkSearch(field: DocField, txt: string) {
 	try {
 		const results = await searchLink(field.options, txt);
 		linkOptions[field.fieldname] = results.map((r) => ({
-			label: r.description ? `${r.value} — ${r.description}` : r.value,
+			label: r.description ? `${r.value} - ${r.description}` : r.value,
 			value: r.value,
 			description: r.description,
 		}));

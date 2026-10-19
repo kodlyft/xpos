@@ -355,7 +355,7 @@ async function pushToHub(): Promise<{ invoices: number; purchases: number }> {
 export async function initTillClient(hubUrl: string, tillId: string): Promise<void> {
 	const hubSecret = (await getMeta("hub_api_secret")) || undefined;
 	context = { hubUrl: hubUrl.replace(/\/$/, ""), tillId, hubSecret };
-	log.info(`Initialized — hub: ${context.hubUrl}, till: ${tillId}, auth: ${hubSecret ? "yes" : "no"}`);
+	log.info(`Initialized - hub: ${context.hubUrl}, till: ${tillId}, auth: ${hubSecret ? "yes" : "no"}`);
 }
 
 export async function runTillSync(): Promise<{

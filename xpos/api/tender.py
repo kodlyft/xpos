@@ -7,13 +7,14 @@ Normalise and validate mixed-currency cash tender and change legs.
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint, cstr, flt
 
 from xpos.api.exchange import (
 	get_currency_precision,
 	get_mode_tender_currencies,
 	resolve_tender_rate,
 )
+from xpos.x_pos.doctype.pos_closing_shift.closing_processing.reclass import reference_required_modes
 from xpos.x_pos.gift_cards import GiftCardAuthError, gift_card_mode, live_connection_message, read_auth_token
 
 
@@ -43,6 +44,9 @@ def build_tender_legs(payments: list[dict], invoice_doc, rate_cache: dict | None
 	modes = [payment.get("mode_of_payment") for payment in payments if payment.get("mode_of_payment")]
 	tender_map = get_mode_tender_currencies(modes)
 	gift_mode = gift_card_mode(invoice_doc.get("company"))
+	needs_reference = (
+		set() if cint(invoice_doc.get("is_return")) else reference_required_modes(invoice_doc.get("company"))
+	)
 
 	rows: list[dict] = []
 	total = 0.0
@@ -63,6 +67,10 @@ def build_tender_legs(payments: list[dict], invoice_doc, rate_cache: dict | None
 				total += amount
 			continue
 
+		reference = cstr(payment.get("reference_no")).strip()[:140]
+		if mode in needs_reference and not reference:
+			frappe.throw(_("Enter the transfer or reference number for {0}.").format(mode))
+
 		claimed = payment.get("pos_tender_currency")
 		if claimed and claimed != (tender_currency or invoice_currency):
 			frappe.throw(
@@ -75,7 +83,7 @@ def build_tender_legs(payments: list[dict], invoice_doc, rate_cache: dict | None
 			amount = flt(client_amount, invoice_precision)
 			if amount == 0:
 				continue
-			rows.append({"mode_of_payment": mode, "amount": amount})
+			rows.append({"mode_of_payment": mode, "amount": amount, **reference_field(reference)})
 			total += amount
 			continue
 
@@ -113,11 +121,17 @@ def build_tender_legs(payments: list[dict], invoice_doc, rate_cache: dict | None
 				"pos_tender_currency": tender_currency,
 				"pos_tender_amount": native,
 				"pos_exchange_rate": rate,
+				**reference_field(reference),
 			}
 		)
 		total += amount
 
 	return rows, flt(total, invoice_precision)
+
+
+def reference_field(reference: str) -> dict:
+	"""The transfer number a cashier took, on the payment row's standard ``reference_no``."""
+	return {"reference_no": reference} if reference else {}
 
 
 def gift_card_leg(payment: dict, amount: float, invoice_doc) -> dict:

@@ -1,7 +1,8 @@
 from xpos.x_pos.api.invoice import validate_shift
+from xpos.x_pos.overrides.sales_invoice import XposPriceListMixin
 
 
-class CustomPOSInvoice:
+class CustomPOSInvoice(XposPriceListMixin):
 	"""Mixin that augments ERPNext POS Invoice to respect XPOS opening shifts."""
 
 	def validate_pos_opening_entry(self):

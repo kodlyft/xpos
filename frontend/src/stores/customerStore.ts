@@ -189,6 +189,7 @@ export const useCustomerStore = defineStore("customers", () => {
 			const result = await call<CustomerCredit>("xpos.api.customers.get_customer_credit", {
 				customer: customerName,
 				company: company || "",
+				pos_profile: usePosStore().profileName || undefined,
 			});
 			customerCredit.value = result;
 			return result;

@@ -39,7 +39,7 @@ def get_app_branch(app):
 		return ""
 
 	try:
-		branch = subprocess.check_output(  # nosemgrep: frappe-subprocess-exec — app validated against installed apps list
+		branch = subprocess.check_output(  # nosemgrep: frappe-subprocess-exec - app validated against installed apps list
 			["git", "-C", f"../apps/{app}", "rev-parse", "--abbrev-ref", "HEAD"],
 			stderr=subprocess.DEVNULL,
 		)
@@ -55,7 +55,7 @@ def get_root_of(doctype):
 	if not frappe.db.exists("DocType", doctype):
 		return None
 
-	result = frappe.db.sql(  # nosemgrep: frappe-sql-format-injection — doctype validated against regex and db.exists check above
+	result = frappe.db.sql(  # nosemgrep: frappe-sql-format-injection - doctype validated against regex and db.exists check above
 		f"""SELECT t1.name FROM `tab{doctype}` t1
         WHERE (SELECT COUNT(*) FROM `tab{doctype}` t2
                WHERE t2.lft < t1.lft AND t2.rgt > t1.rgt) = 0
@@ -164,7 +164,7 @@ def _get_git_commit_info(app_name: str = "xpos") -> dict[str, Any]:
 	def _run(cmd: list[str]) -> str:
 		return (
 			subprocess.check_output(cmd, cwd=app_path, stderr=subprocess.DEVNULL).decode("utf-8").strip()
-		)  # nosemgrep: frappe-subprocess-exec — static argument list, no user input
+		)  # nosemgrep: frappe-subprocess-exec - static argument list, no user input
 
 	try:
 		commit_hash = _run(["git", "rev-parse", "HEAD"])
@@ -181,7 +181,7 @@ def _get_git_commit_info(app_name: str = "xpos") -> dict[str, Any]:
 
 def _fetch_remote(app_path: str) -> None:
 	try:
-		subprocess.check_output(  # nosemgrep: frappe-subprocess-exec — static argument list, no user input
+		subprocess.check_output(  # nosemgrep: frappe-subprocess-exec - static argument list, no user input
 			["git", "fetch", "origin", "--prune", "--quiet"],
 			cwd=app_path,
 			stderr=subprocess.DEVNULL,
@@ -193,7 +193,7 @@ def _fetch_remote(app_path: str) -> None:
 def _get_remote_heads(app_path: str) -> dict[str, str]:
 	try:
 		output = (
-			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec — static argument list, no user input
+			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec - static argument list, no user input
 				["git", "for-each-ref", "refs/remotes/origin", "--format=%(refname:short) %(objectname)"],
 				cwd=app_path,
 				stderr=subprocess.DEVNULL,
@@ -229,7 +229,7 @@ def _get_commit_details(app_path: str, ref: str) -> dict[str, str]:
 		return {}
 	try:
 		commit_message = (
-			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec — ref validated against safe pattern above
+			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec - ref validated against safe pattern above
 				["git", "log", "-1", "--pretty=%B", ref],
 				cwd=app_path,
 				stderr=subprocess.DEVNULL,
@@ -238,7 +238,7 @@ def _get_commit_details(app_path: str, ref: str) -> dict[str, str]:
 			.strip()
 		)
 		commit_date = (
-			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec — ref validated against safe pattern above
+			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec - ref validated against safe pattern above
 				["git", "log", "-1", "--pretty=%cI", ref],
 				cwd=app_path,
 				stderr=subprocess.DEVNULL,
@@ -247,7 +247,7 @@ def _get_commit_details(app_path: str, ref: str) -> dict[str, str]:
 			.strip()
 		)
 		commit_hash = (
-			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec — ref validated against safe pattern above
+			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec - ref validated against safe pattern above
 				["git", "rev-parse", ref],
 				cwd=app_path,
 				stderr=subprocess.DEVNULL,
@@ -269,7 +269,7 @@ def _get_commit_list(app_path: str, range_ref: str, limit: int = 20) -> list[dic
 		return []
 	try:
 		output = (
-			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec — range_ref validated against safe pattern above
+			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec - range_ref validated against safe pattern above
 				[
 					"git",
 					"log",
@@ -305,7 +305,7 @@ def _get_commit_list(app_path: str, range_ref: str, limit: int = 20) -> list[dic
 def _get_current_branch(app_path: str) -> str:
 	try:
 		branch = (
-			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec — static argument list, no user input
+			subprocess.check_output(  # nosemgrep: frappe-subprocess-exec - static argument list, no user input
 				["git", "rev-parse", "--abbrev-ref", "HEAD"],
 				cwd=app_path,
 				stderr=subprocess.DEVNULL,
@@ -507,7 +507,7 @@ def get_server_usage():
 
 	if (
 		psutil is None
-	):  # nosemgrep: identical-is-comparison — psutil is set to None on ImportError, check is intentional
+	):  # nosemgrep: identical-is-comparison - psutil is set to None on ImportError, check is intentional
 		if not _PSUTIL_MISSING_LOGGED:
 			frappe.log_error("psutil is not installed; server usage metrics unavailable.")
 			_PSUTIL_MISSING_LOGGED = True
