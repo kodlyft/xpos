@@ -9,7 +9,7 @@ from frappe.utils import cint, flt
 
 from xpos.api.profile_rules import resolve_selling_price_list
 from xpos.api.profiles import resolve_pos_profile
-from xpos.utils import row_value
+from xpos.utils import read_latest_on_lock, row_value
 
 
 @frappe.whitelist()
@@ -323,6 +323,7 @@ def create_pos_referral_code(customer: str, pos_profile: str | None = None) -> d
 		return {"referral_note": _("No referral code was created: {0}").format(problem)}
 
 	# Serialise concurrent retries for this customer before checking for an existing code.
+	read_latest_on_lock()
 	frappe.db.get_value("Customer", customer, "name", for_update=True)
 	existing = frappe.db.get_value(
 		"Referral Code", {"customer": customer, "company": company.name}, "referral_code"

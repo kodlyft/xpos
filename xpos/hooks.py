@@ -164,8 +164,18 @@ extend_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
-	"Journal Entry": {"before_submit": "xpos.api.customer_credit.lock_credit_note_spend"},
-	"Payment Entry": {"before_submit": "xpos.api.customer_credit.lock_credit_note_spend"},
+	"Journal Entry": {
+		"before_insert": "xpos.api.customer_credit.read_latest_before_spend",
+		"before_validate": "xpos.api.customer_credit.read_latest_before_spend",
+		"before_update_after_submit": "xpos.api.customer_credit.read_latest_before_spend",
+		"before_submit": "xpos.api.customer_credit.lock_credit_note_spend",
+	},
+	"Payment Entry": {
+		"before_insert": "xpos.api.customer_credit.read_latest_before_spend",
+		"before_validate": "xpos.api.customer_credit.read_latest_before_spend",
+		"before_update_after_submit": "xpos.api.customer_credit.read_latest_before_spend",
+		"before_submit": "xpos.api.customer_credit.lock_credit_note_spend",
+	},
 	"Sales Invoice": {
 		"validate": "xpos.x_pos.api.invoice.validate",
 		"before_print": "xpos.api.print_formats.enforce_reprint_right",
