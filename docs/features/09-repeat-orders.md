@@ -35,6 +35,8 @@ X POS allows you to quickly duplicate a past invoice to serve repeat customers w
 
 ## Duplicating an Invoice
 
+You can repeat an invoice if it was sold through a POS Profile you are assigned to, or if your ERPNext role lets you read it in Desk.
+
 ### Select an Invoice
 1. Browse or search for the desired invoice
 2. Click on the invoice to select it

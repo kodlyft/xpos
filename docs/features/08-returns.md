@@ -22,6 +22,8 @@ There are two ways to initiate a return:
 
 ## Return Dialog - Step 1: Search Invoices
 
+You can open an invoice for return if it was sold through a POS Profile you are assigned to, or if your ERPNext role lets you read it in Desk. Any other invoice shows a "not permitted" message.
+
 ### Search Fields
 You can search for the original invoice by multiple criteria:
 - **Invoice number** - Direct invoice name/number lookup

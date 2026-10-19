@@ -11,6 +11,8 @@ from frappe.utils import (
 )
 from frappe.utils.background_jobs import enqueue
 
+from xpos.api.invoices import get_pos_invoice
+from xpos.api.profiles import resolve_pos_profile
 from xpos.api.utilities import get_invoice_type
 from xpos.x_pos.api.invoice_processing.stock import (
 	_apply_item_name_overrides,
@@ -198,14 +200,15 @@ def update_invoice(data: str) -> dict:
 	pos_profile = data.get("pos_profile")
 	doctype = get_invoice_type()
 
-	data.setdefault("doctype", doctype)
+	data["doctype"] = doctype
 
 	return_validity_enabled, default_validity_days = _get_return_validity_settings(pos_profile)
 
 	if data.get("name"):
-		invoice_doc = frappe.get_doc(doctype, data.get("name"))
+		invoice_doc = get_pos_invoice(doctype, data.get("name"), "write")
 		invoice_doc.update(data)
 	else:
+		resolve_pos_profile(pos_profile)
 		invoice_doc = frappe.get_doc(data)
 
 	# Populate coupons child table from frontend detail rows
@@ -428,7 +431,7 @@ def submit_invoice(invoice: str, data: str | dict, submit_in_background: bool = 
 	else:
 		if "modified" in invoice:
 			del invoice["modified"]
-		invoice_doc = frappe.get_doc(doctype, invoice_name)
+		invoice_doc = get_pos_invoice(doctype, invoice_name, "write")
 
 		if invoice_doc.docstatus == 1:
 			return {"name": invoice_doc.name, "status": invoice_doc.docstatus}

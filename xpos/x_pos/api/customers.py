@@ -12,6 +12,9 @@ from frappe import _
 from frappe.utils import cstr, flt, get_datetime
 from frappe.utils.caching import redis_cache
 
+from xpos.api.customers import require_customer_access
+from xpos.api.profiles import resolve_pos_profile
+
 from .utils import fetch_sales_person_names
 
 
@@ -52,10 +55,18 @@ def get_customer_group_condition(pos_profile: dict) -> str:
 	return cond
 
 
+def server_pos_profile(pos_profile: str) -> str:
+	"""The caller's own POS Profile as JSON, so its customer groups come from the server, not the request."""
+	name = (json.loads(pos_profile) or {}).get("name") if pos_profile else None
+	return frappe.as_json(resolve_pos_profile(name).as_dict())
+
+
 @frappe.whitelist()
 def get_customer_balance(customer: str) -> dict:
 	if not customer:
 		return {"balance": 0, "customer_name": None}
+
+	require_customer_access(customer)
 
 	try:
 		customer_doc = frappe.get_doc("Customer", customer)
@@ -88,6 +99,7 @@ def get_customer_names(
 	start_after: str | None = None,
 	modified_after: str | None = None,
 ) -> list:
+	pos_profile = server_pos_profile(pos_profile)
 	_pos_profile = json.loads(pos_profile)
 	ttl = _pos_profile.get("server_cache_duration")
 	if ttl:
@@ -152,7 +164,7 @@ def get_customer_names(
 
 @frappe.whitelist()
 def get_customers_count(pos_profile: str) -> int:
-	pos_profile = json.loads(pos_profile)
+	pos_profile = json.loads(server_pos_profile(pos_profile))
 	filters = {"disabled": 0}
 	customer_groups = get_customer_groups(pos_profile)
 	if customer_groups:
@@ -166,6 +178,7 @@ def get_customer_info(customer: str | None = None) -> dict:
 	if not customer:
 		return {}
 
+	require_customer_access(customer)
 	customer = frappe.get_doc("Customer", customer)
 
 	res = {"loyalty_points": None, "conversion_factor": None}
@@ -374,6 +387,7 @@ def create_customer(
 
 @frappe.whitelist()
 def set_customer_info(customer: str, fieldname: str, value: str | None = None):
+	require_customer_access(customer, "write")
 	if fieldname == "loyalty_program":
 		frappe.db.set_value("Customer", customer, "loyalty_program", value)
 
@@ -409,6 +423,7 @@ def set_customer_info(customer: str, fieldname: str, value: str | None = None):
 
 @frappe.whitelist()
 def get_customer_addresses(customer: str) -> list:
+	require_customer_access(customer)
 	return frappe.db.sql(
 		"""
         SELECT

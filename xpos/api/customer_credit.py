@@ -18,6 +18,7 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
+from xpos.api.customers import require_customer_access
 from xpos.api.profile_rules import profile_flag
 from xpos.api.profiles import ensure_profile_allows, resolve_pos_profile
 from xpos.api.utilities import get_invoice_type
@@ -102,6 +103,7 @@ def get_customer_credit(customer: str, pos_profile: str | None = None, company: 
 	empty = {"total_credit": 0, "currency": None, "sources": []}
 	if not customer or not profile_flag(pos, "use_customer_credit"):
 		return empty
+	require_customer_access(customer, pos_profile=pos.name)
 	account = invoice_receivable_account(pos)
 	if not credit_account_supported(pos.company, account):
 		return empty
