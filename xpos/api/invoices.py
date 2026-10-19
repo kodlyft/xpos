@@ -5,10 +5,11 @@ import hashlib
 import json
 import re
 from collections import defaultdict
+from contextlib import suppress
 
 import frappe
 from frappe import _, cstr
-from frappe.utils import cint, flt, getdate, now_datetime, nowdate
+from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 from frappe.utils.background_jobs import enqueue
 
 from xpos.api.customer_credit import allocate_customer_credit, credit_total, lock_credit_sources
@@ -58,12 +59,8 @@ def enforce_stock_availability(invoice_doc):
 
 def _get_item_rate_precision():
 	"""Return item rate precision from System Settings float_precision, default 3."""
-	val = frappe.db.get_default("float_precision")
-	try:
-		p = cint(val)
-		return p if p >= 0 else 3
-	except Exception:
-		return 3
+	p = cint(frappe.db.get_default("float_precision"))
+	return p if p >= 0 else 3
 
 
 def _resolve_invoice_posting_date(pos, requested_posting_date=None, current_posting_date=None):
@@ -77,7 +74,7 @@ def _resolve_invoice_posting_date(pos, requested_posting_date=None, current_post
 
 	try:
 		return str(getdate(candidate))
-	except Exception:
+	except ValueError:
 		frappe.throw(_("Posting Date must be a valid date"))
 
 
@@ -295,10 +292,7 @@ def _ensure_pos_invoice_payment_row(invoice_doc, pos_profile_doc, require_paymen
 
 	existing_payments = None
 	if hasattr(invoice_doc, "get"):
-		try:
-			existing_payments = invoice_doc.get("payments")
-		except Exception:
-			existing_payments = None
+		existing_payments = invoice_doc.get("payments")
 
 	if existing_payments is None:
 		existing_payments = getattr(invoice_doc, "payments", None)
@@ -673,10 +667,7 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 				"pos_invoice",
 			):
 				if item_data.get(fieldname) is not None:
-					try:
-						setattr(item, fieldname, item_data.get(fieldname))
-					except Exception:
-						pass
+					setattr(item, fieldname, item_data.get(fieldname))
 
 		disc_pct = flt(item_data.get("discount_percentage", 0), 2)
 		disc_amt = flt(item_data.get("discount_amount", 0), 2)
@@ -719,10 +710,7 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 				item.xpos_gift_card = item_data.get("gift_card")
 
 		if item_data.get("additional_notes"):
-			try:
-				item.additional_notes = item_data["additional_notes"]
-			except Exception:
-				pass
+			item.additional_notes = item_data["additional_notes"]
 
 	apply_invoice_delivery_dates(invoice_doc, data, items)
 
@@ -799,16 +787,15 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 	change_amount = change_total if change_legs else flt(data.get("change_amount", 0))
 	if change_amount > 0:
 		invoice_doc.change_amount = change_amount
+		if not change_legs and not is_return and doctype == "POS Invoice":
+			cap_change_at_overpayment(invoice_doc)
 
 	if pos_opening_shift:
-		try:
-			invoice_doc.pos_opening_shift = pos_opening_shift
-		except Exception:
-			pass
+		invoice_doc.pos_opening_shift = pos_opening_shift
 
 	pos_coupons_data = data.get("coupons_detail") or []
 	for coupon_row in pos_coupons_data:
-		try:
+		with suppress(AttributeError):
 			invoice_doc.append(
 				"coupons",
 				{
@@ -820,12 +807,10 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 					"customer": coupon_row.get("customer") or customer,
 				},
 			)
-		except Exception:
-			pass
 
 	pos_offers_data = data.get("offers_detail") or []
 	for offer_row in pos_offers_data:
-		try:
+		with suppress(AttributeError):
 			invoice_doc.append(
 				"offers",
 				{
@@ -837,19 +822,11 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 					"coupon": offer_row.get("coupon"),
 				},
 			)
-		except Exception:
-			pass
 
-	try:
-		enforce_return_validity = cint(pos.get("enable_return_validity"))
-		if enforce_return_validity and not is_return:
-			return_days = cint(pos.get("return_validity_days")) or 0
-			if return_days > 0:
-				from datetime import timedelta
-
-				invoice_doc.return_valid_upto = getdate(nowdate()) + timedelta(days=return_days)
-	except Exception:
-		pass
+	if cint(pos.get("enable_return_validity")) and not is_return:
+		return_days = cint(pos.get("return_validity_days"))
+		if return_days > 0:
+			invoice_doc.return_valid_upto = add_days(nowdate(), return_days)
 
 	frappe.db.savepoint(REPRICE_SAVEPOINT)
 	try:
@@ -937,6 +914,21 @@ def create_invoice(data: str | dict, local_id: str | None = None):
 		invoice_doc.reload()
 
 	return _build_invoice_response(invoice_doc)
+
+
+def cap_change_at_overpayment(invoice_doc):
+	"""The client's change can be off by rounding: never record more than paid minus the total."""
+	validate_change_amount = invoice_doc.validate_change_amount
+
+	def capped():
+		total = flt(invoice_doc.rounded_total) or flt(invoice_doc.grand_total)
+		overpaid = flt(invoice_doc.paid_amount) - total + flt(invoice_doc.write_off_amount)
+		invoice_doc.change_amount = flt(
+			max(0, min(flt(invoice_doc.change_amount), overpaid)), invoice_doc.precision("change_amount")
+		)
+		validate_change_amount()
+
+	invoice_doc.validate_change_amount = capped
 
 
 def existing_sale_response(doctype: str, name: str) -> dict:
@@ -1307,10 +1299,7 @@ def save_draft_invoice(data: str | dict):
 		invoice_doc.discount_amount = flt(data["discount_amount"])
 		invoice_doc.apply_discount_on = data.get("apply_discount_on") or "Grand Total"
 
-	try:
-		invoice_doc.pos_notes = data.get("pos_notes") or ""
-	except Exception:
-		pass
+	invoice_doc.pos_notes = data.get("pos_notes") or ""
 
 	apply_sales_person(invoice_doc, data.get("sales_person") or None, pos_profile)
 
@@ -1363,10 +1352,7 @@ def save_draft_invoice(data: str | dict):
 	_ensure_pos_invoice_payment_row(invoice_doc, pos, doctype == "POS Invoice")
 
 	if pos_opening_shift:
-		try:
-			invoice_doc.pos_opening_shift = pos_opening_shift
-		except Exception:
-			pass
+		invoice_doc.pos_opening_shift = pos_opening_shift
 
 	if data.get("pos_awaiting_settlement") and frappe.db.has_column(doctype, "pos_awaiting_settlement"):
 		invoice_doc.pos_awaiting_settlement = 1

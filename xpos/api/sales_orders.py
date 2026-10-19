@@ -17,11 +17,26 @@ from frappe import _
 from frappe.utils import flt, nowdate
 
 from xpos.api.invoices import apply_sales_person
+from xpos.api.profiles import ensure_profile_allows, resolve_pos_profile
+
+
+def order_profile(pos_profile: str | None):
+	"""A POS Profile the user may use, with "Allow Sales Order" on."""
+	pos = resolve_pos_profile(pos_profile)
+	ensure_profile_allows(pos, "allow_sales_order", _("Sales Orders"))
+	return pos
 
 
 @frappe.whitelist()
-def search_orders(company: str, currency: str | None = None, order_name: str | None = None):
+def search_orders(
+	company: str, currency: str | None = None, order_name: str | None = None, pos_profile: str | None = None
+):
 	"""Searches for unbilled Sales Orders."""
+	pos = order_profile(pos_profile)
+	if company != pos.company:
+		frappe.throw(
+			_("POS Profile {0} belongs to another company.").format(pos.name), frappe.PermissionError
+		)
 	filters = {
 		"company": company,
 		"docstatus": 1,
@@ -70,7 +85,7 @@ def create_sales_order(data: str | dict):
 	if not pos_profile or not customer or not items:
 		frappe.throw(_("POS Profile, Customer, and Items are required"))
 
-	pos = frappe.get_cached_doc("POS Profile", pos_profile)
+	pos = order_profile(pos_profile)
 
 	so_name = data.get("name")
 	if so_name and frappe.db.exists("Sales Order", so_name):
@@ -112,7 +127,7 @@ def create_sales_order(data: str | dict):
 
 	apply_sales_person(so, data.get("sales_person") or None, pos_profile)
 
-	so.save(ignore_permissions=True)
+	so.save()
 
 	return {
 		"name": so.name,
@@ -135,6 +150,7 @@ def submit_sales_order(data: str | dict):
 		frappe.throw(_("Sales Order name is required"))
 
 	so = frappe.get_doc("Sales Order", so_name)
+	order_profile(data.get("pos_profile"))
 	so.submit()
 
 	return {
@@ -145,13 +161,20 @@ def submit_sales_order(data: str | dict):
 
 
 @frappe.whitelist()
-def create_sales_invoice_from_order(sales_order: str):
+def create_sales_invoice_from_order(sales_order: str, pos_profile: str | None = None):
 	"""Creates a Sales Invoice from a Sales Order."""
 	from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
 
+	pos = order_profile(pos_profile)
+	if frappe.db.get_value("Sales Order", sales_order, "company") != pos.company:
+		frappe.throw(
+			_("Sales Order {0} belongs to another company.").format(sales_order), frappe.PermissionError
+		)
 	si = make_sales_invoice(sales_order)
 	si.is_pos = 1
-	si.insert(ignore_permissions=True)
+	si.pos_profile = pos.name
+	si.update_stock = pos.update_stock
+	si.insert()
 
 	return {
 		"name": si.name,
@@ -173,7 +196,7 @@ def create_quotation(data: str | dict):
 	if not pos_profile or not customer or not items:
 		frappe.throw(_("POS Profile, Customer, and Items are required"))
 
-	pos = frappe.get_cached_doc("POS Profile", pos_profile)
+	pos = order_profile(pos_profile)
 
 	qt_name = data.get("name")
 	if qt_name and frappe.db.exists("Quotation", qt_name):
@@ -203,7 +226,7 @@ def create_quotation(data: str | dict):
 		qt.additional_discount_percentage = flt(data["additional_discount_percentage"])
 		qt.apply_discount_on = data.get("apply_discount_on") or "Grand Total"
 
-	qt.save(ignore_permissions=True)
+	qt.save()
 
 	return {
 		"name": qt.name,
@@ -225,6 +248,7 @@ def submit_quotation(data: str | dict):
 		frappe.throw(_("Quotation name is required"))
 
 	qt = frappe.get_doc("Quotation", qt_name)
+	order_profile(data.get("pos_profile"))
 	qt.submit()
 
 	return {

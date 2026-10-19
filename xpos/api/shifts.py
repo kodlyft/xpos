@@ -3,6 +3,7 @@
 
 import json
 from collections import defaultdict
+from contextlib import suppress
 
 import frappe
 from frappe import _
@@ -38,6 +39,16 @@ SUMMARY_INVOICE_FIELDS = [
 	"customer",
 	"customer_name",
 ]
+
+MAX_COUNTED_AMOUNT = 999_999_999_999
+
+
+def counted_amount(value, mode_of_payment) -> float:
+	"""A till count, refused with a message instead of a database error when it cannot be stored."""
+	amount = flt(value)
+	if amount < 0 or amount > MAX_COUNTED_AMOUNT:
+		frappe.throw(_("The amount for {0} is out of range.").format(mode_of_payment))
+	return amount
 
 
 def resolve_cash_mode_of_payment(pos_profile: str | None) -> str:
@@ -286,7 +297,7 @@ def open_shift(pos_profile: str, company: str, balance_details: str | list[dict]
 			"balance_details",
 			{
 				"mode_of_payment": detail.get("mode_of_payment"),
-				"amount": flt(detail.get("opening_amount")),
+				"amount": counted_amount(detail.get("opening_amount"), detail.get("mode_of_payment")),
 			},
 		)
 
@@ -456,7 +467,7 @@ def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 
 		for detail in closing_details:
 			mode_of_payment = detail.get("mode_of_payment")
-			closing_amount = flt(detail.get("closing_amount", 0))
+			closing_amount = counted_amount(detail.get("closing_amount"), mode_of_payment)
 			server_row = expected_amounts.get(mode_of_payment) or {}
 			expected_amount = flt(server_row.get("amount", 0))
 			if mode_of_payment == gift_mode:
@@ -477,7 +488,7 @@ def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 
 	tax_summary = _get_shift_tax_summary(invoices, doctype)
 	for tax in tax_summary:
-		try:
+		with suppress(AttributeError):
 			closing_shift.append(
 				"taxes",
 				{
@@ -486,8 +497,6 @@ def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 					"amount": flt(tax.get("amount")),
 				},
 			)
-		except Exception:
-			pass
 
 	invoice_link_field = "pos_invoice" if doctype == "POS Invoice" else "sales_invoice"
 	for inv in invoices:
@@ -623,7 +632,7 @@ def _enrich_shift_data(data: dict, pos_profile: str):
 	"""Add profile, company, settings, and tax template data to shift response."""
 	try:
 		profile = frappe.get_cached_doc("POS Profile", pos_profile)
-	except (AttributeError, Exception):
+	except AttributeError:
 		frappe.clear_cache(doctype="POS Profile")
 		profile = frappe.get_doc("POS Profile", pos_profile)
 	data["pos_profile"] = profile.as_dict()
@@ -656,7 +665,7 @@ def _enrich_shift_data(data: dict, pos_profile: str):
 				for tax in tax_template.taxes
 			]
 			data["tax_inclusive"] = cint(profile.get("tax_inclusive")) or 0
-		except Exception:
+		except frappe.DoesNotExistError:
 			data["taxes"] = []
 			data["tax_inclusive"] = 0
 	else:
@@ -736,7 +745,9 @@ def create_opening_shift(data: str | dict, local_id: str | None = None) -> dict:
 			"balance_details",
 			{
 				"mode_of_payment": detail.get("mode_of_payment"),
-				"amount": flt(detail.get("opening_amount") or detail.get("amount", 0)),
+				"amount": counted_amount(
+					detail.get("opening_amount") or detail.get("amount"), detail.get("mode_of_payment")
+				),
 			},
 		)
 
@@ -805,7 +816,7 @@ def create_closing_shift(data: str | dict, local_id: str | None = None) -> dict:
 	opening_amounts = {d.mode_of_payment: flt(d.amount) for d in opening.balance_details}
 	for detail in payment_details:
 		mode_of_payment = detail.get("mode_of_payment")
-		closing_amount = flt(detail.get("closing_amount", 0))
+		closing_amount = counted_amount(detail.get("closing_amount"), mode_of_payment)
 		server_row = expected_amounts.get(mode_of_payment) or {}
 		expected_amount = flt(server_row.get("amount", 0))
 		closing_shift.append(

@@ -4,6 +4,7 @@ import { ref, computed, watch } from "vue";
 import { call } from "@/services/api";
 import { usePosStore } from "./posStore";
 import { useSettingsStore } from "./settingsStore";
+import { roundFor } from "@/composables/useCurrency";
 import { getCachedItemByCode, getCachedStockForItem } from "@/services/dbBridge";
 import type {
 	CartItem,
@@ -140,6 +141,18 @@ export const useCartStore = defineStore("cart", () => {
 
 	const offerEvaluation = computed<OfferEvaluationResult>(() => {
 		return evaluateOffers(appliedOffers.value, items.value);
+	});
+
+	const firedOffers = computed(() => {
+		const ev = offerEvaluation.value;
+		const fired = new Set(
+			[...ev.itemDiscounts, ...ev.freeItems, ...ev.grandTotalDiscounts, ...ev.loyaltyAwards].map(
+				(row) => row.offer_name,
+			),
+		);
+		return appliedOffers.value.filter(
+			(o) => fired.has(o.name) || (o as Record<string, unknown>).promo_source === "Promotional Scheme",
+		);
 	});
 
 	const offerItemDiscountTotal = computed(() => {
@@ -326,7 +339,7 @@ export const useCartStore = defineStore("cart", () => {
 		if (!posStore.disableRoundedTotal && total !== 0 && !isGiftCardSale.value && !giftCardTender.value) {
 			total = Math.round(total);
 		}
-		return total;
+		return roundFor(posStore.invoiceCurrency || posStore.currency, total);
 	});
 
 	const isEmpty = computed(() => items.value.length === 0);
@@ -1781,9 +1794,9 @@ export const useCartStore = defineStore("cart", () => {
 			];
 		}
 
-		if (appliedOffers.value.length > 0) {
-			data.offers = JSON.stringify(appliedOffers.value.map((o) => o.name));
-			data.offers_detail = appliedOffers.value.map((o) => ({
+		if (firedOffers.value.length > 0) {
+			data.offers = JSON.stringify(firedOffers.value.map((o) => o.name));
+			data.offers_detail = firedOffers.value.map((o) => ({
 				offer_name: o.name,
 				offer:
 					(o as Record<string, unknown>).offer || (o as Record<string, unknown>).offer_type || "",

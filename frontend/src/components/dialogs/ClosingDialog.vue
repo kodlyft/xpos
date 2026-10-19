@@ -191,6 +191,7 @@
 												<NumberInput
 													v-model="closingDetails[index].closing_amount"
 													:min="0"
+													:max="999999999999"
 													:precision="precisionFor(detail.currency)"
 													class="w-28 text-end text-sm ms-auto"
 													data-testid="closing-input"

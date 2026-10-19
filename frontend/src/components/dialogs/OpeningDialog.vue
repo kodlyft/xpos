@@ -94,6 +94,7 @@
 									<NumberInput
 										v-model="method.opening_amount"
 										:min="0"
+										:max="999999999999"
 										:precision="moneyPrecision"
 										class="flex-1"
 										placeholder="0.00"
