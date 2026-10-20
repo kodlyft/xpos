@@ -7,6 +7,7 @@ import frappe
 from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
 from frappe import _
 
+from xpos.api.invoices import ensure_invoice_doctype, get_pos_invoice
 from xpos.x_pos.api.invoice_processing.creation import update_invoice
 from xpos.x_pos.api.invoice_processing.utils import get_latest_rate
 from xpos.x_pos.api.utils import log_perf_event
@@ -14,6 +15,7 @@ from xpos.x_pos.api.utils import log_perf_event
 
 @frappe.whitelist()
 def get_draft_invoices(pos_opening_shift: str, doctype: str = "Sales Invoice"):
+	ensure_invoice_doctype(doctype)
 	started_at = time.perf_counter()
 	filters = {
 		"pos_opening_shift": pos_opening_shift,
@@ -51,7 +53,7 @@ def get_draft_invoices(pos_opening_shift: str, doctype: str = "Sales Invoice"):
 @frappe.whitelist()
 def get_draft_invoice_doc(invoice_name: str, doctype: str = "Sales Invoice"):
 	started_at = time.perf_counter()
-	doc = frappe.get_cached_doc(doctype, invoice_name)
+	doc = get_pos_invoice(doctype, invoice_name)
 	log_perf_event(
 		"get_draft_invoice_doc",
 		started_at,

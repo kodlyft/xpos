@@ -7,6 +7,8 @@ from frappe.model.document import Document
 from frappe.query_builder.functions import Count
 from frappe.utils import cint, cstr, getdate, strip, today
 
+from xpos.utils import read_latest_on_lock
+
 COUPON_INVOICE_DOCTYPES = ("Sales Invoice", "POS Invoice")
 
 
@@ -282,6 +284,7 @@ def lock_coupon(coupon_name):
 	``changed_in_flight`` tells the caller that another transaction changed the
 	coupon after this one took its snapshot.
 	"""
+	read_latest_on_lock()
 	seen = frappe.db.get_value("POS Coupon", coupon_name, "modified")
 	coupon = frappe.db.get_value(
 		"POS Coupon",

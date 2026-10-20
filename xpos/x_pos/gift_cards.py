@@ -20,6 +20,7 @@ from frappe.model.document import Document
 from frappe.utils import add_days, cint, flt, getdate
 
 from xpos.api.exchange import get_currency_precision
+from xpos.utils import read_latest_on_lock
 
 CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"  # Crockford base32: no I, L, O, U
 CODE_LENGTH = 16
@@ -251,6 +252,7 @@ def check_payment_auth(doc, row):
 
 def lock_card(name: str):
 	"""Lock a card until the transaction ends and return its latest committed state."""
+	read_latest_on_lock()
 	card = frappe.db.get_value(
 		"Gift Card",
 		name,

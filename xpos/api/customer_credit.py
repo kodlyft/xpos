@@ -18,9 +18,11 @@ import frappe
 from frappe import _
 from frappe.utils import flt
 
+from xpos.api.customers import require_customer_access
 from xpos.api.profile_rules import profile_flag
 from xpos.api.profiles import ensure_profile_allows, resolve_pos_profile
 from xpos.api.utilities import get_invoice_type
+from xpos.utils import read_latest_on_lock
 
 PAYMENT_ENTRY = "Payment Entry"
 CREDIT_NOTE = "Sales Invoice"
@@ -102,6 +104,7 @@ def get_customer_credit(customer: str, pos_profile: str | None = None, company: 
 	empty = {"total_credit": 0, "currency": None, "sources": []}
 	if not customer or not profile_flag(pos, "use_customer_credit"):
 		return empty
+	require_customer_access(customer, pos_profile=pos.name)
 	account = invoice_receivable_account(pos)
 	if not credit_account_supported(pos.company, account):
 		return empty
@@ -123,6 +126,7 @@ def lock_credit_sources(pos, customer: str, account: str, requested: list[dict])
 
 	if not frappe.db.transaction_writes:
 		frappe.db.rollback()  # nothing written yet; only ends the read-only snapshot
+	read_latest_on_lock()
 	frappe.db.get_value("Customer", customer, "name", for_update=True)
 
 	if get_invoice_type() != "Sales Invoice":
@@ -248,6 +252,16 @@ def allocate_customer_credit(invoice_doc, credits: list[dict]) -> None:
 		reconcile_dr_cr_note(notes, invoice_doc.company)
 
 
+def read_latest_before_spend(doc, method=None) -> None:
+	"""Earliest hooks of entries that can spend customer credit, before ERPNext writes anything.
+
+	Payment Reconciliation names its Journal Entry and rewrites Payment Entry references before
+	``before_submit``. On MariaDB 11.6+ those writes would fail with error 1020 when a till spent
+	the same credit meanwhile, so the refusal comes from ``lock_credit_note_spend`` instead.
+	"""
+	read_latest_on_lock()
+
+
 def lock_credit_note_spend(doc, method=None) -> None:
 	"""``before_submit`` of Journal Entry and Payment Entry: a credit note cannot be spent twice.
 
@@ -273,6 +287,7 @@ def lock_credit_note_spend(doc, method=None) -> None:
 	if not spent:
 		return
 	notes = frappe.get_all(CREDIT_NOTE, filters={"name": ("in", spent), "is_return": 1}, pluck="name")
+	read_latest_on_lock()
 	for note in sorted(notes):
 		row = frappe.db.sql(
 			"""SELECT outstanding_amount FROM `tabSales Invoice`
