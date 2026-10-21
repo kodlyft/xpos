@@ -161,7 +161,9 @@ export const useCartStore = defineStore("cart", () => {
 
 		let total = 0;
 		for (const disc of eval_.itemDiscounts) {
-			const item = items.value.find((i) => i.item_code === disc.item_code);
+			const item = items.value.find((i) =>
+				disc.uid ? i.uid === disc.uid : i.item_code === disc.item_code,
+			);
 			if (!item) continue;
 			const lineAmt = Math.abs(item.qty) * item.rate;
 			if (disc.fixed_rate !== null) {

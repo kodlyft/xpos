@@ -398,6 +398,29 @@ describe("Cart Store", () => {
 			expect(cartStore.appliedOffers.length).toBe(1);
 		});
 
+		it("discounts the paid row once when a free row shares the item", () => {
+			const cartStore = useCartStore();
+			cartStore.appliedOffers = [
+				{
+					name: "OFFER-1",
+					title: "5% off",
+					disabled: false,
+					offer: "Item Price",
+					apply_on: "Item Code",
+					item: "CEM",
+					discount_type: "Discount Percentage",
+					discount_percentage: 5,
+					min_qty: 10,
+				} as any,
+			];
+			cartStore.items = [
+				{ item_code: "CEM", item_name: "Cement", qty: 20, rate: 25, uid: "r1" },
+				{ item_code: "CEM", item_name: "Cement", qty: 1, rate: 0, uid: "r2", pos_is_free_item: true },
+			] as any;
+
+			expect(cartStore.offerItemDiscountTotal).toBe(25);
+		});
+
 		it("should track applied coupon", () => {
 			const cartStore = useCartStore();
 			cartStore.couponCode = "SUMMER10";

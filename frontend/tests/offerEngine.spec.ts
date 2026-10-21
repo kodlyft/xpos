@@ -25,6 +25,16 @@ describe("evaluateOffers", () => {
 		expect(result.itemDiscounts[0].discount_percentage).toBe(10);
 	});
 
+	it("leaves free rows out of an Item Price offer and ties each discount to its cart row", () => {
+		const paid = { ...item, uid: "r1", qty: 20, rate: 25 } as CartItem;
+		const free = { ...item, uid: "r2", qty: 1, rate: 0, pos_is_free_item: true } as CartItem;
+		const second = { ...item, uid: "r3", qty: 3, rate: 25 } as CartItem;
+
+		const result = evaluateOffers([itemPriceOffer], [paid, free, second]);
+
+		expect(result.itemDiscounts.map((d) => d.uid)).toEqual(["r1", "r3"]);
+	});
+
 	it("never applies a Promotional Scheme offer, which ERPNext already applies as a Pricing Rule", () => {
 		const schemeOffer = {
 			...itemPriceOffer,
