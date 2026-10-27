@@ -12,7 +12,7 @@ from frappe import _
 from frappe.utils import cstr, flt, get_datetime
 from frappe.utils.caching import redis_cache
 
-from xpos.api.customers import require_customer_access
+from xpos.api.customers import require_customer_access, user_may_see_address
 from xpos.api.profiles import resolve_pos_profile
 
 from .utils import fetch_sales_person_names
@@ -66,7 +66,7 @@ def get_customer_balance(customer: str) -> dict:
 	if not customer:
 		return {"balance": 0, "customer_name": None}
 
-	require_customer_access(customer)
+	pos = require_customer_access(customer)
 
 	try:
 		customer_doc = frappe.get_doc("Customer", customer)
@@ -76,9 +76,10 @@ def get_customer_balance(customer: str) -> dict:
 			"""
             SELECT SUM(debit - credit) AS balance
             FROM `tabGL Entry`
-            WHERE party_type = 'Customer' AND party = %(customer)s AND docstatus = 1
+            WHERE party_type = 'Customer' AND party = %(customer)s AND company = %(company)s
+                AND docstatus = 1
         """,
-			{"customer": customer},
+			{"customer": customer, "company": pos.company},
 			as_dict=True,
 		)
 
@@ -178,7 +179,7 @@ def get_customer_info(customer: str | None = None) -> dict:
 	if not customer:
 		return {}
 
-	require_customer_access(customer)
+	pos = require_customer_access(customer)
 	customer = frappe.get_doc("Customer", customer)
 
 	res = {"loyalty_points": None, "conversion_factor": None}
@@ -211,6 +212,7 @@ def get_customer_info(customer: str | None = None) -> dict:
 		lp_details = get_loyalty_program_details_with_points(
 			customer.name,
 			customer.loyalty_program,
+			company=pos.company,
 			silent=True,
 			include_expired_entry=False,
 		)
@@ -242,6 +244,7 @@ def get_customer_info(customer: str | None = None) -> dict:
 		as_dict=True,
 	)
 
+	addresses = [row for row in addresses if user_may_see_address(row.address_name)]
 	if addresses:
 		addr = addresses[0]
 		res["address_line1"] = addr.address_line1 or ""
@@ -424,7 +427,7 @@ def set_customer_info(customer: str, fieldname: str, value: str | None = None):
 @frappe.whitelist()
 def get_customer_addresses(customer: str) -> list:
 	require_customer_access(customer)
-	return frappe.db.sql(
+	addresses = frappe.db.sql(
 		"""
         SELECT
             address.name,
@@ -446,6 +449,7 @@ def get_customer_addresses(customer: str) -> list:
 		{"customer": customer},
 		as_dict=1,
 	)
+	return [row for row in addresses if user_may_see_address(row.name)]
 
 
 @frappe.whitelist()
