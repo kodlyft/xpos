@@ -9,6 +9,7 @@ from contextlib import suppress
 
 import frappe
 from frappe import _, cstr
+from frappe.permissions import has_user_permission
 from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 from frappe.utils.background_jobs import enqueue
 
@@ -97,13 +98,24 @@ def ensure_invoice_doctype(doctype: str) -> None:
 
 
 def get_pos_invoice(doctype: str, name: str, ptype: str = "read"):
-	"""Load an invoice the caller may act on: a user of its POS Profile, or one Frappe grants `ptype`."""
+	"""Load an invoice Frappe grants `ptype` on, or one of the caller's own POS Profile and company that their User Permissions allow."""
 	ensure_invoice_doctype(doctype)
+	denied = _("You are not permitted to access invoice {0}.").format(name)
+	scope = frappe.db.get_value(doctype, name, ["pos_profile", "company"], as_dict=True)
+	if not scope:
+		frappe.throw(denied, frappe.PermissionError)
 	doc = frappe.get_doc(doctype, name)
-	profile = doc.get("pos_profile")
-	if not (profile and user_may_use_profile(profile)) and not doc.has_permission(ptype):
-		frappe.throw(_("You are not permitted to access invoice {0}.").format(name), frappe.PermissionError)
-	return doc
+	if doc.has_permission(ptype):
+		return doc
+	profile = scope.pos_profile
+	if (
+		profile
+		and user_may_use_profile(profile)
+		and frappe.db.get_value("POS Profile", profile, "company") == scope.company
+		and has_user_permission(doc)
+	):
+		return doc
+	frappe.throw(denied, frappe.PermissionError)
 
 
 def _mark_xpos_delivery_charges_managed(invoice_doc):

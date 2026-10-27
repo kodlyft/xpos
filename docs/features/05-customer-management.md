@@ -125,6 +125,17 @@ X POS tracks customer credit from two sources:
 
 ---
 
+## Who Can See Which Customers
+
+- A cashier sees only customers inside the **Customer Groups** listed on their POS Profile, including child groups. This holds even when the user also has the Customer permission in the Desk, and for administrators.
+- A POS Profile with no Customer Groups listed has no limit.
+- **User Permissions** (for example on Customer, Company or Address) always still apply. Being on a POS Profile never lifts them.
+- A customer's balance, credit limit and loyalty points are for the **company of the POS Profile** only. Another company's figures for the same customer are never shown.
+- Reading a customer does not allow changing one. Editing, loyalty enrolment and similar changes also need the Customer write permission.
+- Opening an invoice, for returns, repeat orders or history, needs either the matching Desk permission or the invoice's own POS Profile and company, and the user's User Permissions must allow it.
+
+---
+
 ## Sales Person Assignment
 
 - A **sales person** can be assigned to each transaction
