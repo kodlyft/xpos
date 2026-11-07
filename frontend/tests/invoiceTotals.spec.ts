@@ -86,3 +86,88 @@ describe("offers on the invoice (#180)", () => {
 		expect(data.offers_detail).toMatchObject([{ offer_name: "OFFER-MIN-100", offer_applied: 1 }]);
 	});
 });
+
+describe("tax inclusion follows the POS Profile's Tax Inclusive setting", () => {
+	const vat = (included: number) => ({
+		description: "VAT",
+		charge_type: "On Net Total",
+		rate: 10,
+		account_head: "VAT - TC",
+		included_in_print_rate: included,
+	});
+
+	beforeEach(() => {
+		pos.taxes = [];
+		pos.taxInclusiveMode = false;
+	});
+
+	it("keeps the price as the total when the profile is inclusive and the template row is not", () => {
+		pos.taxes = [vat(0)];
+		pos.taxInclusiveMode = true;
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 100000 }));
+
+		expect(cart.taxAmount).toBe(0);
+		expect(cart.includedTaxAmount).toBeCloseTo(9090.91, 2);
+		expect(cart.grandTotal).toBe(100000);
+	});
+
+	it("adds the tax on top when the profile is not inclusive and the template row is", () => {
+		pos.taxes = [vat(1)];
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 100000 }));
+
+		expect(cart.includedTaxAmount).toBe(0);
+		expect(cart.taxAmount).toBe(10000);
+		expect(cart.grandTotal).toBe(110000);
+	});
+
+	it("treats an item tax account outside the profile template the same way", () => {
+		pos.taxes = [vat(0)];
+		pos.taxInclusiveMode = true;
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 100000, item_tax_map: { "Sales Tax - TC": 10 } }));
+
+		// 100000 / 1.2 = 83333.33 net, 8333.33 for each of the two 10% accounts
+		expect(cart.taxAmount).toBe(0);
+		expect(cart.calculatedTaxes.map((t) => t.amount)).toEqual([8333.33, 8333.33]);
+		expect(cart.grandTotal).toBe(100000);
+	});
+
+	it("splits an inclusive price by the sum of the inclusive rates, like ERPNext", () => {
+		pos.taxes = [
+			{ ...vat(0), rate: 9, account_head: "CGST - TC", description: "CGST" },
+			{ ...vat(0), rate: 9, account_head: "SGST - TC", description: "SGST" },
+		];
+		pos.taxInclusiveMode = true;
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 100000 }));
+
+		// 100000 / 1.18 = 84745.76 net, 7627.12 for each 9% row
+		expect(cart.calculatedTaxes.map((t) => t.amount)).toEqual([7627.12, 7627.12]);
+		expect(cart.grandTotal).toBe(100000);
+	});
+
+	it("takes an item's own rate for a template row when splitting an inclusive price", () => {
+		pos.taxes = [vat(0)];
+		pos.taxInclusiveMode = true;
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 100000, item_tax_map: { "VAT - TC": 5 } }));
+
+		// 100000 / 1.05 = 95238.10 net, 4761.90 VAT at the item's 5%
+		expect(cart.calculatedTaxes.map((t) => t.amount)).toEqual([4761.9]);
+		expect(cart.grandTotal).toBe(100000);
+	});
+
+	it("prints the net total without the included tax on the receipt", () => {
+		pos.taxes = [vat(0)];
+		pos.taxInclusiveMode = true;
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 100000 }));
+
+		const receipt = cart.getReceiptSnapshot("SINV-1");
+		expect(receipt.subtotal).toBe(100000);
+		expect(receipt.net_total).toBe(90909.09);
+		expect(receipt.grand_total).toBe(100000);
+	});
+});
