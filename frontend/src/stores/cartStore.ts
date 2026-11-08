@@ -287,9 +287,24 @@ export const useCartStore = defineStore("cart", () => {
 		);
 	});
 
-	const calculatedTaxes = computed(() => {
+	/**
+	 * An additional discount on "Net Total" comes off the pre-tax net, and ERPNext then charges
+	 * the taxes on what is left. Offers flatten every discount into one amount off the grand
+	 * total (getInvoiceData), so with an offer the discount is taken off the grand total instead.
+	 */
+	const discountOnNetTotal = computed(
+		() =>
+			applyDiscountOn.value === "Net Total" &&
+			!isReturnMode.value &&
+			!isGiftCardSale.value &&
+			(discountPercentage.value > 0 || discountAmount.value > 0) &&
+			!(offerItemDiscountTotal.value > 0 || offerGrandTotalDiscountPct.value > 0),
+	);
+
+	const taxBreakdown = computed(() => {
 		const posStore = usePosStore();
-		if (isGiftCardSale.value) return [];
+		const none = { taxes: [] as CalculatedTax[], netTotal: subtotal.value, netDiscount: 0 };
+		if (isGiftCardSale.value) return none;
 		const taxDetails = posStore.taxes || [];
 		const taxInclusive = posStore.taxInclusiveMode;
 
@@ -324,7 +339,21 @@ export const useCartStore = defineStore("cart", () => {
 			});
 		}
 
-		if (itemNets.length === 0) return [];
+		if (itemNets.length === 0) return none;
+
+		// The net total before tax, and the discount ERPNext takes off it.
+		const netTotal = itemNets.reduce((sum, { net, divisor }) => sum + (net * 100) / divisor, 0);
+		let netDiscount = 0;
+		if (discountOnNetTotal.value) {
+			netDiscount =
+				discountPercentage.value > 0
+					? (netTotal * discountPercentage.value) / 100
+					: discountAmount.value;
+		}
+		const netFactor = netTotal && netDiscount ? (netTotal - netDiscount) / netTotal : 1;
+		if (netFactor !== 1) {
+			for (const row of itemNets) row.net *= netFactor;
+		}
 
 		const result: CalculatedTax[] = [];
 
@@ -381,8 +410,10 @@ export const useCartStore = defineStore("cart", () => {
 			}
 		}
 
-		return result;
+		return { taxes: result, netTotal, netDiscount };
 	});
+
+	const calculatedTaxes = computed(() => taxBreakdown.value.taxes);
 
 	const taxAmount = computed(() => {
 		return calculatedTaxes.value
@@ -400,7 +431,7 @@ export const useCartStore = defineStore("cart", () => {
 		return calculatedTaxes.value.reduce((sum, t) => sum + t.amount, 0);
 	});
 
-	const totalBeforeDeposit = computed(() => {
+	const totalAfterOffers = computed(() => {
 		let total = subtotal.value + taxAmount.value;
 
 		// Apply offer item-level discounts
@@ -412,13 +443,23 @@ export const useCartStore = defineStore("cart", () => {
 		if (offerGrandTotalDiscountPct.value > 0) {
 			total -= (total * offerGrandTotalDiscountPct.value) / 100;
 		}
+		return total;
+	});
 
-		if (discountPercentage.value > 0) {
-			const base = applyDiscountOn.value === "Net Total" ? subtotal.value : total;
-			total -= (base * discountPercentage.value) / 100;
-		} else if (discountAmount.value > 0) {
-			total -= discountAmount.value;
-		}
+	/** The additional (invoice-level) discount, as the amount it takes off. */
+	const additionalDiscount = computed(() => {
+		if (discountOnNetTotal.value) return taxBreakdown.value.netDiscount;
+		if (discountPercentage.value > 0) return (totalAfterOffers.value * discountPercentage.value) / 100;
+		return discountAmount.value > 0 ? discountAmount.value : 0;
+	});
+
+	const totalBeforeDeposit = computed(() => {
+		// With a Net Total discount the taxes are already on the discounted net, and an
+		// included tax shrinks with it: total = net total - discount + taxes.
+		let total = discountOnNetTotal.value
+			? taxBreakdown.value.netTotal + totalTaxAmount.value
+			: totalAfterOffers.value;
+		total -= additionalDiscount.value;
 		if (!isReturnMode.value && redeemLoyaltyPoints.value && loyaltyAmount.value > 0) {
 			total -= loyaltyAmount.value;
 		}
@@ -2219,6 +2260,8 @@ export const useCartStore = defineStore("cart", () => {
 
 			data.discount_amount = Math.round(totalDisc * 100) / 100;
 			data.additional_discount_percentage = 0;
+			// the amount above is worked out on the grand total
+			data.apply_discount_on = "Grand Total";
 		}
 
 		if (currentDraftName.value) {
@@ -2324,7 +2367,7 @@ export const useCartStore = defineStore("cart", () => {
 		});
 
 		const itemDiscountTotal = snapshotItems.reduce((sum, it) => sum + (it.discount_amount || 0), 0);
-		const totalDiscount = Math.round((itemDiscountTotal + (discountAmount.value || 0)) * 100) / 100;
+		const totalDiscount = Math.round((itemDiscountTotal + additionalDiscount.value) * 100) / 100;
 		const totalQty = items.value.reduce((sum: number, item: CartItem) => sum + item.qty, 0);
 		const paid = totalPayments.value;
 		const change = paid - grandTotal.value;
@@ -2359,7 +2402,10 @@ export const useCartStore = defineStore("cart", () => {
 				})),
 			subtotal: Math.round(subtotal.value * 100) / 100,
 			total_discount: totalDiscount,
-			net_total: Math.round((subtotal.value - includedTaxAmount.value) * 100) / 100,
+			// After a Net Total discount the net is what is left once the discount is off, as in ERPNext.
+			net_total: discountOnNetTotal.value
+				? Math.round((taxBreakdown.value.netTotal - taxBreakdown.value.netDiscount) * 100) / 100
+				: Math.round((subtotal.value - includedTaxAmount.value) * 100) / 100,
 			grand_total: grandTotal.value,
 			total_qty: totalQty,
 			change: change > 0.01 && !isReturnMode.value ? Math.round(change * 100) / 100 : 0,
@@ -2441,6 +2487,7 @@ export const useCartStore = defineStore("cart", () => {
 		calculatedTaxes,
 		taxAmount,
 		includedTaxAmount,
+		additionalDiscount,
 		totalTaxAmount,
 		grandTotal,
 		unroundedTotal,

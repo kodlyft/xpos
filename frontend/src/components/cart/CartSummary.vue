@@ -720,12 +720,7 @@ const itemDiscountTotal = computed(() => {
 	}, 0);
 });
 
-const discountValue = computed(() => {
-	if (cartStore.discountPercentage > 0) {
-		return (cartStore.subtotal * cartStore.discountPercentage) / 100;
-	}
-	return cartStore.discountAmount;
-});
+const discountValue = computed(() => cartStore.additionalDiscount);
 
 const blockingCount = computed(() => cartStore.pendingRequirements.filter((r) => r.blocking).length);
 const hasBlockers = computed(() => blockingCount.value > 0);
