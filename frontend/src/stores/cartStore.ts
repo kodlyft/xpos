@@ -212,7 +212,11 @@ export const useCartStore = defineStore("cart", () => {
 		const taxDetails = posStore.taxes || [];
 		const taxInclusive = posStore.taxInclusiveMode;
 
-		const itemNets: { net: number; taxMap: Record<string, number> | undefined }[] = [];
+		const profileAccountHeads = new Set(taxDetails.map((t) => t.account_head));
+		const rateFor = (tax: (typeof taxDetails)[number], taxMap: Record<string, number> | undefined) =>
+			taxMap && tax.account_head in taxMap ? taxMap[tax.account_head] : tax.rate;
+
+		const itemNets: { net: number; taxMap: Record<string, number> | undefined; divisor: number }[] = [];
 		for (const item of items.value) {
 			const itemTotal = item.qty * item.rate;
 			let discount = 0;
@@ -221,9 +225,21 @@ export const useCartStore = defineStore("cart", () => {
 			} else if (item.discount_amount) {
 				discount = item.qty < 0 ? -item.discount_amount : item.discount_amount;
 			}
+			// Like ERPNext's determine_exclusive_rate, an inclusive price is split by the sum of
+			// all inclusive rates on the item, not by each rate on its own.
+			let inclusiveRates = 0;
+			if (taxInclusive) {
+				for (const tax of taxDetails) {
+					if (tax.charge_type === "On Net Total") inclusiveRates += rateFor(tax, item.item_tax_map);
+				}
+				for (const [accountHead, rate] of Object.entries(item.item_tax_map || {})) {
+					if (!profileAccountHeads.has(accountHead)) inclusiveRates += rate;
+				}
+			}
 			itemNets.push({
 				net: itemTotal - discount,
 				taxMap: item.item_tax_map,
+				divisor: 100 + inclusiveRates,
 			});
 		}
 
@@ -232,21 +248,18 @@ export const useCartStore = defineStore("cart", () => {
 		const result: CalculatedTax[] = [];
 
 		for (const tax of taxDetails) {
-			const isIncluded = tax.included_in_print_rate === 1;
+			// The server sets every row except "Actual" inclusive or exclusive from the profile's
+			// Tax Inclusive setting (apply_tax_inclusive), whatever the template row says.
+			const isIncluded = taxInclusive && tax.charge_type !== "Actual";
 			let totalTaxAmount = 0;
 
-			for (const { net, taxMap } of itemNets) {
-				let effectiveRate = tax.rate;
-				if (taxMap && tax.account_head in taxMap) {
-					effectiveRate = taxMap[tax.account_head];
-				}
+			for (const { net, taxMap, divisor } of itemNets) {
+				const effectiveRate = rateFor(tax, taxMap);
 
 				if (tax.charge_type === "On Net Total") {
-					if (taxInclusive && isIncluded) {
-						totalTaxAmount += (net * effectiveRate) / (100 + effectiveRate);
-					} else if (!isIncluded) {
-						totalTaxAmount += (net * effectiveRate) / 100;
-					}
+					totalTaxAmount += isIncluded
+						? (net * effectiveRate) / divisor
+						: (net * effectiveRate) / 100;
 				}
 			}
 
@@ -264,14 +277,13 @@ export const useCartStore = defineStore("cart", () => {
 			}
 		}
 
-		const profileAccountHeads = new Set(taxDetails.map((t) => t.account_head));
 		const extraTaxAccounts: Map<string, number> = new Map();
 
-		for (const { net, taxMap } of itemNets) {
+		for (const { net, taxMap, divisor } of itemNets) {
 			if (!taxMap) continue;
 			for (const [accountHead, rate] of Object.entries(taxMap)) {
 				if (profileAccountHeads.has(accountHead)) continue;
-				const taxAmount = (net * rate) / 100;
+				const taxAmount = taxInclusive ? (net * rate) / divisor : (net * rate) / 100;
 				extraTaxAccounts.set(accountHead, (extraTaxAccounts.get(accountHead) || 0) + taxAmount);
 			}
 		}
@@ -283,7 +295,7 @@ export const useCartStore = defineStore("cart", () => {
 					description: desc,
 					rate: 0,
 					amount: Math.round(amount * 100) / 100,
-					included_in_print_rate: false,
+					included_in_print_rate: taxInclusive,
 				});
 			}
 		}
@@ -1877,7 +1889,7 @@ export const useCartStore = defineStore("cart", () => {
 				})),
 			subtotal: Math.round(subtotal.value * 100) / 100,
 			total_discount: totalDiscount,
-			net_total: Math.round((subtotal.value + includedTaxAmount.value) * 100) / 100,
+			net_total: Math.round((subtotal.value - includedTaxAmount.value) * 100) / 100,
 			grand_total: grandTotal.value,
 			total_qty: totalQty,
 			change: change > 0.01 && !isReturnMode.value ? Math.round(change * 100) / 100 : 0,
