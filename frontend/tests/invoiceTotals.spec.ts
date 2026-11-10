@@ -171,3 +171,102 @@ describe("tax inclusion follows the POS Profile's Tax Inclusive setting", () => 
 		expect(receipt.grand_total).toBe(100000);
 	});
 });
+
+describe("additional discount on Net Total", () => {
+	const vat = {
+		description: "VAT",
+		charge_type: "On Net Total",
+		rate: 10,
+		account_head: "VAT - TC",
+		included_in_print_rate: 0,
+	};
+
+	beforeEach(() => {
+		pos.taxes = [vat];
+		pos.taxInclusiveMode = false;
+	});
+
+	it("charges the tax on the discounted net for a percentage", () => {
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 1000 }));
+		cart.setDiscount("percentage", 10);
+		cart.applyDiscountOn = "Net Total";
+
+		// ERPNext: net 1000 - 100 = 900, VAT 90, grand total 990
+		expect(cart.taxAmount).toBe(90);
+		expect(cart.additionalDiscount).toBe(100);
+		expect(cart.grandTotal).toBe(990);
+		expect(cart.getReceiptSnapshot("SINV-1").net_total).toBe(900);
+	});
+
+	it("charges the tax on the discounted net for an amount", () => {
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 1000 }));
+		cart.setDiscount("amount", 100);
+		cart.applyDiscountOn = "Net Total";
+
+		expect(cart.taxAmount).toBe(90);
+		expect(cart.grandTotal).toBe(990);
+	});
+
+	it("takes an amount off the net, not off the price, when the tax is included", () => {
+		pos.taxInclusiveMode = true;
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 1100 }));
+		cart.setDiscount("amount", 100);
+		cart.applyDiscountOn = "Net Total";
+
+		// net 1000 - 100 = 900, included VAT 90, grand total 990
+		expect(cart.includedTaxAmount).toBe(90);
+		expect(cart.grandTotal).toBe(990);
+	});
+
+	it("prints the net after the discount on the receipt", () => {
+		pos.taxInclusiveMode = true;
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 1100 }));
+		cart.setDiscount("amount", 100);
+		cart.applyDiscountOn = "Net Total";
+
+		// ERPNext: net total 1000 - 100 = 900
+		const receipt = cart.getReceiptSnapshot("SINV-1");
+		expect(receipt.net_total).toBe(900);
+		expect(receipt.grand_total).toBe(990);
+	});
+
+	it("spreads the discount over lines with different tax rates by their net", () => {
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 1000 }));
+		cart.items.push(line({ item_code: "ITEM-2", rate: 3000, item_tax_map: { "VAT - TC": 5 } }));
+		cart.setDiscount("amount", 400);
+		cart.applyDiscountOn = "Net Total";
+
+		// ERPNext: nets 1000 - 100 = 900 and 3000 - 300 = 2700, VAT 90 + 135 = 225, grand total 3600 + 225 = 3825
+		expect(cart.taxAmount).toBe(225);
+		expect(cart.grandTotal).toBe(3825);
+	});
+
+	it("leaves a Grand Total discount as it was, and shows the amount it takes off", () => {
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 1000 }));
+		cart.setDiscount("percentage", 10);
+
+		expect(cart.additionalDiscount).toBe(110);
+		expect(cart.grandTotal).toBe(990);
+		expect(cart.getReceiptSnapshot("SINV-1").total_discount).toBe(110);
+	});
+
+	it("sends the flattened discount as a Grand Total amount when an offer applies", () => {
+		const cart = useCartStore();
+		cart.items.push(line({ rate: 10, qty: 100 }));
+		cart.applyOffer(minQtyOffer);
+		cart.setDiscount("percentage", 10);
+		cart.applyDiscountOn = "Net Total";
+
+		// 1000 + VAT 100 - offer 50 = 1050, less 10% = 945; ERPNext: 1100 - 155 = 945
+		const data = cart.getInvoiceData("P", "SHIFT");
+		expect(data.discount_amount).toBe(155);
+		expect(data.apply_discount_on).toBe("Grand Total");
+		expect(cart.grandTotal).toBe(945);
+	});
+});
