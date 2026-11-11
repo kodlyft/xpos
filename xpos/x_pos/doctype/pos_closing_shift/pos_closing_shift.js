@@ -24,6 +24,25 @@ frappe.ui.form.on("POS Closing Shift", {
 		if (frm.doc.docstatus === 1) set_html_data(frm);
 	},
 
+	refresh(frm) {
+		if (frm.doc.docstatus !== 1) return;
+		frm.call("get_unconsolidated_count").then(({ message: count }) => {
+			if (!count) return;
+			frm.dashboard.set_headline(
+				__("{0} POS Invoices are not yet merged into Sales Invoices.", [count]),
+				"orange",
+			);
+			frm.add_custom_button(__("Retry Consolidation"), () =>
+				frm.call("retry_consolidation").then(() => {
+					frappe.show_alert({
+						message: __("Consolidation queued. Reload in a few minutes."),
+						indicator: "blue",
+					});
+				}),
+			);
+		});
+	},
+
 	pos_opening_shift(frm) {
 		if (frm.doc.pos_opening_shift && frm.doc.user) {
 			reset_values(frm);

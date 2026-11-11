@@ -116,34 +116,60 @@ def submit_printed_invoices(pos_opening_shift, doctype):
 
 
 def consolidate_closing_shift_invoices(closing_shift_doc):
-	if get_invoice_type() == "POS Invoice":
-		pos_invoices = []
-		for d in closing_shift_doc.pos_transactions:
-			invoice_details = frappe._dict(
-				frappe.db.get_value(
-					"POS Invoice",
-					d.pos_invoice,
-					[
-						"name as pos_invoice",
-						"customer",
-						"is_return",
-						"return_against",
-						"currency",
-					],
-					as_dict=True,
-				)
-			)
-			if invoice_details:
-				pos_invoices.append(invoice_details)
+	if get_invoice_type() != "POS Invoice":
+		return
+	frappe.enqueue(
+		run_closing_shift_consolidation,
+		queue="long",
+		timeout=7200,
+		job_id=f"xpos_consolidate::{closing_shift_doc.name}",
+		deduplicate=True,
+		enqueue_after_commit=True,
+		now=frappe.in_test,
+		closing_shift=closing_shift_doc.name,
+	)
 
-		if pos_invoices:
-			for invoice in pos_invoices:
-				if invoice.return_against and not frappe.db.exists("POS Invoice", invoice.return_against):
-					invoice.return_against = None
 
-			invoices_by_currency = {}
-			for invoice in pos_invoices:
-				invoices_by_currency.setdefault(invoice.currency, []).append(invoice)
+def get_unconsolidated_invoices(closing_shift):
+	names = frappe.get_all(
+		"Sales Invoice Reference",
+		filters={"parenttype": "POS Closing Shift", "parent": closing_shift, "pos_invoice": ["is", "set"]},
+		pluck="pos_invoice",
+	)
+	if not names:
+		return []
+	return frappe.get_all(
+		"POS Invoice",
+		filters={
+			"name": ["in", names],
+			"docstatus": 1,
+			"consolidated_invoice": ["in", ["", None]],
+		},
+		fields=["name as pos_invoice", "customer", "is_return", "return_against", "currency"],
+		order_by="posting_date asc, posting_time asc, name asc",
+	)
 
-			for invoices in invoices_by_currency.values():
-				consolidate_pos_invoices(pos_invoices=invoices)
+
+def run_closing_shift_consolidation(closing_shift):
+	pos_invoices = get_unconsolidated_invoices(closing_shift)
+	if not pos_invoices:
+		return
+
+	for invoice in pos_invoices:
+		if invoice.return_against and not frappe.db.exists("POS Invoice", invoice.return_against):
+			invoice.return_against = None
+
+	invoices_by_currency = {}
+	for invoice in pos_invoices:
+		invoices_by_currency.setdefault(invoice.currency, []).append(invoice)
+
+	try:
+		for invoices in invoices_by_currency.values():
+			consolidate_pos_invoices(pos_invoices=invoices)
+	except Exception:
+		frappe.log_error(
+			title=f"POS Closing Shift {closing_shift}: invoice consolidation failed",
+			reference_doctype="POS Closing Shift",
+			reference_name=closing_shift,
+		)
+		raise

@@ -273,7 +273,7 @@ def get_opening_data():
 	return data
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def open_shift(pos_profile: str, company: str, balance_details: str | list[dict] | None = None):
 	"""Create and submit a POS Opening Shift."""
 
@@ -436,7 +436,7 @@ def get_shift_period_end(opening):
 	return now_datetime()
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 	"""Create a POS Closing Shift and close the opening shift.
 
@@ -723,7 +723,7 @@ def get_shift_tax_summary(invoices: list, doctype: str = "Sales Invoice") -> lis
 	return taxes
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def create_opening_shift(data: str | dict, local_id: str | None = None) -> dict:
 	"""Create POS Opening Shift from desktop app sync.
 
@@ -774,7 +774,7 @@ def create_opening_shift(data: str | dict, local_id: str | None = None) -> dict:
 	return {"name": new_shift.name}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def create_closing_shift(data: str | dict, local_id: str | None = None) -> dict:
 	"""Create POS Closing Shift from desktop app sync.
 
