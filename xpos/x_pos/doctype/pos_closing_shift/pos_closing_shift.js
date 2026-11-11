@@ -29,7 +29,7 @@ frappe.ui.form.on("POS Closing Shift", {
 		frm.call("get_unconsolidated_count").then(({ message: count }) => {
 			if (!count) return;
 			frm.dashboard.set_headline(
-				__("{0} POS Invoices are not yet merged into Sales Invoices.", [count]),
+				__("{0} POS Invoices are not yet merged or linked to their Sales Invoices.", [count]),
 				"orange",
 			);
 			frm.add_custom_button(__("Retry Consolidation"), () =>

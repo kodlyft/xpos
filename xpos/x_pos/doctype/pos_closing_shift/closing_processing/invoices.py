@@ -1,7 +1,9 @@
 import frappe
 from erpnext.accounts.doctype.pos_invoice_merge_log.pos_invoice_merge_log import (
-	consolidate_pos_invoices,
+	get_invoice_customer_map,
+	split_invoices,
 )
+from frappe.utils import get_time, getdate
 
 from xpos.api.utilities import get_invoice_type
 
@@ -145,31 +147,87 @@ def get_unconsolidated_invoices(closing_shift):
 			"docstatus": 1,
 			"consolidated_invoice": ["in", ["", None]],
 		},
-		fields=["name as pos_invoice", "customer", "is_return", "return_against", "currency"],
+		fields=[
+			"name as pos_invoice",
+			"customer",
+			"is_return",
+			"return_against",
+			"currency",
+			"posting_date",
+			"posting_time",
+		],
 		order_by="posting_date asc, posting_time asc, name asc",
 	)
+
+
+def sync_closing_shift_sales_invoices(closing_shift):
+	frappe.db.sql(
+		"""
+		update `tabSales Invoice Reference` r
+		join `tabPOS Invoice` p on p.name = r.pos_invoice
+		set r.sales_invoice = nullif(p.consolidated_invoice, '')
+		where r.parenttype = 'POS Closing Shift'
+			and r.parent = %s
+			and not (ifnull(r.sales_invoice, '') <=> ifnull(p.consolidated_invoice, ''))
+		""",
+		closing_shift,
+	)
+
+
+def count_unlinked_closing_rows(closing_shift):
+	return frappe.db.sql(
+		"""
+		select count(*)
+		from `tabSales Invoice Reference` r
+		join `tabPOS Invoice` p on p.name = r.pos_invoice
+		where r.parenttype = 'POS Closing Shift'
+			and r.parent = %s
+			and not (ifnull(r.sales_invoice, '') <=> ifnull(p.consolidated_invoice, ''))
+		""",
+		closing_shift,
+	)[0][0]
 
 
 def run_closing_shift_consolidation(closing_shift):
 	pos_invoices = get_unconsolidated_invoices(closing_shift)
 	if not pos_invoices:
+		sync_closing_shift_sales_invoices(closing_shift)
 		return
 
+	company = frappe.db.get_value("POS Closing Shift", closing_shift, "company")
 	for invoice in pos_invoices:
 		if invoice.return_against and not frappe.db.exists("POS Invoice", invoice.return_against):
 			invoice.return_against = None
 
-	invoices_by_currency = {}
+	groups = {}
 	for invoice in pos_invoices:
-		invoices_by_currency.setdefault(invoice.currency, []).append(invoice)
+		groups.setdefault((getdate(invoice.posting_date), invoice.currency), []).append(invoice)
 
-	try:
-		for invoices in invoices_by_currency.values():
-			consolidate_pos_invoices(pos_invoices=invoices)
-	except Exception:
-		frappe.log_error(
-			title=f"POS Closing Shift {closing_shift}: invoice consolidation failed",
-			reference_doctype="POS Closing Shift",
-			reference_name=closing_shift,
-		)
-		raise
+	for (posting_date, currency), invoices in sorted(groups.items(), key=lambda g: (g[0][0], g[0][1] or "")):
+		posting_time = max(get_time(inv.posting_time or "00:00:00") for inv in invoices)
+		try:
+			create_dated_merge_logs(invoices, company, posting_date, posting_time)
+			sync_closing_shift_sales_invoices(closing_shift)
+			frappe.db.commit()
+		except Exception:
+			frappe.db.rollback()
+			frappe.log_error(
+				title=f"POS Closing Shift {closing_shift}: invoice consolidation failed for {posting_date}",
+				reference_doctype="POS Closing Shift",
+				reference_name=closing_shift,
+			)
+			raise
+
+
+def create_dated_merge_logs(invoices, company, posting_date, posting_time):
+	for customer, invoices_by_dimension in get_invoice_customer_map(invoices).items():
+		for dimension_invoices in invoices_by_dimension.values():
+			for chunk in split_invoices(dimension_invoices):
+				merge_log = frappe.new_doc("POS Invoice Merge Log")
+				merge_log.posting_date = posting_date
+				merge_log.posting_time = posting_time
+				merge_log.company = company
+				merge_log.customer = customer
+				merge_log.set("pos_invoices", chunk)
+				merge_log.save(ignore_permissions=True)
+				merge_log.submit()

@@ -9,6 +9,7 @@ from frappe.utils import flt
 from xpos.x_pos.doctype.pos_closing_shift.closing_processing.invoices import (
 	clear_closing_entry_invoices,
 	consolidate_closing_shift_invoices,
+	count_unlinked_closing_rows,
 	delete_draft_invoices,
 	get_unconsolidated_invoices,
 	set_closing_entry_invoices,
@@ -113,7 +114,9 @@ class POSClosingShift(Document):
 
 	@frappe.whitelist()
 	def get_unconsolidated_count(self):
-		return len(get_unconsolidated_invoices(self.name)) if self.docstatus == 1 else 0
+		if self.docstatus != 1:
+			return 0
+		return len(get_unconsolidated_invoices(self.name)) + count_unlinked_closing_rows(self.name)
 
 	@frappe.whitelist()
 	def retry_consolidation(self):
