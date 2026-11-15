@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: X POS VERSION\n"
 "Report-Msgid-Bugs-To: ar.frappe.dev@gmail.com\n"
-"POT-Creation-Date: 2026-11-01 16:12+0000\n"
-"PO-Revision-Date: 2026-11-01 16:12+0000\n"
+"POT-Creation-Date: 2026-11-15 16:30+0000\n"
+"PO-Revision-Date: 2026-11-15 16:30+0000\n"
 "Last-Translator: ar.frappe.dev@gmail.com\n"
 "Language-Team: ar.frappe.dev@gmail.com\n"
 "MIME-Version: 1.0\n"
@@ -146,7 +146,7 @@ msgstr ""
 msgid "A request id is required."
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1033
+#: frontend/src/components/cart/CartSummary.vue:1028
 msgid "A sale billing a Sales Order cannot be held. Take payment or clear the cart."
 msgstr ""
 
@@ -268,8 +268,8 @@ msgstr ""
 msgid "Add gift card"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:780
-#: frontend/src/stores/cartStore.ts:1782
+#: frontend/src/components/cart/CartSummary.vue:775
+#: frontend/src/stores/cartStore.ts:1835
 msgid "Add items to pay"
 msgstr ""
 
@@ -1403,16 +1403,16 @@ msgstr ""
 msgid "Choose serial"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:784
+#: frontend/src/components/cart/CartSummary.vue:779
 msgid "Choose serial for 1 line"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:747
+#: frontend/src/components/cart/CartSummary.vue:742
 #, python-brace-format
 msgid "Choose serial numbers on {0} lines"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:785
+#: frontend/src/components/cart/CartSummary.vue:780
 #, python-brace-format
 msgid "Choose serials for {0} lines"
 msgstr ""
@@ -1440,7 +1440,7 @@ msgstr ""
 msgid "Choose {0} serial numbers for this line."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1614
+#: frontend/src/stores/cartStore.ts:1667
 #, python-brace-format
 msgid "Choose {0} serial numbers for {1}"
 msgstr ""
@@ -1748,6 +1748,10 @@ msgstr ""
 
 #: frontend/src/components/dialogs/ConfirmDialog.vue:41
 msgid "Confirm"
+msgstr ""
+
+#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.js:38
+msgid "Consolidation queued. Reload in a few minutes."
 msgstr ""
 
 #: xpos/x_pos/overrides/pos_invoice_merge_log.py:134
@@ -2425,7 +2429,7 @@ msgstr ""
 msgid "Delivery charge not allowed"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:872
+#: frontend/src/components/cart/CartSummary.vue:867
 #, python-brace-format
 msgid "Delivery charge {0} is no longer available and was removed."
 msgstr ""
@@ -2440,7 +2444,7 @@ msgstr ""
 msgid "Delivery charges are disabled for POS Profile {0}."
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:895
+#: frontend/src/components/cart/CartSummary.vue:890
 msgid "Delivery charges are disabled for this POS Profile; the charge was removed."
 msgstr ""
 
@@ -2942,7 +2946,7 @@ msgstr ""
 msgid "Enter the transfer or reference number for {0}."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:704
+#: frontend/src/stores/cartStore.ts:757
 msgid "Enter the value of the gift card."
 msgstr ""
 
@@ -3357,7 +3361,7 @@ msgstr ""
 msgid "Failed to save draft"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1088
+#: frontend/src/components/cart/CartSummary.vue:1083
 #, python-brace-format
 msgid "Failed to save draft: {0}"
 msgstr ""
@@ -3370,7 +3374,7 @@ msgstr ""
 msgid "Failed to save invoice offline. The sale was NOT saved."
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1159
+#: frontend/src/components/cart/CartSummary.vue:1154
 #, python-brace-format
 msgid "Failed to send to cashier: {0}"
 msgstr ""
@@ -3396,7 +3400,7 @@ msgstr ""
 msgid "Failed to update permission"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:994
+#: frontend/src/components/cart/CartSummary.vue:989
 #: frontend/src/stores/offerStore.ts:11
 msgid "Failed to validate coupon"
 msgstr ""
@@ -3598,7 +3602,7 @@ msgstr ""
 #. Label of a Link in the Promotions & Offers Workspace
 #. Label of a shortcut in the Promotions & Offers Workspace
 #: frontend/src/services/receiptTemplate.ts:307
-#: frontend/src/stores/cartStore.ts:720
+#: frontend/src/stores/cartStore.ts:773
 #: xpos/x_pos/custom/pos_invoice_item.json:455
 #: xpos/x_pos/custom/sales_invoice_item.json:489
 #: xpos/x_pos/custom/sales_invoice_payment.json:248
@@ -3747,7 +3751,7 @@ msgstr ""
 msgid "Gift cards are issued and changed only through POS sales and adjustments."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:699 xpos/x_pos/gift_cards.py:212
+#: frontend/src/stores/cartStore.ts:752 xpos/x_pos/gift_cards.py:212
 msgid "Gift cards are not enabled on this POS Profile."
 msgstr ""
 
@@ -4032,7 +4036,7 @@ msgstr ""
 msgid "Internet connection restored"
 msgstr ""
 
-#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.py:79
+#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.py:81
 msgid "Invalid Opening Entry"
 msgstr ""
 
@@ -4052,7 +4056,7 @@ msgstr ""
 msgid "Invalid invoice type."
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:991
+#: frontend/src/components/cart/CartSummary.vue:986
 msgid "Invalid or expired coupon code"
 msgstr ""
 
@@ -4345,7 +4349,7 @@ msgstr ""
 msgid "Item discount"
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:857 frontend/src/stores/cartStore.ts:1597
+#: frontend/src/stores/cartStore.ts:910 frontend/src/stores/cartStore.ts:1650
 msgid "Item not found"
 msgstr ""
 
@@ -5188,11 +5192,11 @@ msgstr ""
 msgid "No categories found"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1084
+#: frontend/src/components/cart/CartSummary.vue:1079
 msgid "No connection – draft saved offline"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1155
+#: frontend/src/components/cart/CartSummary.vue:1150
 msgid "No connection – will sync to cashier when back online"
 msgstr ""
 
@@ -5274,11 +5278,11 @@ msgstr ""
 msgid "No items found to create Purchase Order"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1065
+#: frontend/src/components/cart/CartSummary.vue:1060
 msgid "No items in cart to save."
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1133
+#: frontend/src/components/cart/CartSummary.vue:1128
 msgid "No items in cart to send."
 msgstr ""
 
@@ -5326,8 +5330,8 @@ msgstr ""
 msgid "No open sales orders"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1046
-#: frontend/src/components/cart/CartSummary.vue:1112
+#: frontend/src/components/cart/CartSummary.vue:1041
+#: frontend/src/components/cart/CartSummary.vue:1107
 #: frontend/src/components/dialogs/SettleOutstandingDialog.vue:137
 msgid "No open shift found. Please open a shift first."
 msgstr ""
@@ -5655,6 +5659,10 @@ msgstr ""
 msgid "Only a draft invoice can be discarded."
 msgstr ""
 
+#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.py:125
+msgid "Only a submitted POS Closing Shift can be consolidated."
+msgstr ""
+
 #: xpos/api/payments.py:225
 msgid "Only a submitted invoice can be settled."
 msgstr ""
@@ -5682,7 +5690,7 @@ msgstr ""
 msgid "Only {0} is still in transit."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:524
+#: frontend/src/stores/cartStore.ts:577
 #, python-brace-format
 msgid "Only {0} of batch {1} available"
 msgstr ""
@@ -5697,7 +5705,7 @@ msgstr ""
 msgid "Only {0} of {1} is left to bill on Sales Order {2}."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:534 frontend/src/stores/cartStore.ts:598
+#: frontend/src/stores/cartStore.ts:587 frontend/src/stores/cartStore.ts:651
 #, python-brace-format
 msgid "Only {0} {1} of {2} available"
 msgstr ""
@@ -5865,7 +5873,7 @@ msgstr ""
 msgid "Order notes"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1076
+#: frontend/src/components/cart/CartSummary.vue:1071
 msgid "Order saved as draft"
 msgstr ""
 
@@ -5995,7 +6003,7 @@ msgstr ""
 msgid "POS Closing Shift Taxes"
 msgstr ""
 
-#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.py:71
+#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.py:73
 #, python-brace-format
 msgid "POS Closing Shift {0} against {1} between selected period"
 msgstr ""
@@ -6192,8 +6200,8 @@ msgstr ""
 msgid "POS Profile"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1041
-#: frontend/src/components/cart/CartSummary.vue:1107
+#: frontend/src/components/cart/CartSummary.vue:1036
+#: frontend/src/components/cart/CartSummary.vue:1102
 msgid "POS Profile is not set. Please close and reopen the shift."
 msgstr ""
 
@@ -6316,7 +6324,7 @@ msgstr ""
 msgid "Pay with Gift Card"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:789
+#: frontend/src/components/cart/CartSummary.vue:784
 #, python-brace-format
 msgid "Pay {0}"
 msgstr ""
@@ -6517,11 +6525,11 @@ msgstr ""
 msgid "Please select a customer before adding items to the cart"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1060
+#: frontend/src/components/cart/CartSummary.vue:1055
 msgid "Please select a customer before holding the order."
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1128
+#: frontend/src/components/cart/CartSummary.vue:1123
 msgid "Please select a customer before sending to cashier."
 msgstr ""
 
@@ -6791,7 +6799,7 @@ msgstr ""
 msgid "Prices changed since this sale was rung up. Review the new prices and take payment again."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1491
+#: frontend/src/stores/cartStore.ts:1544
 msgid "Prices changed. Review the updated prices before taking payment."
 msgstr ""
 
@@ -6894,7 +6902,7 @@ msgstr ""
 msgid "Process Return"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:789
+#: frontend/src/components/cart/CartSummary.vue:784
 #, python-brace-format
 msgid "Process Return {0}"
 msgstr ""
@@ -7571,7 +7579,7 @@ msgstr ""
 msgid "Remove offer {0}"
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1620
+#: frontend/src/stores/cartStore.ts:1673
 #, python-brace-format
 msgid "Remove the line discount on {0}, choose the serials, then add the discount again."
 msgstr ""
@@ -7782,6 +7790,10 @@ msgstr ""
 #. Attempt'
 #: xpos/x_pos/doctype/xpos_fiscal_attempt/xpos_fiscal_attempt.json:110
 msgid "Result"
+msgstr ""
+
+#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.js:35
+msgid "Retry Consolidation"
 msgstr ""
 
 #: frontend/src/components/Navbar.vue:66
@@ -8501,7 +8513,7 @@ msgstr ""
 msgid "Select Customer"
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1783
+#: frontend/src/stores/cartStore.ts:1836
 msgid "Select a customer first"
 msgstr ""
 
@@ -8534,7 +8546,7 @@ msgstr ""
 msgid "Select customer"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:781
+#: frontend/src/components/cart/CartSummary.vue:776
 msgid "Select customer first"
 msgstr ""
 
@@ -8580,7 +8592,7 @@ msgstr ""
 msgid "Selected"
 msgstr ""
 
-#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.py:78
+#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.py:80
 msgid "Selected POS Opening Shift should be open."
 msgstr ""
 
@@ -8600,7 +8612,7 @@ msgstr ""
 msgid "Sell gift cards on their own invoice, without other items."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:641 frontend/src/stores/cartStore.ts:701
+#: frontend/src/stores/cartStore.ts:694 frontend/src/stores/cartStore.ts:754
 msgid "Sell gift cards on their own sale, without other items."
 msgstr ""
 
@@ -8614,7 +8626,7 @@ msgstr ""
 msgid "Selling Price"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:787
+#: frontend/src/components/cart/CartSummary.vue:782
 msgid "Send to Cashier"
 msgstr ""
 
@@ -8624,7 +8636,7 @@ msgstr ""
 msgid "Sent"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1147
+#: frontend/src/components/cart/CartSummary.vue:1142
 #: frontend/src/components/dialogs/DraftInvoiceDialog.vue:127
 msgid "Sent to cashier"
 msgstr ""
@@ -8646,8 +8658,8 @@ msgstr ""
 msgid "Serial needed to pay"
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:775 frontend/src/stores/cartStore.ts:1579
-#: frontend/src/stores/cartStore.ts:1603
+#: frontend/src/stores/cartStore.ts:828 frontend/src/stores/cartStore.ts:1632
+#: frontend/src/stores/cartStore.ts:1656
 #, python-brace-format
 msgid "Serial {0} is already in {1}"
 msgstr ""
@@ -9397,7 +9409,7 @@ msgstr ""
 msgid "The amount for {0} is out of range."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:578
+#: frontend/src/stores/cartStore.ts:631
 msgid "The cart changed while stock was being checked. Try again."
 msgstr ""
 
@@ -9444,12 +9456,12 @@ msgstr ""
 msgid "The last run failed. Run the report again first."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:714
+#: frontend/src/stores/cartStore.ts:767
 #, python-brace-format
 msgid "The maximum gift card value is {0}."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:708
+#: frontend/src/stores/cartStore.ts:761
 #, python-brace-format
 msgid "The minimum gift card value is {0}."
 msgstr ""
@@ -9607,7 +9619,7 @@ msgstr ""
 msgid "This invoice gives {0} in change across {1} payment rows matching the change account, which ERPNext cannot post correctly while POS Settings > Create Ledger Entries for Change Amount is disabled. Enable that setting."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:648 frontend/src/stores/cartStore.ts:767
+#: frontend/src/stores/cartStore.ts:701 frontend/src/stores/cartStore.ts:820
 msgid "This item is not in the original invoice"
 msgstr ""
 
@@ -9657,7 +9669,7 @@ msgstr ""
 msgid "This sale exceeds the credit limit by {0}"
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1529
+#: frontend/src/stores/cartStore.ts:1582
 msgid "This sale totals zero, which this POS Profile does not allow"
 msgstr ""
 
@@ -9670,7 +9682,7 @@ msgstr ""
 msgid "This shift"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1095
+#: frontend/src/components/cart/CartSummary.vue:1090
 #: frontend/src/components/dialogs/PaymentDialog.vue:1944
 #: xpos/api/invoices.py:391
 msgid "This tab was changed on another terminal. Reload it and try again."
@@ -9925,7 +9937,7 @@ msgstr ""
 msgid "Unknown action."
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:1001
+#: frontend/src/components/cart/CartSummary.vue:996
 msgid "Unknown error"
 msgstr ""
 
@@ -10686,7 +10698,7 @@ msgstr ""
 msgid "close"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:769
+#: frontend/src/components/cart/CartSummary.vue:764
 msgid "coupons"
 msgstr ""
 
@@ -10694,7 +10706,7 @@ msgstr ""
 msgid "currency"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:768
+#: frontend/src/components/cart/CartSummary.vue:763
 msgid "customer credit"
 msgstr ""
 
@@ -10727,7 +10739,7 @@ msgstr ""
 msgid "fiscalize"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:767
+#: frontend/src/components/cart/CartSummary.vue:762
 msgid "gift cards"
 msgstr ""
 
@@ -10904,6 +10916,11 @@ msgstr ""
 msgid "yes"
 msgstr ""
 
+#: xpos/x_pos/doctype/pos_closing_shift/pos_closing_shift.js:32
+#, python-brace-format
+msgid "{0} POS Invoices are not yet merged or linked to their Sales Invoices."
+msgstr ""
+
 #: frontend/src/views/SalesOrdersView.vue:68
 #, python-brace-format
 msgid "{0} billed"
@@ -10949,7 +10966,7 @@ msgstr ""
 msgid "{0} does not post to {1}."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1522
+#: frontend/src/stores/cartStore.ts:1575
 #, python-brace-format
 msgid "{0} has a zero price, which this POS Profile does not allow"
 msgstr ""
@@ -10999,7 +11016,7 @@ msgstr ""
 msgid "{0} is not permitted to use POS Profile {1}."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:512
+#: frontend/src/stores/cartStore.ts:565
 #, python-brace-format
 msgid "{0} is out of stock"
 msgstr ""
@@ -11021,7 +11038,7 @@ msgstr ""
 msgid "{0} items added"
 msgstr ""
 
-#: frontend/src/components/cart/CartSummary.vue:754
+#: frontend/src/components/cart/CartSummary.vue:749
 #, python-brace-format
 msgid "{0} lines have no batch"
 msgstr ""
@@ -11151,17 +11168,17 @@ msgstr ""
 msgid "{0}, position {1} of {2}. Alt plus arrow keys to move."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1556
+#: frontend/src/stores/cartStore.ts:1609
 #, python-brace-format
 msgid "{0}: choose a serial number"
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1512
+#: frontend/src/stores/cartStore.ts:1565
 #, python-brace-format
 msgid "{0}: connect to the server to get this customer's price"
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1564
+#: frontend/src/stores/cartStore.ts:1617
 #, python-brace-format
 msgid "{0}: no batch chosen"
 msgstr ""
@@ -11171,7 +11188,7 @@ msgstr ""
 msgid "{0}: no conversion from {1} to {2}."
 msgstr ""
 
-#: frontend/src/stores/cartStore.ts:1513
+#: frontend/src/stores/cartStore.ts:1566
 #, python-brace-format
 msgid "{0}: no price is configured in price list {1}"
 msgstr ""
