@@ -2,8 +2,8 @@
 	<div
 		id="xpos-app"
 		:class="[
-			'h-dvh w-screen font-sans',
-			'flex h-screen w-screen flex-col font-sans',
+			// h-dvh, not h-screen: on iOS Safari 100vh is taller than the visible area.
+			'flex h-dvh w-screen flex-col font-sans',
 			isDark ? 'dark' : '',
 			isAuthPage ? 'overflow-y-auto' : 'overflow-hidden',
 			isRtl ? 'rtl' : 'ltr',

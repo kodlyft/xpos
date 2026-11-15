@@ -61,7 +61,8 @@ export default defineConfig({
 				enabled: false,
 			},
 			workbox: {
-				globPatterns: ["**/*.{js,css,svg,png,ico,woff,woff2,ttf,eot}"],				globIgnores: ["**/index.html"],
+				globPatterns: ["**/*.{js,css,svg,png,ico,woff,woff2,ttf,eot}"],
+				globIgnores: ["**/index.html"],
 				// The shell is a Jinja template, so it cannot be precached. Cache the
 				// rendered HTML at runtime instead.
 				navigateFallback: null,

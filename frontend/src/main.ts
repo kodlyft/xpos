@@ -23,25 +23,16 @@ if (import.meta.env.PROD) {
 			.then((registration) => {
 				console.log("[XPOS PWA] Service worker registered for", registration.scope);
 
-				// The new worker waits until the cashier accepts, so a shift is never
-				// swapped out from under a sale.
-				const offerUpdate = (worker: ServiceWorker | null) => {
-					if (!worker || !navigator.serviceWorker.controller) return;
-					if (!confirm("A new version of X POS is available. Reload to update?")) return;
-					worker.postMessage({ type: "SKIP_WAITING" });
-					window.location.reload();
-				};
-
-				offerUpdate(registration.waiting);
-
+				// A waiting worker is offered through the status banner, which knows when
+				// a sale or a sync is in flight; it is never swapped mid-tender.
 				if (registration.waiting && navigator.serviceWorker.controller) {
 					noteWaitingWorker(registration.waiting);
 				}
+
 				registration.addEventListener("updatefound", () => {
 					const installing = registration.installing;
 					if (!installing) return;
 					installing.addEventListener("statechange", () => {
-						if (installing.state === "installed") offerUpdate(installing);
 						if (installing.state === "installed" && navigator.serviceWorker.controller) {
 							noteWaitingWorker(installing);
 						}
@@ -62,16 +53,8 @@ if (import.meta.env.PROD) {
 }
 
 async function initializeBrowserStorage(): Promise<void> {
-	// Queued sales live in IndexedDB, which the browser may evict under storage
-	// pressure unless the origin holds a persistent grant.
-	try {
-		await navigator.storage?.persist?.();
-	} catch (error) {
-		console.warn("[XPOS] Persistent storage request failed", error);
-	}
-
-	if (!usePosStore().useOfflineMode) return;
-
+	// The persistent-storage grant and its warning are the offline store's job; this
+	// only makes sure the database is open before the first screen asks for items.
 	try {
 		const { ensureDatabaseReady } = await import("@/services/idbService");
 		await ensureDatabaseReady();

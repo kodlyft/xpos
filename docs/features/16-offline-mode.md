@@ -188,7 +188,6 @@ When connectivity returns:
 | Signing in | A fresh sign-in needs connectivity. Once signed in, the session is remembered on the device, so reloading the page while offline keeps the till working; the server still decides what that session may do when it answers |
 | Expenses and bank drops | Require connectivity |
 | Gift cards and customer credit | Require connectivity |
-| Storage | IndexedDB is the browser's best-effort storage. X POS asks for a persistent storage grant on startup, but a browser can still clear the data, and so can a user who clears site data. Sync often, and do not clear site data on a till with queued sales |
 | Storage | IndexedDB. X POS asks for persistent storage, but clearing site data can still remove queued sales, so sync (or use **Export** in the Offline Invoices panel) before clearing anything |
 | Storage notice | If the browser refuses persistent storage and sales are waiting to sync, a yellow bar says the browser may clear offline data. It sits above the header (it never covers it) and **Dismiss** hides it on this device. Syncing the queue is the real fix |
 
