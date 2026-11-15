@@ -8,6 +8,7 @@ from frappe import _
 from frappe.query_builder.functions import Coalesce, Sum
 from frappe.utils import flt, getdate
 
+from xpos.reports import scope
 from xpos.x_pos.gift_cards import get_company_setting, mask_code
 
 MOVEMENTS = ("Issue", "Redeem", "Refund", "Void", "Adjustment")
@@ -17,6 +18,7 @@ def execute(filters=None):
 	filters = frappe._dict(filters or {})
 	if not filters.company:
 		frappe.throw(_("Company is required"))
+	scope.enforce(filters)
 	filters.to_date = getdate(filters.to_date)
 	filters.from_date = getdate(filters.from_date) if filters.from_date else None
 	currency = frappe.get_cached_value("Company", filters.company, "default_currency")

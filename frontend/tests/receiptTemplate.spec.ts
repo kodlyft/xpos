@@ -90,7 +90,7 @@ describe("buildReceiptHtml", () => {
 
 	it("falls back to the currency code as its own symbol when no Currency row is cached", () => {
 		const html = buildReceiptHtml(snapshot, { ...context, currency: "Rs" });
-		expect(html).toContain("Rs7.25");
+		expect(html).toContain("Rs 7.25");
 	});
 });
 
@@ -162,7 +162,7 @@ describe("buildReceiptHtml - mixed-currency tender", () => {
 		expect(html).toContain("USD 30.00");
 		// A leg already in the invoice currency prints with the Currency doctype symbol, the
 		// same way the server-side print format renders it through fmt_money.
-		expect(html).toContain("L£407,700");
+		expect(html).toContain("L£ 407,700");
 		expect(html).toContain("Total Change");
 		// The legs must still reconcile to the single figure ERPNext computed.
 		expect(html).toMatch(/Total Change<\/span>\s*<span>[^<]*3,107,700/);

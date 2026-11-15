@@ -131,28 +131,44 @@ The **Receive** tab shows Purchase Orders that are pending receipt for the POS w
 
 ---
 
-## In-Transit Stock Transfers
+## Stock Receiving (In-Transit Transfers)
 
-X POS handles incoming stock transfers from other warehouses.
+**Stock Receiving** (sidebar, or the shortcut to go to Stock Receiving) receives stock another warehouse sent with **Add to Transit**. Purchase Orders and Purchase Invoices keep their own pages.
 
-### Viewing In-Transit Stock
-- The module lists **Stock Entries** that are in transit to the POS warehouse
-- Each entry shows:
-  - Source warehouse
-  - Transfer date
-  - Item list with quantities
+### Sending a transfer to a branch
+In ERPNext, create a **Stock Entry** of type **Material Transfer**, tick **Add to Transit**, and set:
+- **From Warehouse**: where the stock leaves.
+- **To Warehouse**: a **Transit** warehouse of the same company.
+- **Receiving Warehouse**: the branch warehouse that will receive it. It is required for in-transit entries.
 
-### Receiving Transit Stock
-1. Select an in-transit Stock Entry
-2. Review the items and quantities
-3. Click **Receive Transit Stock** to accept the incoming stock
-4. Optionally note any shortages
+Submit it. Only the POS profile whose warehouse (or warehouse tree) contains the Receiving Warehouse sees it on Stock Receiving. A transfer made from a Material Request without a Receiving Warehouse falls back to the warehouse on the request line. A transfer with neither is shown to no one.
 
-### Handling Shortages
-When received quantities don't match the transferred quantities:
-- A **return Stock Entry** can be created for the missing items
-- The return is sent back to the source warehouse
-- Shortage quantities are tracked and documented
+### The list
+- Opens on **Awaiting receipt**: the in-transit transfers addressed to your warehouse, shown as source warehouse → your warehouse, with the quantity still in transit and the percentage already received.
+- **Saved drafts** lists receipts you saved but have not submitted; **Submit** posts them.
+- Search by transfer number; **Refresh** reloads.
+
+### Receiving a transfer
+1. Pick a transfer. Every row opens with the full quantity still in transit, showing **Sent**, **Received** and **In transit**. The stock goes into the warehouse shown under **Receiving at**; it cannot be changed on the page.
+2. Lower a quantity for a partial receipt, or tap **None**/**All**. Scanning a barcode counts one more unit into the matching row, up to what is still in transit.
+3. Set the **Received on** date if it is not today.
+4. **Receive stock** submits the receipt; **Save draft** creates the Stock Entry without moving stock.
+5. A transfer can be received in several goes until nothing is left in transit.
+
+### Shortages
+Enter a **Return** quantity on a row, then **Return to source**: the missing or damaged quantity goes from the transit warehouse back to the source warehouse. Received plus returned cannot exceed what is in transit.
+
+### Batches, serial numbers, units
+Batch and serial numbers are taken from what the sender dispatched, so a partial receipt carries the right batches and serials. Rows keep the sender's unit and show the conversion to the stock unit.
+
+### Rights
+POS roles carry three rights: **Save Stock Receipt Draft**, **Submit Stock Receipt** and **View and Edit Receiving Rates** (without it, no rates or values are sent to the page). Managers and Administrators have all three by default; Cashiers have none. The POS Profile must also have **Allow Purchase Receipt** on.
+
+### Safe retries and connection loss
+- Receiving is online only. Offline, the page says so and disables saving; what you entered stays on this device and is restored on reload.
+- Each receipt carries a request id. A double click or a retry returns the document the first attempt made. After a dropped connection, saving again first asks the server whether the receipt was already made.
+- A draft is never reported as received: the page says "saved as a draft, no stock has moved" until it is submitted.
+- Leaving the page with unsaved work asks for confirmation.
 
 ---
 

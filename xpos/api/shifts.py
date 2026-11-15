@@ -273,11 +273,28 @@ def get_opening_data():
 	return data
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def open_shift(pos_profile: str, company: str, balance_details: str | list[dict] | None = None):
 	"""Create and submit a POS Opening Shift."""
 
 	balance_details = json.loads(balance_details) if isinstance(balance_details, str) else balance_details
+
+	if not user_may_use_profile(pos_profile):
+		frappe.throw(
+			_("You are not permitted to open a shift on POS Profile {0}.").format(pos_profile),
+			frappe.PermissionError,
+		)
+
+	# A retry (or a second device) gets the shift that is already open instead of a second one.
+	for open_row in get_open_shift_rows(frappe.session.user):
+		if row_value(open_row, "pos_profile") == pos_profile:
+			data = {
+				"pos_opening_shift": frappe.get_doc(
+					"POS Opening Shift", row_value(open_row, "name")
+				).as_dict()
+			}
+			enrich_shift_data(data, pos_profile)
+			return data
 
 	new_shift = frappe.get_doc(
 		{
@@ -419,7 +436,7 @@ def get_shift_period_end(opening):
 	return now_datetime()
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def close_shift(opening_shift: str, closing_details: str | list[dict] | None):
 	"""Create a POS Closing Shift and close the opening shift.
 
@@ -706,7 +723,7 @@ def get_shift_tax_summary(invoices: list, doctype: str = "Sales Invoice") -> lis
 	return taxes
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def create_opening_shift(data: str | dict, local_id: str | None = None) -> dict:
 	"""Create POS Opening Shift from desktop app sync.
 
@@ -757,7 +774,7 @@ def create_opening_shift(data: str | dict, local_id: str | None = None) -> dict:
 	return {"name": new_shift.name}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def create_closing_shift(data: str | dict, local_id: str | None = None) -> dict:
 	"""Create POS Closing Shift from desktop app sync.
 

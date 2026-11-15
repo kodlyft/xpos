@@ -4,9 +4,12 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
+	scope.enforce(filters)
 	data = get_filtered_items(filters)
 	return get_columns(), data
 
@@ -46,6 +49,7 @@ def get_filtered_items(filters):
 		query += " AND ti.item_group = %(item_group)s"
 		conditions["item_group"] = filters.get("item_group")
 
+	query += scope.warehouse_condition("bin.warehouse", conditions)
 	query += " ORDER BY ti.item_name"
 
 	return frappe.db.sql(query, conditions, as_dict=True)

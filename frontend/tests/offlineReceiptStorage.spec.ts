@@ -8,6 +8,10 @@ import type { InvoiceData, ReceiptSnapshot } from "@/types/pos.types";
 const { bridge, call, online } = vi.hoisted(() => ({
 	bridge: {
 		addPendingInvoice: vi.fn(),
+		findPendingInvoiceByLocalId: vi.fn(),
+		recoverStaleClaims: vi.fn(),
+		exportPendingInvoices: vi.fn(),
+		claimPendingInvoice: vi.fn(),
 		getAllPendingInvoices: vi.fn(),
 		updatePendingInvoice: vi.fn(),
 		deletePendingInvoice: vi.fn(),
@@ -24,6 +28,11 @@ const { bridge, call, online } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/services/dbBridge", () => bridge);
+vi.mock("@/services/catalogSync", () => ({
+	getCatalogStatus: async () => ({ status: "complete", scopeMatches: true }),
+	currentCatalogEvidence: async () => null,
+	syncCatalog: vi.fn(),
+}));
 vi.mock("@/services/api", () => ({
 	call,
 	showSuccess: vi.fn(),
@@ -46,8 +55,14 @@ vi.mock("@/stores/customerStore", () => ({
 
 import { useOfflineStore } from "@/stores/offlineStore";
 import { usePosStore } from "@/stores/posStore";
+import { setSessionScope } from "@/services/sessionScope";
+import { StorageWriteError } from "@/services/storageHealth";
 
-const invoiceData = { customer: "Walk-in Customer", items: [] } as unknown as InvoiceData;
+const invoiceData = {
+	customer: "Walk-in Customer",
+	items: [],
+	payments: [{ mode_of_payment: "Cash", amount: 10 }],
+} as unknown as InvoiceData;
 const receipt = { name: "", grand_total: 10, items: [] } as unknown as ReceiptSnapshot;
 const receiptContext = { company_name: "Acme Store", css: "" };
 
@@ -82,10 +97,28 @@ beforeEach(() => {
 	bridge.getAllPendingInvoices.mockResolvedValue([]);
 	bridge.countPendingInvoices.mockResolvedValue(0);
 	bridge.countDeadLetters.mockResolvedValue(0);
+	bridge.findPendingInvoiceByLocalId.mockResolvedValue(undefined);
+	bridge.claimPendingInvoice.mockImplementation(async () => ({
+		id: 7,
+		local_id: "inv_7",
+		data: invoiceData,
+		receipt,
+		status: "syncing",
+		retry_count: 0,
+	}));
+	bridge.recoverStaleClaims.mockResolvedValue(0);
+	setSessionScope({
+		user: "cashier",
+		profile: "Main",
+		company: "TC",
+		warehouse: "Stores",
+		priceList: "Std",
+	});
 });
 
 describe("offline invoice queue", () => {
 	it("stores the receipt with the queued invoice", async () => {
+		usePosStore().posProfile = { offline_payment_modes: [{ mode_of_payment: "Cash" }] } as never;
 		const store = useOfflineStore();
 
 		const result = await store.saveOffline(invoiceData, "Walk-in Customer", 10, [], receipt);
@@ -96,6 +129,8 @@ describe("offline invoice queue", () => {
 			customer_name: "Walk-in Customer",
 			grand_total: 10,
 			receipt,
+			reservations: [],
+			catalog_evidence: null,
 		});
 	});
 
@@ -114,6 +149,68 @@ describe("offline invoice queue", () => {
 		expect(syncCall![1]).toEqual({ data: JSON.stringify(invoiceData), local_id: "inv_7" });
 		expect(syncCall![1].data).not.toContain("receipt");
 		expect(bridge.deletePendingInvoice).toHaveBeenCalledWith(7);
+	});
+});
+
+describe("saving a sale with no server", () => {
+	const profileWith = (modes: string[]) =>
+		(usePosStore().posProfile = {
+			warehouse: "Stores",
+			offline_payment_modes: modes.map((m) => ({ mode_of_payment: m })),
+		} as never);
+
+	it("is refused, and nothing is written, until the profile lists an offline payment mode", async () => {
+		profileWith([]);
+		const result = await useOfflineStore().saveOffline(invoiceData, "Walk-in", 10, [], receipt);
+		expect(result).toMatchObject({ success: false, reason: "blocked" });
+		expect(result.blockers?.map((b) => b.code)).toEqual(["no_offline_modes"]);
+		expect(bridge.addPendingInvoice).not.toHaveBeenCalled();
+	});
+
+	it("is refused for a part-paid sale even when its mode is listed", async () => {
+		profileWith(["Cash"]);
+		const result = await useOfflineStore().saveOffline(invoiceData, "Walk-in", 25, [], receipt);
+		expect(result.blockers?.map((b) => b.code)).toEqual(["credit_sale"]);
+		expect(bridge.addPendingInvoice).not.toHaveBeenCalled();
+	});
+
+	it("is refused for a gift card sale", async () => {
+		profileWith(["Cash", "Gift Card"]);
+		const gift = {
+			...invoiceData,
+			payments: [{ mode_of_payment: "Gift Card", amount: 10, gift_card_auth: "t" }],
+		};
+		const result = await useOfflineStore().saveOffline(gift as never, "Walk-in", 10, [], receipt);
+		expect(result.blockers?.map((b) => b.code)).toEqual(["gift_card"]);
+	});
+
+	it("reports a full disk instead of success, so the cart is kept", async () => {
+		profileWith(["Cash"]);
+		bridge.addPendingInvoice.mockRejectedValue(new StorageWriteError("quota"));
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		const result = await useOfflineStore().saveOffline(invoiceData, "Walk-in", 10, [], receipt);
+		expect(result).toEqual({ success: false, reason: "quota" });
+		expect(bridge.adjustCachedStock).not.toHaveBeenCalled();
+	});
+
+	it("holds a sale that was already on its way when the connection dropped, instead of completing it offline", async () => {
+		profileWith(["Cash"]);
+		const credit = { ...invoiceData, local_id: "inv_inflight", is_credit_sale: true };
+		bridge.findPendingInvoiceByLocalId.mockResolvedValue({ id: 7, local_id: "inv_inflight" });
+		const result = await useOfflineStore().saveOffline(credit as never, "Walk-in", 25, [], receipt);
+		expect(result).toMatchObject({ success: false, reason: "held" });
+		expect(bridge.addPendingInvoice).toHaveBeenCalledWith({ data: credit, hold: "offline_blocked" });
+	});
+
+	it("deducts cached stock once for a sale already journaled by a send that lost its answer", async () => {
+		profileWith(["Cash"]);
+		const sale = { ...invoiceData, local_id: "inv_inflight" };
+		bridge.findPendingInvoiceByLocalId.mockResolvedValue({ id: 7, local_id: "inv_inflight" });
+		const stock = [{ item_code: "A", stock_qty: 2 }];
+		const result = await useOfflineStore().saveOffline(sale as never, "Walk-in", 10, stock, receipt);
+		expect(result.success).toBe(true);
+		expect(bridge.adjustCachedStock).toHaveBeenCalledTimes(1);
+		expect(bridge.updatePendingInvoice).toHaveBeenCalledWith(7, { reservations: stock });
 	});
 });
 

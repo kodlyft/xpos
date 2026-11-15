@@ -14,14 +14,10 @@
 				<div class="flex items-center gap-3">
 					<div
 						class="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm"
-						:class="
-							offlineStore.isOnline
-								? 'bg-linear-to-br from-emerald-500 to-emerald-600'
-								: 'bg-linear-to-br from-red-500 to-red-600'
-						"
+						:class="offlineStore.isOnline ? 'bg-success' : 'bg-destructive'"
 					>
-						<WifiOff v-if="!offlineStore.isOnline" class="w-4 h-4 text-white" />
-						<Wifi v-else class="w-4 h-4 text-white" />
+						<WifiOff v-if="!offlineStore.isOnline" class="w-4 h-4 text-destructive-foreground" />
+						<Wifi v-else class="w-4 h-4 text-success-foreground" />
 					</div>
 					<div>
 						<DialogTitle class="text-base">{{ __("Offline Invoices") }}</DialogTitle>
@@ -37,8 +33,9 @@
 			</DialogHeader>
 
 			<div class="flex-1 overflow-y-auto p-4 space-y-3">
-				<div v-if="offlineStore.pendingCount > 0" class="flex gap-2">
+				<div v-if="offlineStore.pendingInvoices.length > 0" class="flex gap-2">
 					<Button
+						v-if="offlineStore.pendingCount > 0"
 						variant="default"
 						size="sm"
 						class="flex-1 gap-1.5"
@@ -48,6 +45,15 @@
 						<Loader2 v-if="offlineStore.isSyncing" class="w-4 h-4 animate-spin" />
 						<CloudUpload v-else class="w-4 h-4" />
 						{{ __("Sync All") }} ({{ offlineStore.pendingCount }})
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						class="gap-1.5"
+						@click="offlineStore.downloadPendingExport()"
+					>
+						<Download class="w-4 h-4" />
+						{{ __("Export") }}
 					</Button>
 					<Button
 						v-if="posStore.allowDeleteOfflineInvoice"
@@ -70,7 +76,7 @@
 					v-if="offlineStore.pendingInvoices.length === 0"
 					class="flex flex-col items-center justify-center py-10 text-muted-foreground"
 				>
-					<CheckCircle2 class="w-12 h-12 mb-3 text-emerald-400" />
+					<CheckCircle2 class="w-12 h-12 mb-3 text-success" />
 					<p class="text-sm font-medium">{{ __("All caught up") }}!</p>
 					<p class="text-xs mt-1">{{ __("No pending offline invoices.") }}</p>
 				</div>
@@ -79,7 +85,7 @@
 					v-for="inv in offlineStore.pendingInvoices"
 					:key="inv.id"
 					class="rounded-xl border border-border bg-card p-3 space-y-2"
-					:class="isDraft(inv) ? 'border-amber-300 dark:border-amber-700' : ''"
+					:class="isDraft(inv) ? 'border-warning/30' : ''"
 				>
 					<div class="flex items-center justify-between">
 						<div>
@@ -95,12 +101,12 @@
 								{{ money(inv.grand_total) }}
 							</p>
 							<Badge :variant="statusVariant(inv.status)" class="text-[10px]">
-								{{ statusLabel(inv.status) }}
+								{{ statusLabel(inv) }}
 							</Badge>
 							<Badge
 								v-if="isDraft(inv)"
 								variant="outline"
-								class="text-[10px] text-amber-600 border-amber-400"
+								class="text-[10px] text-warning border-warning/30"
 							>
 								{{ __("Draft") }}
 							</Badge>
@@ -113,6 +119,28 @@
 					</p>
 
 					<p v-if="inv.error" class="text-xs text-destructive">Error: {{ inv.error }}</p>
+					<p
+						v-if="inv.status === 'failed' && inv.next_attempt_at"
+						class="text-xs text-muted-foreground"
+					>
+						{{ __("Next try {0}", [formatTime(inv.next_attempt_at)]) }}
+					</p>
+					<p v-if="inv.hold" class="text-xs text-destructive">
+						{{
+							__(
+								"The connection dropped while this sale was being sent. Check it, then press Retry.",
+							)
+						}}
+					</p>
+					<p
+						v-if="inv.owner && inv.owner.user !== sessionUser"
+						class="text-xs text-muted-foreground"
+					>
+						{{ __("Rung up by {0}. It sends when they sign in.", [inv.owner.user]) }}
+					</p>
+					<p v-if="inv.catalog_evidence" class="text-xs text-muted-foreground">
+						{{ __("Prices as of {0}", [formatTime(inv.catalog_evidence.activated_at)]) }}
+					</p>
 
 					<div v-if="inv.status === 'needs_review' && inv.review" class="text-xs space-y-0.5">
 						<p class="font-medium">
@@ -209,7 +237,7 @@
 							v-else-if="isDraft(inv)"
 							variant="default"
 							size="sm"
-							class="flex-1 gap-1 text-xs bg-amber-500 hover:bg-amber-600"
+							class="flex-1 gap-1 text-xs bg-warning hover:bg-warning/90 text-warning-foreground"
 							@click="inv.id && loadToCart(inv)"
 						>
 							<ShoppingCart class="w-3.5 h-3.5" />
@@ -285,6 +313,7 @@ import { useOfflineStore } from "@/stores/offlineStore";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
 import { useCartStore } from "@/stores/cartStore";
+import { useCartSessionStore } from "@/stores/cartSessionStore";
 import { showSuccess, showError } from "@/services/api";
 import { hasPermission } from "@/services/userRights";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -300,7 +329,10 @@ import {
 	CheckCircle2,
 	RefreshCw,
 	ShoppingCart,
+	Download,
 } from "lucide-vue-next";
+import { currentOwner } from "@/services/sessionScope";
+import { STALLED_AFTER_ATTEMPTS } from "@/services/syncClassify";
 import __ from "@/lib/translate";
 
 defineProps<{ open: boolean }>();
@@ -324,6 +356,7 @@ function resolveFiscal(id: number | undefined, recorded: boolean) {
 const posStore = usePosStore();
 const { money } = useMoney();
 const cartStore = useCartStore();
+const cartSessions = useCartSessionStore();
 
 onMounted(() => {
 	offlineStore.loadPendingInvoices();
@@ -344,6 +377,8 @@ function isDraft(inv: (typeof offlineStore.pendingInvoices)[number]): boolean {
 }
 
 async function loadToCart(inv: (typeof offlineStore.pendingInvoices)[number]) {
+	// A queued sale is never put back into an editable cart; only held drafts come back.
+	if (!isDraft(inv)) return;
 	try {
 		const data = inv.data as {
 			customer: string;
@@ -362,11 +397,17 @@ async function loadToCart(inv: (typeof offlineStore.pendingInvoices)[number]) {
 				batch_no?: string;
 			}>;
 		};
-		cartStore.loadFromInvoice({
-			customer: data.customer,
-			customer_name: data.customer_name || data.customer,
-			items: data.items || [],
-		});
+		const target = await cartSessions.loadIntoCart(() =>
+			cartStore.loadFromInvoice({
+				customer: data.customer,
+				customer_name: data.customer_name || data.customer,
+				items: data.items || [],
+			}),
+		);
+		if (!target.ok) {
+			showError(target.reason || "");
+			return;
+		}
 		if (inv.id) await offlineStore.consumePending(inv.id);
 		showSuccess(__("Draft loaded into cart"));
 		emit("close");
@@ -388,8 +429,14 @@ function statusVariant(status: string) {
 	return "secondary" as const;
 }
 
-function statusLabel(status: string): string {
-	if (status === "dead_letter") return __("Needs attention");
+const sessionUser = computed(() => currentOwner()?.user ?? "");
+
+function statusLabel(inv: (typeof offlineStore.pendingInvoices)[number]): string {
+	const status = inv.status;
+	if (inv.hold) return __("Held");
+	if (status === "failed" && (inv.attempts ?? 0) >= STALLED_AFTER_ATTEMPTS) return __("Stalled");
+	if (status === "failed") return __("Waiting to retry");
+	if (status === "dead_letter") return __("Refused: review");
 	if (status === "needs_review") return __("Price review");
 	if (status === "fiscal_uncertain") return __("FBR check");
 	return status;

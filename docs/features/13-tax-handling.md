@@ -55,10 +55,10 @@ Taxes are calculated in real-time as items are added, modified, or removed from 
    - Determine the applicable rate (item-specific or global)
    - For `On Net Total`: `tax = item_net_amount × rate / 100`
    - For `Actual`: use the fixed amount
-   - Check if tax is `included_in_print_rate`:
-     - **Included**: Back-calculate tax from inclusive price - `tax = amount - (amount / (1 + rate/100))`
+   - The POS Profile's **Tax Inclusive** setting decides inclusion, as on the server; `Actual` rows are always added on top:
+     - **Included**: Back-calculate tax from the inclusive price, split by the sum of the item's inclusive rates - `tax = amount × rate / (100 + sum of inclusive rates)`
      - **Not included**: Calculate tax additive - `tax = net_amount × rate / 100`
-2. Extra tax accounts from item tax maps (not in the global template) are added as additional tax lines
+2. Extra tax accounts from item tax maps (not in the global template) are added as additional tax lines, included or not by the same setting
 3. All amounts are rounded to 2 decimal places
 
 ### Cart Summary Display

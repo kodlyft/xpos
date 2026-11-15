@@ -31,6 +31,8 @@ export interface BootOptions {
 	 * currency has to supply it or every figure comes out at two.
 	 */
 	currencies?: Array<Record<string, unknown>>;
+	/** App path to open instead of the POS, e.g. "/xpos/reports". */
+	path?: string;
 	/** The signed-in user's `user_image`. */
 	userImage?: string;
 }
@@ -46,7 +48,7 @@ Cypress.Commands.add("bootPos", (options: BootOptions = {}) => {
 	stubMany({ ...defaultRoutes(), ...(options.routes || {}) });
 	installFrappeStub();
 
-	cy.visit("/xpos/", {
+	cy.visit(options.path || "/xpos/", {
 		onBeforeLoad(win) {
 			// The app caches items, customers and the pricing rule snapshot here.
 			// Left over, that cache leaks between specs - and would silently

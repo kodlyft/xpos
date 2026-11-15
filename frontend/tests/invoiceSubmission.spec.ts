@@ -1,7 +1,11 @@
 /** @vitest-environment jsdom */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const queue = vi.hoisted(() => ({ add: vi.fn(), remove: vi.fn() }));
-vi.mock("@/services/dbBridge", () => ({ addPendingInvoice: queue.add, deletePendingInvoice: queue.remove }));
+const queue = vi.hoisted(() => ({ add: vi.fn(), remove: vi.fn(), update: vi.fn() }));
+vi.mock("@/services/dbBridge", () => ({
+	addPendingInvoice: queue.add,
+	deletePendingInvoice: queue.remove,
+	updatePendingInvoice: queue.update,
+}));
 vi.mock("@/utils", () => ({ isNetworkError: (e: Error) => e.message === "lost response" }));
 import { newInvoiceId, submitDurableInvoice } from "@/services/invoiceSubmission";
 import type { InvoiceData, ReceiptSnapshot } from "@/types/pos.types";

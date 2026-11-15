@@ -106,6 +106,7 @@ after_install = "xpos.install.after_install"
 
 after_migrate = [
 	"xpos.patches.add_pos_query_indexes.execute",
+	"xpos.patches.v3.add_catalog_query_indexes.execute",
 	"xpos.x_pos.doctype.referral_code.referral_code.add_customer_company_unique",
 ]
 
@@ -140,11 +141,12 @@ after_uninstall = "xpos.uninstall.after_uninstall"
 # Permissions
 # -----------
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
+permission_query_conditions = {
+	"XPOS User Layout": "xpos.x_pos.doctype.xpos_user_layout.xpos_user_layout.get_permission_query_conditions",
+}
 
 has_permission = {
+	"XPOS User Layout": "xpos.x_pos.doctype.xpos_user_layout.xpos_user_layout.has_permission",
 	"Sales Invoice": "xpos.api.print_formats.invoice_has_permission",
 	"POS Invoice": "xpos.api.print_formats.invoice_has_permission",
 }
@@ -199,12 +201,67 @@ doc_events = {
 		"after_insert": "xpos.x_pos.api.customer.after_insert",
 	},
 	"POS Profile": {
-		"validate": "xpos.api.print_formats.validate_print_format_rules",
+		"validate": [
+			"xpos.api.print_formats.validate_print_format_rules",
+			"xpos.api.profiles.validate_offline_payment_modes",
+		],
+		"on_update": ["xpos.api.catalog_log.log_reset", "xpos.reports.catalog.bump_version"],
+		"on_trash": ["xpos.api.catalog_log.log_reset", "xpos.reports.catalog.bump_version"],
+	},
+	"Item": {
+		"on_update": "xpos.api.catalog_log.log_item",
+		"on_trash": "xpos.api.catalog_log.log_item",
+		"after_rename": "xpos.api.catalog_log.log_item_rename",
+	},
+	"Item Price": {
+		"on_update": "xpos.api.catalog_log.log_item",
+		"on_trash": "xpos.api.catalog_log.log_item",
+	},
+	"Item Group": {
+		"on_update": "xpos.api.catalog_log.log_reset",
+		"on_trash": "xpos.api.catalog_log.log_reset",
+	},
+	"Price List": {
+		"on_update": "xpos.api.catalog_log.log_reset",
+		"on_trash": "xpos.api.catalog_log.log_reset",
+	},
+	"Warehouse": {
+		"on_update": "xpos.api.catalog_log.log_reset",
+		"on_trash": "xpos.api.catalog_log.log_reset",
+	},
+	"Item Tax Template": {
+		"on_update": "xpos.api.catalog_log.log_reset",
+		"on_trash": "xpos.api.catalog_log.log_reset",
+	},
+	"Report": {
+		"on_update": "xpos.reports.catalog.bump_version",
+		"on_trash": "xpos.reports.catalog.bump_version",
+	},
+	"User Permission": {
+		"on_update": "xpos.reports.catalog.bump_version",
+		"on_trash": "xpos.reports.catalog.bump_version",
+	},
+	"Custom DocPerm": {
+		"on_update": "xpos.reports.catalog.bump_version",
+		"on_trash": "xpos.reports.catalog.bump_version",
+	},
+	"POS Role": {
+		"on_update": "xpos.reports.catalog.bump_version",
+		"on_trash": "xpos.reports.catalog.bump_version",
 	},
 }
 
+# Filter providers the POS report catalog may call. Reports in the X POS module are offered
+# automatically; an administrator enables any other report with an XPOS Report Setting.
+xpos_report_filter_providers = ["xpos.reports.providers.bundled_filters"]
+
+
 # Scheduled Tasks
 # ---------------
+
+scheduler_events = {
+	"daily": ["xpos.api.catalog_log.prune_catalog_changes"],
+}
 
 # scheduler_events = {
 # 	"all": [
@@ -254,7 +311,7 @@ doc_events = {
 
 # Request Events
 # ----------------
-# before_request = ["xpos.utils.before_request"]
+before_request = ["xpos.reports.execute.guard_direct_request"]
 # after_request = ["xpos.utils.after_request"]
 
 # Job Events

@@ -164,3 +164,9 @@ Each tax from the POS Profile's Sales Taxes and Charges template is shown as a s
 - When enabled, each cart item can have its own notes field
 - Useful for preparation instructions (e.g., "no onions", "extra sauce")
 - Saved with each invoice item for reference
+
+---
+
+## Several carts at once
+
+A cashier can keep up to eight carts open and switch between them. See [Cart Tabs](34-cart-tabs.md).

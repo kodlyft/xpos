@@ -84,22 +84,6 @@ export default defineConfig({
 						},
 					},
 					{
-						urlPattern: /^https?:\/\/.*\/api\/method\//,
-						handler: "NetworkFirst",
-						method: "GET",
-						options: {
-							cacheName: "xpos-api-cache",
-							expiration: {
-								maxEntries: 200,
-								maxAgeSeconds: 60 * 60 * 24, // 24 hours
-							},
-							networkTimeoutSeconds: 5,
-							cacheableResponse: {
-								statuses: [0, 200],
-							},
-						},
-					},
-					{
 						urlPattern: /^https?:\/\/.*\/assets\//,
 						handler: "CacheFirst",
 						options: {
@@ -114,7 +98,7 @@ export default defineConfig({
 						},
 					},
 					{
-						urlPattern: /^https?:\/\/.*\/files\//,
+						urlPattern: /^https?:\/\/[^/]+\/files\//,
 						handler: "CacheFirst",
 						options: {
 							cacheName: "xpos-files-cache",

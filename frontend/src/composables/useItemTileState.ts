@@ -1,5 +1,6 @@
 import { computed, ref, watch, type Ref } from "vue";
 import { usePosStore } from "@/stores/posStore";
+import { useLayoutStore } from "@/stores/layoutStore";
 import { formatQty } from "@/utils/numberFormat";
 import type { POSItem } from "@/types/pos.types";
 import __ from "@/lib/translate";
@@ -12,18 +13,28 @@ import __ from "@/lib/translate";
  */
 export function useItemTileState(item: Ref<POSItem>) {
 	const posStore = usePosStore();
+	const layoutStore = useLayoutStore();
+	/** Personal choices only ever hide extras; profile settings still decide what may show. */
+	const shows = (field: string) => layoutStore.shared.productDisplay.includes(field);
 
-	const showItemCode = computed(() => posStore.displayItemCode);
+	const showItemCode = computed(() => posStore.displayItemCode && shows("item_code"));
+	const showUom = computed(() => shows("uom") && !!item.value.stock_uom);
 	const allowNegativeStock = computed(() => !!posStore.stockSettings?.allow_negative_stock);
 
 	const isNonStockItem = computed(() => Number(item.value.is_stock_item) === 0);
-	const hasStockFigure = computed(() => !isNonStockItem.value && item.value.actual_qty !== undefined);
-
 	const isOutOfStock = computed(() => {
 		if (isNonStockItem.value) return false;
 		const qty = item.value.actual_qty;
 		return qty !== undefined && qty <= 0;
 	});
+
+	/** Out-of-stock is never hidden: it is why a tile cannot be sold. */
+	const hasStockFigure = computed(
+		() =>
+			!isNonStockItem.value &&
+			item.value.actual_qty !== undefined &&
+			(shows("stock") || isOutOfStock.value),
+	);
 
 	const isUnavailable = computed(() => isOutOfStock.value && !allowNegativeStock.value);
 
@@ -50,8 +61,10 @@ export function useItemTileState(item: Ref<POSItem>) {
 		() => item.value.image,
 		() => (imageFailed.value = false),
 	);
-	const showImage = computed(() => !!item.value.image && !posStore.hideImages && !imageFailed.value);
-	const showThumbColumn = computed(() => !posStore.hideImages);
+	const showImage = computed(
+		() => !!item.value.image && !posStore.hideImages && shows("image") && !imageFailed.value,
+	);
+	const showThumbColumn = computed(() => !posStore.hideImages && shows("image"));
 
 	const actionLabel = computed(() =>
 		isTemplate.value
@@ -61,6 +74,7 @@ export function useItemTileState(item: Ref<POSItem>) {
 
 	return {
 		showItemCode,
+		showUom,
 		isNonStockItem,
 		hasStockFigure,
 		isOutOfStock,
@@ -85,6 +99,6 @@ export const STOCK_TONE_CLASS = {
 /** Column template shared by the dense list rows and their header. */
 export function itemRowGrid(withThumb: boolean): string {
 	return withThumb
-		? "grid-cols-[2.25rem_minmax(0,1fr)_auto_6.5rem] xl:grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,12rem)_auto_7rem]"
-		: "grid-cols-[minmax(0,1fr)_auto_6.5rem] xl:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_auto_7rem]";
+		? "grid-cols-[2.25rem_minmax(0,1fr)_7.5rem_6.5rem] xl:grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,12rem)_7.5rem_7rem]"
+		: "grid-cols-[minmax(0,1fr)_7.5rem_6.5rem] xl:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_7.5rem_7rem]";
 }

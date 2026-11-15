@@ -76,6 +76,9 @@
 							class="block truncate text-base font-bold leading-tight text-foreground tabular-nums"
 						>
 							{{ money(item.rate) }}
+							<span v-if="showUom" class="ms-1 text-xs font-normal text-muted-foreground"
+								>/ {{ item.stock_uom }}</span
+							>
 						</span>
 						<span
 							v-if="hasStockFigure"
@@ -136,6 +139,7 @@ const {
 	stockLabel,
 	imageFailed,
 	showImage,
+	showUom,
 	actionLabel,
 } = useItemTileState(toRef(props, "item"));
 

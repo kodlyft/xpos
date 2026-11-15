@@ -3,9 +3,7 @@
 		class="min-h-screen flex flex-col items-center justify-center bg-linear-to-br from-background to-muted p-4"
 	>
 		<div class="mb-8 text-center">
-			<div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-primary flex items-center justify-center">
-				<Store class="w-8 h-8 text-primary-foreground" />
-			</div>
+			<XposLogo :size="64" class="mx-auto mb-4" />
 			<h1 class="text-2xl font-bold text-foreground">X POS</h1>
 			<p class="text-muted-foreground text-sm mt-1">Point of Sale System</p>
 		</div>
@@ -23,9 +21,7 @@
 			</CardHeader>
 			<CardContent>
 				<div v-if="authStore.resetEmailSent" class="space-y-4">
-					<div
-						class="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-					>
+					<div class="p-4 rounded-lg bg-success/10 border border-success/30 text-success">
 						<div class="flex items-start gap-3">
 							<CheckCircle class="w-5 h-5 mt-0.5 shrink-0" />
 							<div class="space-y-1">
@@ -112,10 +108,11 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/authStore";
+import { XposLogo } from "@/components/ui/brand";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Store, Mail, Send, ArrowLeft, Loader2, AlertCircle, CheckCircle } from "lucide-vue-next";
+import { Mail, Send, ArrowLeft, Loader2, AlertCircle, CheckCircle } from "lucide-vue-next";
 
 const router = useRouter();
 const authStore = useAuthStore();

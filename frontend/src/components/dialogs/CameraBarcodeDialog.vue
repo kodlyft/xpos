@@ -1,6 +1,6 @@
 <template>
 	<Transition name="slide-up-full">
-		<div v-if="open" class="fixed inset-0 z-[60] bg-black flex flex-col" :aria-modal="true" role="dialog">
+		<div v-if="open" class="fixed inset-0 z-60 bg-black flex flex-col" :aria-modal="true" role="dialog">
 			<div class="shrink-0 flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-sm">
 				<div class="flex items-center gap-2.5 text-white">
 					<ScanBarcode class="w-5 h-5 text-primary" />
@@ -277,6 +277,7 @@ watch(
 			if (cooldownTimer) clearTimeout(cooldownTimer);
 		}
 	},
+	{ immediate: true },
 );
 
 onUnmounted(() => {

@@ -4,8 +4,11 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
+	scope.enforce(filters or {})
 	columns, data = get_columns(), get_stock_balance(filters)
 	return columns, data
 
@@ -19,14 +22,13 @@ def get_stock_balance(filters):
         WHERE sle.posting_date <= %(from_posting_date)s
         AND is_cancelled = 0
         AND company = %(company)s
+        {scope_condition}
         GROUP BY sle.warehouse
     """
 
-	return frappe.db.sql(
-		query,
-		{"from_posting_date": filters.get("from_posting_date"), "company": filters.get("company")},
-		as_dict=True,
-	)
+	params = {"from_posting_date": filters.get("from_posting_date"), "company": filters.get("company")}
+	query = query.replace("{scope_condition}", scope.warehouse_condition("sle.warehouse", params))
+	return frappe.db.sql(query, params, as_dict=True)
 
 
 def get_columns():

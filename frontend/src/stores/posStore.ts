@@ -3,6 +3,8 @@ import { ref, computed, watch } from "vue";
 import { call } from "@/services/api";
 import { cachePOSData, getCachedPOSData, cacheReceiptContext } from "@/services/dbBridge";
 import { hasPermission, loadPermissions } from "@/services/userRights";
+import { setSessionScope } from "@/services/sessionScope";
+import { useAuthStore } from "@/stores/authStore";
 import {
 	type POSOpeningShift,
 	type POSProfile,
@@ -121,6 +123,10 @@ export const usePosStore = defineStore("pos", () => {
 
 	const useOfflineMode = computed(() => !!posProfile.value?.use_offline_mode);
 
+	const offlinePaymentModes = computed(() =>
+		(posProfile.value?.offline_payment_modes ?? []).map((row) => row.mode_of_payment).filter(Boolean),
+	);
+
 	const allowChangePostingDate = computed(() => !!posProfile.value?.allow_change_posting_date);
 
 	const showCustomerBalance = computed(() => !!posProfile.value?.show_customer_balance);
@@ -213,6 +219,7 @@ export const usePosStore = defineStore("pos", () => {
 	const purchaseTaxes = computed(() => posProfile.value?.purchase_taxes || []);
 
 	function clearShiftState(): void {
+		setSessionScope(null);
 		posOpeningShift.value = null;
 		posProfile.value = null;
 		company.value = null;
@@ -241,6 +248,13 @@ export const usePosStore = defineStore("pos", () => {
 		isCashier.value = result.is_cashier ?? true;
 		showOpeningDialog.value = false;
 		isReady.value = true;
+		setSessionScope({
+			user: useAuthStore().userName,
+			profile: result.pos_profile?.name || "",
+			company: result.company?.name || result.pos_profile?.company || "",
+			warehouse: result.pos_profile?.warehouse || "",
+			priceList: result.pos_profile?.selling_price_list || "",
+		});
 	}
 
 	async function checkExistingShift(): Promise<void> {
@@ -559,6 +573,7 @@ export const usePosStore = defineStore("pos", () => {
 		defaultPosExpenseAccount,
 		backOfficeCashAccount,
 		useOfflineMode,
+		offlinePaymentModes,
 		requireCashMovementRemarks,
 		checkExistingShift,
 		fetchOpeningData,

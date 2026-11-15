@@ -1,189 +1,21 @@
 # Copyright (c) 2026, Ali Raza and contributors
 # For license information, please see license.txt
 
-"""Report metadata for the X POS frontend report viewer.
+"""Server-driven report catalog for the X POS report viewer.
 
-The frontend renders a generic, Frappe-style report view (filter bar + data
-table). The filter configuration for each report lives here so the frontend no
-longer hardcodes it; this mirrors the filters defined in each report's desk
-``*.js`` file but is JSON-serialisable.
-
-Report data itself is still fetched through the standard
-``frappe.desk.query_report.run`` endpoint.
+The catalog, each report's filters and its capabilities come from ``xpos.reports``;
+report data is produced by Frappe's own runner after the POS checks (permission,
+scope, export) in :func:`xpos.reports.execute.run`.
 """
 
 import frappe
-from frappe import _
-from frappe.utils import add_months, today
+
+from xpos.reports import catalog, execute
 
 
 def company_default() -> str:
 	"""Resolve the user's default company, mirroring the desk ``*.js`` defaults."""
-	return frappe.defaults.get_user_default("Company") or frappe.defaults.get_default("company") or ""
-
-
-def company_filter():
-	return {
-		"fieldname": "company",
-		"label": "Company",
-		"type": "link",
-		"doctype": "Company",
-		"required": True,
-		"clears": ["warehouse"],
-	}
-
-
-def warehouse_filter(required: bool = False, multi: bool = False):
-	return {
-		"fieldname": "warehouse",
-		"label": "Warehouses" if multi else "Warehouse",
-		"type": "multi-link" if multi else "link",
-		"doctype": "Warehouse",
-		"required": required,
-		# "$company" resolves to the current value of the company filter.
-		"getQueryFilters": {"company": "$company", "is_group": 0} if not multi else {"company": "$company"},
-	}
-
-
-def multi_link(fieldname: str, label: str, doctype: str, required: bool = False):
-	return {
-		"fieldname": fieldname,
-		"label": label,
-		"type": "multi-link",
-		"doctype": doctype,
-		"required": required,
-	}
-
-
-def link(fieldname: str, label: str, doctype: str, required: bool = False):
-	return {
-		"fieldname": fieldname,
-		"label": label,
-		"type": "link",
-		"doctype": doctype,
-		"required": required,
-	}
-
-
-def date(fieldname: str, label: str, required: bool = False, default=None):
-	field = {"fieldname": fieldname, "label": label, "type": "date", "required": required}
-	if default is not None:
-		field["defaultValue"] = default
-	return field
-
-
-def report_filters() -> dict:
-	return {
-		"Current Stock Report": [
-			company_filter(),
-			warehouse_filter(required=True),
-			link("supplier", "Supplier", "Supplier"),
-			link("brand", "Brand", "Brand"),
-			link("item_group", "Item Group", "Item Group"),
-		],
-		"Current Stock By Brand": [
-			multi_link("brand", "Brand", "Brand", required=True),
-		],
-		"Current Stock Summary": [
-			company_filter(),
-			warehouse_filter(required=True),
-		],
-		"Current Stock With Levels": [
-			company_filter(),
-			warehouse_filter(required=False),
-		],
-		"Dead Stock Report": [
-			company_filter(),
-			warehouse_filter(required=False),
-			{"fieldname": "days", "label": "Days", "type": "integer", "required": True, "defaultValue": 30},
-			{
-				"fieldname": "min_value",
-				"label": "Minimum Value",
-				"type": "float",
-				"required": True,
-				"defaultValue": 1000,
-			},
-			multi_link("supplier", "Supplier", "Supplier"),
-		],
-		"Stock Value By Warehouse": [
-			company_filter(),
-		],
-		"Stock Value Summary By Date": [
-			company_filter(),
-			date("from_posting_date", "From Posting Date", required=True, default=today()),
-		],
-		"Warehouse Stock Movement": [
-			company_filter(),
-			date("from_date", "From Date", required=True, default=today()),
-			date("to_date", "To Date", required=True, default=today()),
-		],
-		"Branch Item Summary": [
-			company_filter(),
-			warehouse_filter(required=True),
-			date("from_date", "From Date", required=True, default=today()),
-			date("to_date", "To Date", required=True, default=today()),
-		],
-		"Branch Set Summary": [
-			company_filter(),
-			warehouse_filter(required=True),
-			date("date", "Date", required=True, default=today()),
-		],
-		"Low Qty Sales Report": [
-			company_filter(),
-			date("from_date", "From Date", required=True, default=add_months(today(), -1)),
-			date("to_date", "To Date", required=True, default=today()),
-			{
-				"fieldname": "min_qty",
-				"label": "Min Qty",
-				"type": "integer",
-				"required": True,
-				"defaultValue": 10,
-			},
-		],
-		"Zero Qty Sales Report": [
-			company_filter(),
-			date("from_date", "From Date", required=True, default=today()),
-			date("to_date", "To Date", required=True, default=today()),
-		],
-		"Slow Fast Moving Items": [
-			company_filter(),
-			date("from_date", "From Date", required=True, default=add_months(today(), -1)),
-			date("to_date", "To Date", required=True, default=today()),
-			multi_link("supplier", "Supplier", "Supplier"),
-		],
-		"Stock Audit Report": [
-			company_filter(),
-			warehouse_filter(required=False, multi=True),
-			multi_link("item_group", "Item Group", "Item Group"),
-			multi_link("brand", "Brand", "Brand"),
-			multi_link("supplier", "Supplier", "Supplier"),
-		],
-		"Purchase Order Report": [
-			company_filter(),
-			link("supplier", "Supplier", "Supplier", required=True),
-			date("from_date", "From Date", required=True),
-			date("to_date", "To Date", required=True),
-			{
-				"fieldname": "type",
-				"label": "Type",
-				"type": "select",
-				"required": True,
-				"defaultValue": "All",
-				"options": [
-					{"label": "All", "value": "All"},
-					{"label": "Based on ReOrder Level", "value": "Based on ReOrder Level"},
-					{"label": "Based on Sales", "value": "Based on Sales"},
-				],
-			},
-		],
-		"POS Shift Reconciliation": [
-			link("pos_opening_shift", "Opening Shift", "POS Opening Shift"),
-			link("company", "Company", "Company"),
-			link("pos_profile", "POS Profile", "POS Profile"),
-			date("from_date", "From Date"),
-			date("to_date", "To Date"),
-		],
-	}
+	return frappe.defaults.get_user_default("Company") or frappe.defaults.get_global_default("company") or ""
 
 
 def apply_company_defaults(filters: list) -> list:
@@ -198,18 +30,52 @@ def apply_company_defaults(filters: list) -> list:
 
 
 @frappe.whitelist()
+def get_report_catalog() -> list[dict]:
+	"""Every report the current user may open from the POS, with its capabilities."""
+	return catalog.get_catalog()
+
+
+@frappe.whitelist()
 def get_report_meta(report: str) -> dict:
-	"""Return the JSON filter configuration for a report.
+	"""The catalog entry and filter configuration for a report id, slug or alias.
 
-	Columns are intentionally omitted - they arrive with the data from
-	``frappe.desk.query_report.run`` so no report execution is needed here.
+	Columns are intentionally omitted - they arrive with the data, so no report execution
+	is needed here.
 	"""
-	registry = report_filters()
-	filters = registry.get(report)
-	if filters is None:
-		frappe.throw(_("Unknown report: {0}").format(report), frappe.DoesNotExistError)
+	entry = execute.require_entry(report)
+	filters = catalog.entry_filters(entry) if entry["capability"]["state"] == "supported" else []
+	return {**entry, "filters": apply_company_defaults(filters)}
 
-	if not frappe.has_permission("Report", "read"):
-		frappe.throw(_("Not permitted to view reports"), frappe.PermissionError)
 
-	return {"filters": apply_company_defaults(filters)}
+@frappe.whitelist()
+def run_report(report: str, filters: str | dict | None = None, purpose: str = "view") -> dict:
+	"""Run a catalog report for ``view``, ``export`` or ``print``; the purpose is checked here."""
+	return execute.run(report, filters, purpose)
+
+
+@frappe.whitelist()
+def get_report_candidates() -> list[dict]:
+	"""Installed reports an administrator could enable; a suggestion list, never an enablement."""
+	frappe.only_for("System Manager")
+	declared = set(catalog.declarations())
+	candidates = []
+	for report in frappe.get_all(
+		"Report",
+		filters={"disabled": 0, "report_type": ("in", ["Script Report", "Query Report", "Custom Report"])},
+		fields=["name", "report_type", "ref_doctype", "module"],
+		order_by="name",
+	):
+		if report.name in declared:
+			continue
+		doc = frappe.get_cached_doc("Report", report.name)
+		state, reasons, _filters = catalog.assess(doc, {})
+		candidates.append({**report, "capability": {"state": state, "reasons": reasons}})
+	return candidates
+
+
+@frappe.whitelist()
+def check_report_compatibility(report: str, filter_provider: str | None = None) -> dict:
+	frappe.only_for("System Manager")
+	doc = frappe.get_doc("Report", report)
+	state, reasons, filters = catalog.assess(doc, {"filter_provider": filter_provider})
+	return {"state": state, "reasons": reasons, "filters": filters or []}

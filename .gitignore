@@ -94,3 +94,6 @@ QODER.md
 .kiro/steering/code-review-graph.md
 .qoder/mcp.json
 .qoder/settings.json
+.yarn/install-state.gz
+.pnp.cjs
+frontend/.yarn/install-state.gz

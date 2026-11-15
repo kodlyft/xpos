@@ -3,12 +3,14 @@
 		id="xpos-app"
 		:class="[
 			'h-dvh w-screen font-sans',
+			'flex h-screen w-screen flex-col font-sans',
 			isDark ? 'dark' : '',
 			isAuthPage ? 'overflow-y-auto' : 'overflow-hidden',
 			isRtl ? 'rtl' : 'ltr',
 		]"
 	>
 		<SplashScreen :show="showSplash" />
+		<AppStatusBanner />
 
 		<template v-if="isAuthPage || isFullScreen">
 			<router-view v-slot="{ Component }">
@@ -58,8 +60,12 @@
 
 			<DraftInvoiceDialog v-if="cartStore.showDraftDialog" />
 
-			<KeyboardShortcutsDialog :open="showShortcutsDialog" @close="showShortcutsDialog = false" />
-			<AboutDialog :open="showAboutDialog" @close="showAboutDialog = false" />
+			<KeyboardShortcutsDialog
+				v-if="shortcutsSeen"
+				:open="showShortcutsDialog"
+				@close="showShortcutsDialog = false"
+			/>
+			<AboutDialog v-if="aboutSeen" :open="showAboutDialog" @close="showAboutDialog = false" />
 
 			<ConfirmDialog
 				:open="showClearCartConfirm"
@@ -73,76 +79,46 @@
 			/>
 		</template>
 
-		<Toaster
-			:theme="isDark ? 'dark' : 'light'"
-			:position="isRtl ? 'bottom-left' : 'bottom-right'"
-			:duration="4000"
-			:expand="true"
-			rich-colors
-			close-button
-			:dir="isRtl ? 'rtl' : 'ltr'"
-		/>
-		<ErrorInspector v-model:open="showErrorInspector" />
-		<Transition name="fade">
-			<button
-				v-if="!isAuthPage && errorCount > 0 && !showErrorInspector"
-				type="button"
-				class="fixed bottom-3 inset-e-3 z-50 flex items-center gap-1.5 rounded-full bg-destructive px-3 py-1 text-xs font-medium text-destructive-foreground shadow-md select-none cursor-pointer"
-				:title="__('Open Error Inspector')"
-				@click="showErrorInspector = true"
-			>
-				<AlertTriangle class="w-3.5 h-3.5" />
-				<span>{{ errorCount }}</span>
-			</button>
-		</Transition>
+		<ToastHost />
 	</div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { Toaster } from "vue-sonner";
+import { ToastHost } from "@/components/ui/toast";
 import { usePosStore } from "@/stores/posStore";
 import { useCartStore } from "@/stores/cartStore";
+import { useCartSessionStore } from "@/stores/cartSessionStore";
 import { useCustomerStore } from "@/stores/customerStore";
 import { useItemStore } from "@/stores/itemStore";
 import { usePaymentStore } from "@/stores/paymentStore";
 import { useAuthStore } from "@/stores/authStore";
 import DefaultLayout from "@/layouts/DefaultLayout.vue";
 import OpeningDialog from "@/components/dialogs/OpeningDialog.vue";
-import ClosingDialog from "@/components/dialogs/ClosingDialog.vue";
-import PaymentDialog from "@/components/dialogs/PaymentDialog.vue";
-import GiftCardIssuedDialog from "@/components/dialogs/GiftCardIssuedDialog.vue";
-import CustomerSelect from "@/components/customer/CustomerSelect.vue";
-import LoyaltyDialog from "@/components/dialogs/LoyaltyDialog.vue";
-import ItemDetailDialog from "@/components/dialogs/ItemDetailDialog.vue";
-import CashMovementDialog from "@/components/dialogs/CashMovementDialog.vue";
-import DraftInvoiceDialog from "@/components/dialogs/DraftInvoiceDialog.vue";
-import KeyboardShortcutsDialog from "@/components/dialogs/KeyboardShortcutsDialog.vue";
-import AboutDialog from "@/components/dialogs/AboutDialog.vue";
 import ConfirmDialog from "@/components/dialogs/ConfirmDialog.vue";
 import SplashScreen from "@/components/SplashScreen.vue";
-import { AlertTriangle, Trash2 } from "lucide-vue-next";
+import AppStatusBanner from "@/components/offline/AppStatusBanner.vue";
+import { Trash2 } from "lucide-vue-next";
 import { useOfflineStore } from "@/stores/offlineStore";
 import { showError } from "@/services/api";
 import __ from "@/lib/translate";
 import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
-import ErrorInspector from "@/components/errors/ErrorInspector.vue";
-import { unseenCount as errorUnseenCount } from "@/services/errorLog";
 import { usePrintInvoice } from "@/composables/usePrintInvoice";
 import { getCustomer } from "./utils";
+import { onIdle } from "@/utils/idle";
+import { useEverTrue } from "@/composables/useEverTrue";
 
 const route = useRoute();
 const posStore = usePosStore();
 const { openInvoicePrintView } = usePrintInvoice();
 const cartStore = useCartStore();
+const cartSessions = useCartSessionStore();
 const customerStore = useCustomerStore();
 const itemStore = useItemStore();
 const paymentStore = usePaymentStore();
 const authStore = useAuthStore();
 const offlineStore = useOfflineStore();
-const showErrorInspector = ref(false);
-const errorCount = errorUnseenCount;
 const isRtl = computed(() => document.documentElement.dir === "rtl");
 
 const keyboardShortcuts = useKeyboardShortcuts();
@@ -153,12 +129,38 @@ const {
 	destroy: destroyKeyboardShortcuts,
 } = keyboardShortcuts;
 
+const importPaymentDialog = () => import("@/components/dialogs/PaymentDialog.vue");
+const importItemDetailDialog = () => import("@/components/dialogs/ItemDetailDialog.vue");
+const importCustomerSelect = () => import("@/components/customer/CustomerSelect.vue");
+const ClosingDialog = defineAsyncComponent(() => import("@/components/dialogs/ClosingDialog.vue"));
+const PaymentDialog = defineAsyncComponent(importPaymentDialog);
+const GiftCardIssuedDialog = defineAsyncComponent(
+	() => import("@/components/dialogs/GiftCardIssuedDialog.vue"),
+);
+const CustomerSelect = defineAsyncComponent(importCustomerSelect);
+const LoyaltyDialog = defineAsyncComponent(() => import("@/components/dialogs/LoyaltyDialog.vue"));
+const ItemDetailDialog = defineAsyncComponent(importItemDetailDialog);
+const CashMovementDialog = defineAsyncComponent(() => import("@/components/dialogs/CashMovementDialog.vue"));
+const DraftInvoiceDialog = defineAsyncComponent(() => import("@/components/dialogs/DraftInvoiceDialog.vue"));
+const KeyboardShortcutsDialog = defineAsyncComponent(
+	() => import("@/components/dialogs/KeyboardShortcutsDialog.vue"),
+);
+const AboutDialog = defineAsyncComponent(() => import("@/components/dialogs/AboutDialog.vue"));
+
+const shortcutsSeen = useEverTrue(showShortcutsDialog);
+const aboutSeen = useEverTrue(showAboutDialog);
+
 const isAuthPage = computed(() => route.meta.isAuthPage === true);
 const isFullScreen = computed(() => route.meta.fullScreen === true);
 
 const showClearCartConfirm = ref(false);
 
 function handleClearCart() {
+	const allowed = cartSessions.canDiscard(cartSessions.activeId);
+	if (!allowed.ok) {
+		showError(allowed.reason || "");
+		return;
+	}
 	if (!cartStore.isEmpty) {
 		showClearCartConfirm.value = true;
 		return;
@@ -262,10 +264,6 @@ function handleShowAboutDialog() {
 	showAboutDialog.value = true;
 }
 
-function handleToggleErrorInspector() {
-	showErrorInspector.value = !showErrorInspector.value;
-}
-
 const theme = ref<"light" | "dark" | "system">("system");
 const systemPrefersDark = ref(window.matchMedia("(prefers-color-scheme: dark)").matches);
 
@@ -278,6 +276,8 @@ const isDark = computed(() => {
 
 function applyThemeToDocument(dark: boolean) {
 	const html = document.documentElement;
+	const themeColor = document.querySelector('meta[name="theme-color"]');
+	if (themeColor) themeColor.setAttribute("content", dark ? "#0b1220" : "#e8ecf2");
 	if (dark) {
 		html.classList.add("dark");
 		html.classList.remove("light");
@@ -317,7 +317,14 @@ function handleSystemThemeChange(e: MediaQueryListEvent) {
 	systemPrefersDark.value = e.matches;
 }
 
+function guardUnsavedCart(event: BeforeUnloadEvent) {
+	if (cartSessions.unfinishedCount() === 0) return;
+	event.preventDefault();
+	event.returnValue = "";
+}
+
 onMounted(() => {
+	window.addEventListener("beforeunload", guardUnsavedCart);
 	const saved = localStorage.getItem("xpos-theme") as "light" | "dark" | "system" | null;
 	if (saved && ["light", "dark", "system"].includes(saved)) {
 		theme.value = saved;
@@ -348,6 +355,12 @@ onMounted(() => {
 	offlineStore.init();
 	initKeyboardShortcuts();
 
+	onIdle(() => {
+		void importPaymentDialog();
+		void importItemDetailDialog();
+		void importCustomerSelect();
+	});
+
 	window.addEventListener("xpos:clear-cart", handleClearCart as EventListener);
 	window.addEventListener("xpos:process-payment", handleProcessPayment as EventListener);
 	window.addEventListener("xpos:select-customer", handleSelectCustomer as EventListener);
@@ -360,7 +373,6 @@ onMounted(() => {
 	window.addEventListener("xpos:print-last", handlePrintLast as EventListener);
 	window.addEventListener("xpos:show-shortcuts-dialog", handleShowShortcutsDialog as EventListener);
 	window.addEventListener("xpos:show-about-dialog", handleShowAboutDialog as EventListener);
-	window.addEventListener("xpos:toggle-error-inspector", handleToggleErrorInspector as EventListener);
 });
 
 watch(isAuthPage, (isAuth, wasAuth) => {
@@ -373,9 +385,12 @@ watch(
 	() => posStore.isReady,
 	async (ready, wasReady) => {
 		if (wasReady && !ready) {
+			const saved = cartSessions.onShiftEnded();
 			cartStore.clearAll();
+			await saved;
 		}
 		if (ready && !wasReady) {
+			await cartSessions.sync(true);
 			if (!cartStore.customer && posStore.defaultCustomer) {
 				const customer = await getCustomer(posStore.defaultCustomer);
 				cartStore.setCustomer(customer as any);
@@ -384,7 +399,15 @@ watch(
 	},
 );
 
+watch(
+	() => [posStore.profileName, authStore.userName, posStore.posOpeningShift?.name],
+	() => {
+		if (posStore.isReady) void cartSessions.sync(true);
+	},
+);
+
 onUnmounted(() => {
+	window.removeEventListener("beforeunload", guardUnsavedCart);
 	if (mediaQuery) {
 		mediaQuery.removeEventListener("change", handleSystemThemeChange);
 	}
@@ -403,6 +426,5 @@ onUnmounted(() => {
 	window.removeEventListener("xpos:print-last", handlePrintLast as EventListener);
 	window.removeEventListener("xpos:show-shortcuts-dialog", handleShowShortcutsDialog as EventListener);
 	window.removeEventListener("xpos:show-about-dialog", handleShowAboutDialog as EventListener);
-	window.removeEventListener("xpos:toggle-error-inspector", handleToggleErrorInspector as EventListener);
 });
 </script>

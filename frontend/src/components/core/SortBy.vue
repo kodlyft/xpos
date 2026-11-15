@@ -1,7 +1,8 @@
 <template>
-	<div class="flex items-center rounded-md border border-input bg-background h-8">
+	<div class="flex h-control items-center rounded-lg border border-border bg-surface-raised shadow-raised">
 		<button
-			class="flex items-center justify-center w-7 h-full border-e border-input text-muted-foreground hover:text-foreground hover:bg-accent transition-colors rounded-s-md px-1.5"
+			class="flex items-center justify-center w-10 h-full border-e border-border text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors rounded-s-lg px-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+			:aria-label="dir === 'desc' ? __('Sort ascending') : __('Sort descending')"
 			:title="
 				dir === 'desc'
 					? __('Descending - click to sort ascending')
@@ -9,17 +10,20 @@
 			"
 			@click="toggleDir"
 		>
-			<ArrowDown v-if="dir === 'desc'" class="h-3.5 w-3.5" />
-			<ArrowUp v-else class="h-3.5 w-3.5" />
+			<ArrowDown v-if="dir === 'desc'" class="h-4 w-4" />
+			<ArrowUp v-else class="h-4 w-4" />
 		</button>
 
 		<button
 			ref="fieldBtnRef"
-			class="flex items-center gap-1 px-2 h-full text-xs font-medium text-foreground hover:bg-accent transition-colors rounded-e-md"
+			class="flex items-center gap-1.5 px-3 h-full text-sm font-medium text-foreground hover:bg-surface-hover transition-colors rounded-e-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+			:aria-label="__('Sort by') + ': ' + currentFieldLabel"
+			aria-haspopup="listbox"
+			:aria-expanded="showDropdown"
 			@click="toggleDropdown"
 		>
 			{{ currentFieldLabel }}
-			<ChevronDown class="h-3 w-3 text-muted-foreground" />
+			<ChevronDown class="h-4 w-4 text-muted-foreground" />
 		</button>
 
 		<Teleport to="body">
@@ -30,12 +34,13 @@
 				:style="dropdownStyle"
 			>
 				<div class="px-2 py-1.5 border-b border-border shrink-0">
-					<input
+					<Input
 						ref="searchInputRef"
 						v-model="fieldSearch"
 						type="text"
+						size="compact"
 						:placeholder="__('Search fields...')"
-						class="w-full text-xs px-2 py-1 rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+						:aria-label="__('Search fields...')"
 						@click.stop
 						@keydown="onSearchKeydown"
 					/>
@@ -48,7 +53,9 @@
 						:data-sortby-index="idx"
 						class="flex items-center w-full px-3 py-1.5 text-sm gap-2 text-start transition-colors"
 						:class="
-							idx === highlightedIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent'
+							idx === highlightedIndex
+								? 'bg-surface-selected text-surface-selected-foreground'
+								: 'hover:bg-surface-hover'
 						"
 						@click="selectField(field.fieldname)"
 						@mouseenter="highlightedIndex = idx"
@@ -73,6 +80,7 @@
 import { ref, computed, nextTick, watch } from "vue";
 import { ArrowUp, ArrowDown, ChevronDown, Check } from "lucide-vue-next";
 import type { DocField } from "@/services/doctypeMeta";
+import { Input } from "@/components/ui/input";
 import __ from "@/lib/translate";
 
 const NON_SORTABLE = new Set([
@@ -169,7 +177,7 @@ const currentFieldLabel = computed(() => {
 
 const showDropdown = ref(false);
 const fieldBtnRef = ref<HTMLButtonElement | null>(null);
-const searchInputRef = ref<HTMLInputElement | null>(null);
+const searchInputRef = ref<{ $el?: HTMLElement } | null>(null);
 const fieldListRef = ref<HTMLDivElement | null>(null);
 const dropdownStyle = ref<Record<string, string>>({});
 const highlightedIndex = ref(-1);
@@ -194,7 +202,7 @@ async function toggleDropdown() {
 		highlightedIndex.value = -1;
 		showDropdown.value = true;
 		await nextTick();
-		searchInputRef.value?.focus();
+		searchInputRef.value?.$el?.focus();
 	} else {
 		closeDropdown();
 	}

@@ -6,6 +6,16 @@ import { showError, showSuccess } from "@/services/api";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { usePosStore } from "@/stores/posStore";
 import { hasPermission } from "@/services/userRights";
+import { useCartSessionStore } from "@/stores/cartSessionStore";
+import {
+	CART_ACTION_LABELS,
+	CART_CTRL_ALTERNATES,
+	cartKeys,
+	comboOf,
+	ctrlCombosSupported,
+	lockTabKeys,
+	type CartAction,
+} from "@/services/cartShortcuts";
 
 export const commandSearchRequested = ref(false);
 
@@ -25,6 +35,7 @@ export interface Shortcut {
 	category: string;
 	action: () => void | Promise<void>;
 	global?: boolean;
+	allowInInput?: boolean;
 }
 
 const showShortcutsDialog = ref(false);
@@ -33,6 +44,33 @@ const showAboutDialog = ref(false);
 export function useKeyboardShortcuts() {
 	const router = useRouter();
 	const settingsStore = useSettingsStore();
+	const cartSessions = useCartSessionStore();
+
+	function cartAction(action: CartAction): void {
+		if (router.currentRoute.value.path !== "/pos") return;
+		if (action === "close-cart") {
+			window.dispatchEvent(new CustomEvent("xpos:close-cart"));
+			return;
+		}
+		const result =
+			action === "new-cart"
+				? cartSessions.create()
+				: action === "next-cart"
+					? cartSessions.next()
+					: cartSessions.prev();
+		if (!result.ok && result.reason) showError(result.reason);
+	}
+
+	function cartShortcut(action: CartAction, keys: string[], suffix = ""): Shortcut {
+		return {
+			id: `${action}${suffix}`,
+			keys,
+			description: CART_ACTION_LABELS[action],
+			category: "Carts",
+			allowInInput: true,
+			action: () => cartAction(action),
+		};
+	}
 
 	async function handleClearCachedData(): Promise<void> {
 		const confirmed = window.confirm("Clear cached data? Pending invoices and purchases will be kept.");
@@ -93,16 +131,6 @@ export function useKeyboardShortcuts() {
 			global: true,
 			action: () => {
 				showShortcutsDialog.value = true;
-			},
-		},
-		{
-			id: "error-inspector",
-			keys: ["ctrl", "shift", "e"],
-			description: "Toggle Error Inspector",
-			category: "General",
-			global: true,
-			action: () => {
-				window.dispatchEvent(new CustomEvent("xpos:toggle-error-inspector"));
 			},
 		},
 		{
@@ -371,12 +399,37 @@ export function useKeyboardShortcuts() {
 		},
 	];
 
+	// Ctrl+T / Ctrl+Tab only where the browser lets the page have them.
+	const ctrlCarts = ctrlCombosSupported();
+	if (ctrlCarts) {
+		for (const action of Object.keys(CART_CTRL_ALTERNATES) as CartAction[]) {
+			shortcuts.push(cartShortcut(action, CART_CTRL_ALTERNATES[action]!, "-ctrl"));
+		}
+	}
+
+	for (const action of ["new-cart", "next-cart", "prev-cart", "close-cart"] as CartAction[]) {
+		shortcuts.push(cartShortcut(action, cartKeys(action)));
+	}
+
+	/** The keys a shortcut answers to now: a cashier's own choice for the cart actions. */
+	function effectiveKeys(shortcut: Shortcut): string[] {
+		const id = shortcut.id.replace(/-ctrl$/, "") as CartAction;
+		return shortcut.id.endsWith("-ctrl") || !(id in CART_ACTION_LABELS) ? shortcut.keys : cartKeys(id);
+	}
+
+	/** Every combination in use, to refuse a clash. Maps combination to its description. */
+	function takenCombos(): Map<string, string> {
+		const taken = new Map<string, string>();
+		for (const s of shortcuts) taken.set(comboOf(effectiveKeys(s)), s.id);
+		return taken;
+	}
+
 	function normalizeKey(key: string): string {
 		return key.toLowerCase().replace("control", "ctrl").replace("meta", "ctrl");
 	}
 
 	function matchShortcut(e: KeyboardEvent, shortcut: Shortcut): boolean {
-		const keys = shortcut.keys.map((k) => k.toLowerCase());
+		const keys = effectiveKeys(shortcut).map((k) => k.toLowerCase());
 
 		const hasCtrl = keys.includes("ctrl");
 		const hasAlt = keys.includes("alt");
@@ -404,6 +457,8 @@ export function useKeyboardShortcuts() {
 	}
 
 	function handleKeyDown(e: KeyboardEvent): void {
+		// An input method is mid-word: the keys belong to it.
+		if (e.isComposing || e.keyCode === 229) return;
 		const tag = (document.activeElement?.tagName ?? "").toLowerCase();
 		const isInput = tag === "input" || tag === "textarea" || tag === "select";
 		const isInDialog = !!document.activeElement?.closest("[role='dialog']");
@@ -430,7 +485,20 @@ export function useKeyboardShortcuts() {
 
 		for (const shortcut of shortcuts) {
 			if (matchShortcut(e, shortcut)) {
-				if (!shortcut.global && (isInput || isInDialog)) continue;
+				if (isInDialog) {
+					if (!shortcut.global) continue;
+				} else if (!shortcut.global && !shortcut.allowInInput && isInput) continue;
+				// A held key must not open a new cart on every repeat.
+				if (e.repeat && shortcut.id.startsWith("new-cart")) {
+					e.preventDefault();
+					return;
+				}
+				if (
+					shortcut.category === "Carts" &&
+					document.querySelector("[role='dialog'][data-state='open']")
+				) {
+					continue;
+				}
 
 				e.preventDefault();
 				e.stopPropagation();
@@ -445,6 +513,7 @@ export function useKeyboardShortcuts() {
 
 	function init(): void {
 		document.addEventListener("keydown", handleKeyDown, true);
+		if (ctrlCarts) void lockTabKeys();
 	}
 
 	function destroy(): void {
@@ -458,6 +527,8 @@ export function useKeyboardShortcuts() {
 				if (k === "alt") return "Alt";
 				if (k === "shift") return "Shift";
 				if (k === "delete") return "Del";
+				if (k === "arrowright") return "→";
+				if (k === "arrowleft") return "←";
 				return k.charAt(0).toUpperCase() + k.slice(1);
 			})
 			.join(" + ");
@@ -465,6 +536,8 @@ export function useKeyboardShortcuts() {
 
 	return {
 		shortcuts,
+		takenCombos,
+		ctrlCarts,
 		showShortcutsDialog,
 		showAboutDialog,
 		init,

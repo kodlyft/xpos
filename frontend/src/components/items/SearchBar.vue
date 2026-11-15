@@ -71,6 +71,8 @@ import { ref, onMounted, onUnmounted } from "vue";
 import { Loader2, ScanBarcode, Search, X } from "lucide-vue-next";
 import { TooltipWrapper } from "@/components/ui/tooltip";
 import __ from "@/lib/translate";
+import { isOnline } from "@/utils";
+import { usePosStore } from "@/stores/posStore";
 
 const emit = defineEmits(["search", "navigate", "enter", "scan"]);
 
@@ -87,11 +89,20 @@ function getInputEl(): HTMLInputElement | null {
 	return rootEl.value?.querySelector("input") || null;
 }
 
+const posStore = usePosStore();
+
+const LOCAL_DEBOUNCE_MS = 80;
+const SERVER_DEBOUNCE_MS = 300;
+
 function onInput() {
 	if (debounceTimer) clearTimeout(debounceTimer);
-	debounceTimer = setTimeout(() => {
-		emit("search", localSearch.value);
-	}, 300);
+	const local = !isOnline() && posStore.useOfflineMode;
+	debounceTimer = setTimeout(
+		() => {
+			emit("search", localSearch.value);
+		},
+		local ? LOCAL_DEBOUNCE_MS : SERVER_DEBOUNCE_MS,
+	);
 }
 
 function onEnter() {

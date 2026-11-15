@@ -1,0 +1,12 @@
+dist/
+.screenshots/
+android/app/src/main/assets/xpos-schema.json
+.env.local
+.env.*.local
+android/local.properties
+android/keystore.properties
+*.jks
+*.keystore
+android/app/build/
+android/.gradle/
+android/build/

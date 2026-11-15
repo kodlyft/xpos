@@ -126,7 +126,7 @@
 								</kbd>
 							</div>
 							<div v-if="item.type === 'item'" class="text-end shrink-0">
-								<p class="text-sm font-medium text-green-600">
+								<p class="text-sm font-medium text-success">
 									{{ money((item.meta as POSItem)?.rate || 0) }}
 								</p>
 							</div>
@@ -558,15 +558,15 @@ const groupedResults = computed<ResultGroup[]>(() => {
 function getResultIconBg(type: string): string {
 	switch (type) {
 		case "page":
-			return "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300";
+			return "bg-info-soft text-info";
 		case "action":
-			return "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300";
+			return "bg-success-soft text-success";
 		case "item":
 			return "bg-muted";
 		case "calculator":
-			return "bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300";
+			return "bg-warning-soft text-warning";
 		case "help":
-			return "bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300";
+			return "bg-primary/10 text-primary";
 		default:
 			return "bg-muted";
 	}

@@ -7,6 +7,7 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: "jsdom",
+		setupFiles: ["fake-indexeddb/auto"],
 		include: ["tests/**/*.spec.ts", "tests/**/*.test.ts"],
 		coverage: {
 			provider: "v8",

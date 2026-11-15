@@ -8,7 +8,7 @@ const props = defineProps<ScrollAreaRootProps & { class?: HTMLAttributes["class"
 
 const delegatedProps = computed(() => {
 	const { class: _, ...delegated } = props;
-	return delegated;
+	return { ...delegated, dir: delegated.dir ?? (document.documentElement.dir === "rtl" ? "rtl" : "ltr") };
 });
 </script>
 

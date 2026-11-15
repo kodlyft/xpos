@@ -4,6 +4,8 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def get_sales_data(company, from_date, to_date, suppliers=[]):
 	query = """
@@ -15,30 +17,33 @@ def get_sales_data(company, from_date, to_date, suppliers=[]):
             tsi.brand
         FROM `tabSales Invoice Item` tsi
         LEFT JOIN `tabSales Invoice` ts ON tsi.parent = ts.name
-        LEFT JOIN `tabBin` bin ON tsi.item_code = bin.item_code
+        LEFT JOIN `tabBin` bin ON tsi.item_code = bin.item_code {bin_scope}
         LEFT JOIN `tabItem Supplier` sup ON tsi.item_code = sup.parent
         WHERE
         	ts.posting_date >= %(from_date)s AND ts.posting_date <= %(to_date)s
             AND sup.supplier IN %(supplier)s
+            {sales_scope}
         GROUP BY tsi.item_code
         ORDER BY tsi.item_name ASC
     """
 
-	data = frappe.db.sql(
-		query,
-		{
-			"company": company,
-			"from_date": from_date,
-			"to_date": to_date,
-			"supplier": tuple(suppliers),
-		},
-		as_dict=True,
+	params = {
+		"company": company,
+		"from_date": from_date,
+		"to_date": to_date,
+		"supplier": tuple(suppliers),
+	}
+	query = query.replace("{bin_scope}", scope.warehouse_condition("bin.warehouse", params)).replace(
+		"{sales_scope}",
+		scope.warehouse_condition("tsi.warehouse", params) + scope.company_condition("ts.company", params),
 	)
+	data = frappe.db.sql(query, params, as_dict=True)
 
 	return data
 
 
 def execute(filters=None):
+	scope.enforce(filters or {})
 	suppliers = frappe.parse_json(filters.get("supplier"))
 	if not suppliers:
 		suppliers = []

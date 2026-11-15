@@ -68,6 +68,7 @@ export function useListView(options: ListViewOptions) {
 	const data = ref<Record<string, unknown>[]>([]);
 	const total = ref(0);
 	const isLoading = ref(false);
+	const error = ref<string | null>(null);
 	const meta = ref<DoctypeMeta | null>(null);
 	const standardFilterFields = ref<DocField[]>([]);
 	const allFilterableFields = ref<DocField[]>([]);
@@ -128,8 +129,22 @@ export function useListView(options: ListViewOptions) {
 		return result;
 	});
 
+	let requestId = 0;
+	let fetchQueued = false;
+
+	function scheduleFetch() {
+		if (fetchQueued) return;
+		fetchQueued = true;
+		queueMicrotask(() => {
+			fetchQueued = false;
+			fetch();
+		});
+	}
+
 	async function fetch() {
+		const id = ++requestId;
 		isLoading.value = true;
+		error.value = null;
 		try {
 			const listArgs: Record<string, unknown> = {
 				filters: frappeFilters.value,
@@ -147,14 +162,17 @@ export function useListView(options: ListViewOptions) {
 				getCount(doctypeRef.value, frappeFilters.value),
 			]);
 
+			if (id !== requestId) return;
 			data.value = rows;
 			total.value = count;
-		} catch (error) {
-			console.error(`[useListView] Error fetching ${doctypeRef.value}:`, error);
+		} catch (err) {
+			if (id !== requestId) return;
+			console.error(`[useListView] Error fetching ${doctypeRef.value}:`, err);
 			data.value = [];
 			total.value = 0;
+			error.value = err instanceof Error && err.message ? err.message : String(err ?? "");
 		} finally {
-			isLoading.value = false;
+			if (id === requestId) isLoading.value = false;
 		}
 	}
 
@@ -235,7 +253,11 @@ export function useListView(options: ListViewOptions) {
 
 	function refresh() {
 		currentPage.value = 1;
-		fetch();
+		scheduleFetch();
+	}
+
+	function retry() {
+		scheduleFetch();
 	}
 
 	async function fetchLinkOptions(
@@ -254,15 +276,13 @@ export function useListView(options: ListViewOptions) {
 		}
 	}
 
-	watch([currentPage, pageSize, orderBy], () => {
-		fetch();
-	});
+	watch([currentPage, pageSize, orderBy], scheduleFetch);
 
 	watch(
 		() => JSON.stringify(filters),
 		() => {
 			currentPage.value = 1;
-			fetch();
+			scheduleFetch();
 		},
 	);
 
@@ -270,7 +290,7 @@ export function useListView(options: ListViewOptions) {
 		() => JSON.stringify(queryFilters.value),
 		() => {
 			currentPage.value = 1;
-			fetch();
+			scheduleFetch();
 		},
 	);
 
@@ -278,14 +298,14 @@ export function useListView(options: ListViewOptions) {
 		() => JSON.stringify(baseFiltersRef.value ?? {}),
 		() => {
 			currentPage.value = 1;
-			fetch();
+			scheduleFetch();
 		},
 	);
 
 	watch(doctypeRef, () => {
 		clearFilters();
 		loadMeta();
-		fetch();
+		scheduleFetch();
 	});
 
 	if (options.autoFetch !== false) {
@@ -296,6 +316,7 @@ export function useListView(options: ListViewOptions) {
 		data,
 		total,
 		isLoading,
+		error,
 		meta,
 		standardFilterFields,
 		allFilterableFields,
@@ -314,6 +335,7 @@ export function useListView(options: ListViewOptions) {
 		setPageSize,
 		setOrderBy,
 		refresh,
+		retry,
 		fetchLinkOptions,
 	};
 }

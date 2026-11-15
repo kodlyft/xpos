@@ -1,7 +1,6 @@
 <template>
-	<div class="flex h-full flex-col gap-4 p-4">
-		<header class="flex flex-wrap items-center gap-3">
-			<h1 class="text-xl font-bold">{{ __("Sales Orders") }}</h1>
+	<div class="flex h-full min-h-0 flex-col">
+		<PageHeader :title="__('Sales Orders')" :icon="ScrollText">
 			<div
 				class="inline-flex gap-1 rounded-xl border border-border bg-surface-sunken p-1"
 				role="tablist"
@@ -26,56 +25,65 @@
 				:placeholder="__('Search by number or customer')"
 				data-testid="so-search"
 			/>
-		</header>
+		</PageHeader>
 
-		<LoadingState v-if="isLoading" variant="skeleton" :rows="5" />
-		<EmptyState
-			v-else-if="!rows.length"
-			:icon="ScrollText"
-			:title="tab === 'orders' ? __('No open sales orders') : __('No open quotations')"
-			:description="
-				tab === 'orders'
-					? __('Orders saved from the cart appear here until they are fully billed.')
-					: __('Quotations appear here until they expire or are ordered.')
-			"
-		/>
-		<ul v-else class="flex-1 space-y-2 overflow-y-auto">
-			<li
-				v-for="row in rows"
-				:key="row.name"
-				class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3"
-				data-testid="so-row"
-			>
-				<div class="min-w-0 flex-1">
-					<p class="font-semibold">{{ row.name }}</p>
-					<p class="truncate text-sm text-muted-foreground">
-						{{ row.customer_name || row.customer }} · {{ row.transaction_date }}
-					</p>
-				</div>
-				<div class="text-end text-sm">
-					<p class="font-bold tabular-nums">{{ money(row.grand_total) }}</p>
-					<p v-if="tab === 'orders'" class="text-muted-foreground">
-						<template v-if="row.advance_paid">
-							{{ __("Deposit {0}", [money(row.advance_paid)]) }} ·
-						</template>
-						{{ __("{0} billed", [percent(row.per_billed || 0, 0)]) }}
-					</p>
-					<p v-else-if="row.valid_till" class="text-muted-foreground">
-						{{ __("Valid till {0}", [row.valid_till]) }}
-					</p>
-				</div>
-				<Button
-					size="sm"
-					:loading="loadingName === row.name"
-					:disabled="!!loadingName"
-					data-testid="so-load"
-					@click="requestLoad(row.name)"
+		<div class="flex min-h-0 flex-1 flex-col gap-4 p-3 sm:p-4">
+			<LoadingState v-if="isLoading" variant="skeleton" :rows="5" />
+			<ErrorState
+				v-else-if="loadError"
+				:title="__('Could not load records')"
+				:description="loadError"
+				retryable
+				@retry="fetchRows"
+			/>
+			<EmptyState
+				v-else-if="!rows.length"
+				:icon="ScrollText"
+				:title="tab === 'orders' ? __('No open sales orders') : __('No open quotations')"
+				:description="
+					tab === 'orders'
+						? __('Orders saved from the cart appear here until they are fully billed.')
+						: __('Quotations appear here until they expire or are ordered.')
+				"
+			/>
+			<ul v-else class="flex-1 space-y-2 overflow-y-auto">
+				<li
+					v-for="row in rows"
+					:key="row.name"
+					class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3"
+					data-testid="so-row"
 				>
-					<ShoppingCart class="size-4" />
-					{{ __("Load into cart") }}
-				</Button>
-			</li>
-		</ul>
+					<div class="min-w-0 flex-1">
+						<p class="font-semibold">{{ row.name }}</p>
+						<p class="truncate text-sm text-muted-foreground">
+							{{ row.customer_name || row.customer }} · {{ row.transaction_date }}
+						</p>
+					</div>
+					<div class="text-end text-sm">
+						<p class="font-bold tabular-nums">{{ money(row.grand_total) }}</p>
+						<p v-if="tab === 'orders'" class="text-muted-foreground">
+							<template v-if="row.advance_paid">
+								{{ __("Deposit {0}", [money(row.advance_paid)]) }} ·
+							</template>
+							{{ __("{0} billed", [percent(row.per_billed || 0, 0)]) }}
+						</p>
+						<p v-else-if="row.valid_till" class="text-muted-foreground">
+							{{ __("Valid till {0}", [row.valid_till]) }}
+						</p>
+					</div>
+					<Button
+						size="sm"
+						:loading="loadingName === row.name"
+						:disabled="!!loadingName"
+						data-testid="so-load"
+						@click="requestLoad(row.name)"
+					>
+						<ShoppingCart class="size-4" />
+						{{ __("Load into cart") }}
+					</Button>
+				</li>
+			</ul>
+		</div>
 
 		<ConfirmDialog
 			:open="!!pendingName"
@@ -94,12 +102,14 @@ import { ref, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { usePosStore } from "@/stores/posStore";
 import { useCartStore } from "@/stores/cartStore";
+import { useCartSessionStore } from "@/stores/cartSessionStore";
 import { useMoney } from "@/composables/useMoney";
 import { call, showError } from "@/services/api";
 import { extractErrorMessage } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EmptyState, LoadingState } from "@/components/ui/state";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/state";
+import { PageHeader } from "@/components/ui/page";
 import ConfirmDialog from "@/components/dialogs/ConfirmDialog.vue";
 import { ScrollText, ShoppingCart } from "lucide-vue-next";
 import { __ } from "@/lib/translate";
@@ -120,6 +130,7 @@ interface Row {
 const router = useRouter();
 const posStore = usePosStore();
 const cartStore = useCartStore();
+const cartSessions = useCartSessionStore();
 const { money, percent } = useMoney();
 
 const tabs: { value: Tab; label: string }[] = [
@@ -135,9 +146,12 @@ const pendingName = ref("");
 let requestId = 0;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
+const loadError = ref("");
+
 async function fetchRows() {
 	const id = ++requestId;
 	isLoading.value = true;
+	loadError.value = "";
 	try {
 		const result = await call<Row[]>(
 			tab.value === "orders"
@@ -147,7 +161,10 @@ async function fetchRows() {
 		);
 		if (id === requestId) rows.value = result || [];
 	} catch (error: unknown) {
-		if (id === requestId) rows.value = [];
+		if (id === requestId) {
+			rows.value = [];
+			loadError.value = extractErrorMessage(error);
+		}
 		showError(extractErrorMessage(error));
 	} finally {
 		if (id === requestId) isLoading.value = false;
@@ -184,9 +201,13 @@ async function load(name: string) {
 				? { sales_order: name, pos_profile: posStore.profileName }
 				: { quotation: name, pos_profile: posStore.profileName },
 		);
-		if (cartStore.isReturnMode) cartStore.clearAll();
-		if (isOrder) cartStore.loadSalesOrder(doc);
-		else cartStore.loadQuotation(doc);
+		const target = await cartSessions.loadIntoCart(() =>
+			isOrder ? cartStore.loadSalesOrder(doc) : cartStore.loadQuotation(doc),
+		);
+		if (!target.ok) {
+			showError(target.reason || "");
+			return;
+		}
 		await router.push("/pos");
 	} catch (error: unknown) {
 		showError(extractErrorMessage(error));

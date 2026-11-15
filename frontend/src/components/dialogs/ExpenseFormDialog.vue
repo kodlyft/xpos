@@ -4,7 +4,7 @@
 			<DialogHeader>
 				<div class="flex items-center gap-2">
 					<div
-						class="w-8 h-8 rounded-lg flex items-center justify-center bg-red-500/10 text-red-500"
+						class="w-8 h-8 rounded-lg flex items-center justify-center bg-destructive/10 text-destructive"
 					>
 						<ArrowDownCircle class="w-4 h-4" />
 					</div>
@@ -56,7 +56,7 @@
 					{{ __("Cancel") }}
 				</Button>
 				<Button
-					class="flex-1 font-bold bg-red-500 hover:bg-red-600 text-white"
+					class="flex-1 font-bold bg-destructive hover:bg-destructive/90 text-destructive-foreground"
 					:disabled="!canSubmit || isSaving"
 					@click="submit"
 				>

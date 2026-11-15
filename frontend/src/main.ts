@@ -5,10 +5,16 @@ import App from "./App.vue";
 import { router } from "./router";
 import { showError } from "@/services/api";
 import { captureError } from "@/services/errorLog";
-import { usePosStore } from "./stores/posStore";
 import { initializeNamespaces } from "./utils";
 import { dayjs } from "@/utils/datetime";
 import translate from "./lib/translate";
+import "./services/idbService";
+import { noteWaitingWorker, reloadNeeded } from "./services/appUpdate";
+
+if (typeof caches !== "undefined") void caches.delete("xpos-api-cache");
+window.addEventListener("vite:preloadError", () => {
+	reloadNeeded.value = true;
+});
 
 if (import.meta.env.PROD) {
 	if ("serviceWorker" in navigator) {
@@ -28,11 +34,17 @@ if (import.meta.env.PROD) {
 
 				offerUpdate(registration.waiting);
 
+				if (registration.waiting && navigator.serviceWorker.controller) {
+					noteWaitingWorker(registration.waiting);
+				}
 				registration.addEventListener("updatefound", () => {
 					const installing = registration.installing;
 					if (!installing) return;
 					installing.addEventListener("statechange", () => {
 						if (installing.state === "installed") offerUpdate(installing);
+						if (installing.state === "installed" && navigator.serviceWorker.controller) {
+							noteWaitingWorker(installing);
+						}
 					});
 				});
 

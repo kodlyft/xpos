@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "jsx": "preserve",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@mobile/*": [
+        "./src/*"
+      ],
+      "@/*": [
+        "../frontend/src/*"
+      ],
+      "vue": [
+        "./node_modules/vue"
+      ],
+      "lucide-vue-next": [
+        "./node_modules/@lucide/vue"
+      ]
+    },
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "tests/**/*.ts",
+    "bench/**/*.ts",
+    "*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "android"
+  ]
+}

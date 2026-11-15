@@ -1,36 +1,42 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, shallowRef } from "vue";
 import { call, isNetworkError } from "@/services/api";
+import __ from "@/lib/translate";
 import { usePosStore } from "@/stores/posStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import {
 	cacheItems as idbCacheItems,
-	getCachedItems as idbGetCachedItems,
-	searchCachedItems as idbSearchCachedItems,
+	searchCachedItemsPage as idbSearchCachedItemsPage,
+	warmCatalogIndex,
+	getCachedStockForItems,
+	findCachedScan,
 	cacheItemGroups as idbCacheGroups,
 	getCachedItemGroups as idbGetCachedGroups,
-	cacheStockForWarehouse,
-	getCachedStock,
 	getCachedItemByCode,
 } from "@/services/dbBridge";
+import { getCatalogStatus, syncCatalog } from "@/services/catalogSync";
 import type {
 	POSItem,
 	ItemGroup,
 	ItemDetail,
 	ItemVariant,
 	ItemAttribute,
-	StockAvailability,
 	BundleComponent,
+	StockAvailability,
 } from "@/types/pos.types";
 import { isOnline } from "@/utils";
+import { onIdle } from "@/utils/idle";
 
 interface ItemGroupsResult {
 	groups: ItemGroup[];
 	parent_groups: ItemGroup[];
 }
 
+/** A scan the till refuses with a reason the cashier can act on. */
+export class BarcodeScanError extends Error {}
+
 export const useItemStore = defineStore("items", () => {
-	const items = ref<POSItem[]>([]);
+	const items = shallowRef<POSItem[]>([]);
 	const isLoading = ref(false);
 	/** Set when the last catalogue fetch failed and no offline cache stood in for it. */
 	const loadError = ref<string | null>(null);
@@ -43,11 +49,8 @@ export const useItemStore = defineStore("items", () => {
 	const itemGroups = ref<ItemGroup[]>([]);
 	const parentGroups = ref<ItemGroup[]>([]);
 
-	function offlineSearchConfig() {
-		const settings = useSettingsStore();
-		const limit = settings.itemSearchLimit;
-		const capped = searchTerm.value && limit > 0 ? Math.min(pageLength.value, limit) : pageLength.value;
-		return { fields: settings.itemSearchFields, limit: capped };
+	function offlineSearchFields(): string[] {
+		return useSettingsStore().itemSearchFields;
 	}
 
 	const showItemDetail = ref(false);
@@ -61,118 +64,97 @@ export const useItemStore = defineStore("items", () => {
 	const variantAttributes = ref<ItemAttribute[]>([]);
 	const isLoadingVariants = ref(false);
 
-	async function cacheAllItems(posProfile: string): Promise<void> {
-		if (!usePosStore().useOfflineMode) return;
+	let cacheRun: Promise<void> | null = null;
+	const CACHE_FRESH_MS = 60 * 1000;
+
+	function cacheAllItems(posProfile: string): Promise<void> {
+		if (!usePosStore().useOfflineMode) return Promise.resolve();
+		if (cacheRun) return cacheRun;
+
+		const run = refreshCatalogue(posProfile).finally(() => {
+			if (cacheRun === run) cacheRun = null;
+		});
+		cacheRun = run;
+		return run;
+	}
+
+	async function refreshCatalogue(posProfile: string): Promise<void> {
 		try {
-			const batchSize = 200;
-			let start = 0;
-			let allItems: POSItem[] = [];
-			let batch: POSItem[];
-
-			do {
-				batch = await call<POSItem[]>("xpos.api.items.get_pos_items", {
-					pos_profile: posProfile,
-					search_term: "",
-					item_group: "",
-					start,
-					page_length: batchSize,
-				});
-				allItems = [...allItems, ...batch];
-				start += batchSize;
-			} while (batch.length === batchSize);
-
-			await idbCacheItems(allItems);
-
-			const posStoreRef = usePosStore();
-			const warehouse = posStoreRef.warehouse;
-			if (warehouse && allItems.length > 0) {
-				await cacheAllStock(posProfile, warehouse, allItems);
+			const status = await getCatalogStatus();
+			if (
+				status.status === "complete" &&
+				status.scopeMatches &&
+				(status.ageMs ?? Infinity) < CACHE_FRESH_MS
+			) {
+				onIdle(() => void warmCatalogIndex(offlineSearchFields()).catch(() => {}));
+				return;
 			}
+		} catch {
+			/* no readable state: sync */
+		}
+		try {
+			await syncCatalog(posProfile);
+			warmCatalogIndex(offlineSearchFields()).catch(() => {});
 		} catch (error) {
-			console.warn("[XPOS Offline] Failed to cache items:", error);
+			console.warn("[XPOS Offline] Failed to sync catalogue:", error);
 		}
 	}
 
-	async function cacheAllStock(posProfile: string, warehouse: string, allItems?: POSItem[]): Promise<void> {
-		if (!isOnline()) {
-			console.warn("[XPOS Offline] Cannot cache stock - system is offline");
-			return;
-		}
+	let queryGeneration = 0;
+	let loadMoreQueued = false;
 
-		try {
-			const itemsToCache = allItems || (await idbGetCachedItems());
-			if (itemsToCache.length === 0) return;
-
-			const itemCodes = itemsToCache.map((item) => item.item_code);
-
-			const stockResult = await call<StockAvailability[]>("xpos.api.items.get_stock_availability", {
-				items: JSON.stringify(itemCodes),
+	async function offlinePage(
+		start: number,
+	): Promise<{ rows: POSItem[]; hasMore: boolean; cached: boolean }> {
+		const page = await idbSearchCachedItemsPage(
+			searchTerm.value,
+			selectedGroup.value,
+			offlineSearchFields(),
+			start,
+			pageLength.value,
+		);
+		const warehouse = usePosStore().warehouse;
+		let rows = page.items;
+		if (warehouse && rows.length > 0) {
+			const stock = await getCachedStockForItems(
 				warehouse,
-				pos_profile: posProfile,
-			});
-
-			const stockEntries: { item_code: string; actual_qty: number }[] = [];
-
-			if (stockResult && stockResult.length > 0) {
-				const stockMap = new Map(stockResult.map((s) => [s.item_code, s.actual_qty || 0]));
-
-				for (const item of itemsToCache) {
-					stockEntries.push({
-						item_code: item.item_code,
-						actual_qty: stockMap.get(item.item_code) ?? 0,
-					});
-				}
-			} else {
-				for (const item of itemsToCache) {
-					stockEntries.push({ item_code: item.item_code, actual_qty: 0 });
-				}
-			}
-
-			await cacheStockForWarehouse(warehouse, stockEntries);
-		} catch (error) {
-			console.warn("[XPOS Offline] Failed to cache stock:", error);
+				rows.map((item) => item.item_code),
+			);
+			rows = rows.map((item) => ({
+				...item,
+				actual_qty: stock.get(item.item_code) ?? item.actual_qty,
+			}));
 		}
+		return { rows, hasMore: page.hasMore, cached: page.total > 0 };
 	}
 
-	/** A new search/category arrived mid-fetch: run it once the current fetch lands instead of dropping it. */
-	let refetchQueued = false;
+	function showPage(rows: POSItem[], hasMoreRows: boolean, append: boolean): void {
+		items.value = append ? items.value.concat(rows) : rows;
+		if (!append) currentPage.value = 0;
+		hasMore.value = hasMoreRows;
+	}
 
 	async function fetchItems(posProfile: string, append = false): Promise<void> {
-		if (isLoading.value) {
-			if (!append) refetchQueued = true;
-			return;
+		if (append) {
+			if (isLoading.value) {
+				loadMoreQueued = true;
+				return;
+			}
+		} else {
+			queryGeneration++;
+			loadMoreQueued = false;
 		}
+		const generation = queryGeneration;
 		isLoading.value = true;
 		loadError.value = null;
 
 		try {
+			const start = append ? items.value.length : 0;
+
 			if (!isOnline() && usePosStore().useOfflineMode) {
-				const filtered = await idbSearchCachedItems(
-					searchTerm.value,
-					selectedGroup.value,
-					offlineSearchConfig().fields,
-				);
-
-				if (append) {
-					const sliced = filtered.slice(items.value.length, items.value.length + pageLength.value);
-					items.value = [...items.value, ...sliced];
-					hasMore.value = items.value.length < filtered.length;
-				} else {
-					items.value = filtered.slice(0, pageLength.value);
-					currentPage.value = 0;
-					hasMore.value = filtered.length > pageLength.value;
-				}
-
-				const posStoreRef = usePosStore();
-				if (posStoreRef.warehouse) {
-					const stockData = await getCachedStock(posStoreRef.warehouse);
-					const stockMap = new Map(stockData.map((s) => [s.item_code, s.actual_qty]));
-					items.value = items.value.map((item) => ({
-						...item,
-						actual_qty: stockMap.get(item.item_code) ?? item.actual_qty,
-					}));
-				}
-
+				const page = await offlinePage(start);
+				if (generation !== queryGeneration) return;
+				showPage(page.rows, page.hasMore, append);
 				return;
 			}
 
@@ -181,38 +163,27 @@ export const useItemStore = defineStore("items", () => {
 					pos_profile: posProfile,
 					search_term: searchTerm.value,
 					item_group: selectedGroup.value === "All Item Groups" ? "" : selectedGroup.value,
-					start: append ? items.value.length : 0,
+					start,
 					page_length: pageLength.value,
 				});
+				if (generation !== queryGeneration) return;
 
-				if (append) {
-					items.value = [...items.value, ...result];
-				} else {
-					items.value = result;
-					currentPage.value = 0;
-				}
-
-				hasMore.value = result.length === pageLength.value;
+				showPage(result, result.length === pageLength.value, append);
 
 				if (!searchTerm.value && !append && selectedGroup.value === "All Item Groups") {
-					const posStoreRef = usePosStore();
-					if (posStoreRef.useOfflineMode) {
+					if (usePosStore().useOfflineMode) {
 						cacheAllItems(posProfile).catch(() => {});
 					}
 				}
 			}
 		} catch (error) {
+			if (generation !== queryGeneration) return;
 			if (usePosStore().useOfflineMode) {
 				try {
-					const cached = await idbGetCachedItems();
-					if (cached.length > 0) {
-						const filtered = await idbSearchCachedItems(
-							searchTerm.value,
-							selectedGroup.value,
-							offlineSearchConfig().fields,
-						);
-						items.value = filtered.slice(0, pageLength.value);
-						hasMore.value = filtered.length > pageLength.value;
+					const page = await offlinePage(0);
+					if (generation !== queryGeneration) return;
+					if (page.cached) {
+						showPage(page.rows, page.hasMore, false);
 						console.log("[XPOS Offline] Serving items from idb cache after fetch failure");
 						return;
 					}
@@ -223,10 +194,12 @@ export const useItemStore = defineStore("items", () => {
 			console.error("Error fetching items:", error);
 			loadError.value = error instanceof Error ? error.message : String(error);
 		} finally {
-			isLoading.value = false;
-			if (refetchQueued) {
-				refetchQueued = false;
-				void fetchItems(posProfile);
+			if (generation === queryGeneration) {
+				isLoading.value = false;
+				if (loadMoreQueued) {
+					loadMoreQueued = false;
+					if (hasMore.value) void fetchItems(posProfile, true);
+				}
 			}
 		}
 	}
@@ -268,38 +241,49 @@ export const useItemStore = defineStore("items", () => {
 		}
 	}
 
-	async function searchByBarcode(barcode: string, _posProfile?: string): Promise<POSItem | null> {
-		try {
-			if (!isOnline()) {
-				const cached = await idbGetCachedItems();
-				const lower = barcode.toLowerCase();
-				return (
-					cached.find(
-						(i) =>
-							(i.barcode && i.barcode.toLowerCase() === lower) ||
-							i.item_code.toLowerCase() === lower,
-					) || null
-				);
-			}
+	/** The offline answer for a scan: same item, UOM, factor and rate the server would give. */
+	async function scanFromCache(barcode: string): Promise<POSItem | null> {
+		const hit = await findCachedScan(barcode);
+		if (!hit) return null;
+		if (hit.kind === "ambiguous") {
+			throw new BarcodeScanError(
+				__("Barcode {0} matches more than one item: {1}.", [barcode, hit.codes.join(", ")]),
+			);
+		}
+		if (!hit.conversion_factor) {
+			throw new BarcodeScanError(
+				__("Barcode {0} is set to UOM {1}, which has no conversion factor on item {2}.", [
+					barcode,
+					hit.uom,
+					hit.item.item_code,
+				]),
+			);
+		}
+		return {
+			...hit.item,
+			barcode: hit.barcode,
+			uom: hit.uom,
+			conversion_factor: hit.conversion_factor,
+			rate: hit.rate,
+		} as POSItem;
+	}
 
-			const result = await call<POSItem | null>("xpos.api.items.search_barcode", {
+	async function searchByBarcode(barcode: string, _posProfile?: string): Promise<POSItem | null> {
+		if (!isOnline()) return scanFromCache(barcode);
+		try {
+			return await call<POSItem | null>("xpos.api.items.search_barcode", {
 				barcode: barcode,
 				pos_profile: _posProfile || "",
 			});
-			return result;
 		} catch (error) {
+			// the server answered and refused (for example an unconvertible UOM): that is final
+			if (!isNetworkError(error) && error instanceof Error && error.message) {
+				throw new BarcodeScanError(error.message);
+			}
 			try {
-				const cached = await idbGetCachedItems();
-				const lower = barcode.toLowerCase();
-				return (
-					cached.find(
-						(i) =>
-							(i.barcode && i.barcode.toLowerCase() === lower) ||
-							i.item_code.toLowerCase() === lower,
-					) || null
-				);
-			} catch {
-				/* ignore */
+				return await scanFromCache(barcode);
+			} catch (cacheError) {
+				if (cacheError instanceof BarcodeScanError) throw cacheError;
 			}
 			console.error("Error searching barcode:", error);
 			return null;
@@ -514,7 +498,6 @@ export const useItemStore = defineStore("items", () => {
 		fetchPriceForUOM,
 		fetchBundleComponents,
 		cacheAllItems,
-		cacheAllStock,
 		setSearchTerm,
 		setSelectedGroup,
 		loadMore,

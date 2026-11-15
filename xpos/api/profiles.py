@@ -83,3 +83,18 @@ def ensure_profile_allows(profile, flag: str, label: str) -> None:
 	"""Raise unless `flag` is enabled on the server-loaded `profile`."""
 	if not frappe.utils.cint(profile.get(flag)):
 		frappe.throw(_("{0} is disabled for POS Profile {1}.").format(label, profile.name))
+
+
+def validate_offline_payment_modes(doc, method=None) -> None:
+	allowed = {row.mode_of_payment for row in doc.get("payments") or []}
+	seen = set()
+	for row in doc.get("offline_payment_modes") or []:
+		if row.mode_of_payment in seen:
+			frappe.throw(_("Row {0}: {1} is listed twice.").format(row.idx, row.mode_of_payment))
+		seen.add(row.mode_of_payment)
+		if row.mode_of_payment not in allowed:
+			frappe.throw(
+				_("Row {0}: {1} is not one of this profile's payment methods.").format(
+					row.idx, row.mode_of_payment
+				)
+			)

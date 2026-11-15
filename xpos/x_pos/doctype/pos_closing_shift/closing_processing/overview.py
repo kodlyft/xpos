@@ -723,8 +723,7 @@ def get_closing_shift_overview(pos_opening_shift: str | dict):
 	}
 
 
-@frappe.whitelist()
-def get_payment_reconciliation_details(closing_shift_doc: frappe._dict):
+def get_payment_reconciliation_details(closing_shift_doc):
 	# Shift totals reveal expected cash: desk access to POS Closing Shift is required.
 	frappe.has_permission("POS Closing Shift", "read", throw=True)
 	company_currency = frappe.get_cached_value("Company", closing_shift_doc.company, "default_currency")

@@ -7,7 +7,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 
-vi.mock("@/services/api", () => ({ call: vi.fn(), showError: vi.fn(), showSuccess: vi.fn() }));
+vi.mock("@/services/api", () => ({
+	call: vi.fn(),
+	showError: vi.fn(),
+	showSuccess: vi.fn(),
+	showInfo: vi.fn(),
+}));
+vi.mock("@/stores/cartSessionStore", () => ({
+	useCartSessionStore: () => ({ shiftCloseBlocker: () => "", unfinishedCount: () => 0 }),
+}));
 vi.mock("@/services/userRights", () => ({ hasPermission: () => true }));
 
 const summary = { value: {} as Record<string, unknown> };

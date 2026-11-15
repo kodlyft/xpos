@@ -140,6 +140,8 @@ def generate_barcode(
 			return f"data:image/png;base64,{encoded}"
 
 	except Exception as e:
+		if normalize_barcode_type(barcode_type) != "code128":
+			return generate_barcode(value, "code128", width, height, font_size, text, show_text, fmt)
 		frappe.log_error(f"Barcode generation failed for '{value}': {e}", "X POS Barcode")
 		return ""
 

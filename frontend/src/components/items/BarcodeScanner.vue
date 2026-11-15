@@ -6,8 +6,8 @@
 			v-model="barcodeValue"
 			class="ps-9 pe-9 h-9 text-sm"
 			:class="{
-				'ring-2 ring-green-500/50 border-green-500': flashSuccess,
-				'ring-2 ring-red-500/50 border-red-500': flashError,
+				'ring-2 ring-success/50 border-success/30': flashSuccess,
+				'ring-2 ring-destructive/50 border-destructive/30': flashError,
 			}"
 			:placeholder="__('Scan barcode...')"
 			autocomplete="off"

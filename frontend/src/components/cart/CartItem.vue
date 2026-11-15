@@ -147,47 +147,46 @@
 						</button>
 					</div>
 
-					<Popover v-model:open="menuOpen">
-						<PopoverTrigger as-child>
-							<Button
-								variant="ghost"
-								size="icon"
-								class="-me-1 size-10 shrink-0"
-								:aria-label="__('Line options')"
-							>
-								<MoreVertical class="size-5!" />
-							</Button>
-						</PopoverTrigger>
-						<PopoverContentStyled class="w-56 p-1.5" align="end" role="menu">
-							<PopoverMenuItem v-if="pendingKind" @click="runMenu(openTrackingPicker)">
-								<template #icon><Box /></template>
-								{{ pendingKind === "serial" ? __("Choose serial") : __("Choose batch") }}
-							</PopoverMenuItem>
-							<PopoverMenuItem
-								v-if="hasMultipleUOMs"
-								shortcut="U"
-								@click="runMenu(() => (showUOMSelector = !showUOMSelector))"
-							>
-								<template #icon><Ruler /></template>
-								{{ __("Change unit") }}
-							</PopoverMenuItem>
-							<PopoverMenuItem
-								v-if="hasPermission('show_edit_discount_field') && !item.pos_is_free_item"
-								@click="runMenu(() => (showDiscountInput = !showDiscountInput))"
-							>
-								<template #icon><Percent /></template>
-								{{ hasItemDiscount ? __("Edit discount") : __("Add discount") }}
-							</PopoverMenuItem>
-							<PopoverMenuItem
-								destructive
-								shortcut="Del"
-								@click="runMenu(() => $emit('remove', index))"
-							>
-								<template #icon><Trash2 /></template>
-								{{ __("Remove") }}
-							</PopoverMenuItem>
-						</PopoverContentStyled>
-					</Popover>
+					<div class="-me-1 flex shrink-0 items-center" data-testid="row-actions">
+						<Button
+							v-for="action in inlineRowActions"
+							:key="action.id"
+							variant="ghost"
+							size="icon-sm"
+							class="shrink-0"
+							:class="action.destructive && 'text-destructive-soft-foreground'"
+							:aria-label="action.label"
+							:title="action.label"
+							:data-testid="`row-action-${action.id}`"
+							@click="action.run()"
+						>
+							<component :is="action.icon" class="size-4.5!" />
+						</Button>
+						<Popover v-if="overflowRowActions.length" v-model:open="menuOpen">
+							<PopoverTrigger as-child>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									class="shrink-0"
+									:aria-label="__('Line options')"
+								>
+									<MoreVertical class="size-4.5!" />
+								</Button>
+							</PopoverTrigger>
+							<PopoverContentStyled class="w-56 p-1.5" align="end" role="menu">
+								<PopoverMenuItem
+									v-for="action in overflowRowActions"
+									:key="action.id"
+									:destructive="action.destructive"
+									:shortcut="action.shortcut"
+									@click="runMenu(action.run)"
+								>
+									<template #icon><component :is="action.icon" /></template>
+									{{ action.label }}
+								</PopoverMenuItem>
+							</PopoverContentStyled>
+						</Popover>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -311,7 +310,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from "vue";
+import { ref, computed, watch, onMounted, nextTick, type Component } from "vue";
+import { useLayoutStore } from "@/stores/layoutStore";
+import { visibleActionCount } from "@/services/posLayout";
 import { usePosStore } from "@/stores/posStore";
 import { hasPermission } from "@/services/userRights";
 import { useCartStore } from "@/stores/cartStore";
@@ -363,6 +364,62 @@ const pendingKind = computed(
 function openTrackingPicker() {
 	itemStore.openItemDetail(props.item as POSItem, posStore.profileName, posStore.warehouse, props.item.uid);
 }
+
+const layoutStore = useLayoutStore();
+
+interface RowAction {
+	id: string;
+	label: string;
+	icon: Component;
+	shortcut?: string;
+	destructive?: boolean;
+	run: () => void;
+}
+
+/** Row actions this line can use, in the cashier's order. */
+const orderedRowActions = computed<RowAction[]>(() => {
+	const registry: Record<string, (RowAction & { available: boolean }) | undefined> = {
+		tracking: {
+			id: "tracking",
+			available: !!pendingKind.value,
+			label: pendingKind.value === "serial" ? __("Choose serial") : __("Choose batch"),
+			icon: Box,
+			run: () => openTrackingPicker(),
+		},
+		uom: {
+			id: "uom",
+			available: hasMultipleUOMs.value,
+			label: __("Change unit"),
+			icon: Ruler,
+			shortcut: "U",
+			run: () => (showUOMSelector.value = !showUOMSelector.value),
+		},
+		item_discount: {
+			id: "item_discount",
+			available: hasPermission("show_edit_discount_field") && !props.item.pos_is_free_item,
+			label: hasItemDiscount.value ? __("Edit discount") : __("Add discount"),
+			icon: Percent,
+			run: () => (showDiscountInput.value = !showDiscountInput.value),
+		},
+		remove: {
+			id: "remove",
+			available: true,
+			label: __("Remove"),
+			icon: Trash2,
+			shortcut: "Del",
+			destructive: true,
+			run: () => emit("remove", props.index),
+		},
+	};
+	return layoutStore.shared.quickActions.row
+		.map((id) => registry[id])
+		.filter((action): action is RowAction & { available: boolean } => !!action?.available);
+});
+const rowInlineCount = computed(() =>
+	visibleActionCount(orderedRowActions.value.length, layoutStore.policy.min_visible_actions),
+);
+const inlineRowActions = computed(() => orderedRowActions.value.slice(0, rowInlineCount.value));
+const overflowRowActions = computed(() => orderedRowActions.value.slice(rowInlineCount.value));
 
 function runMenu(action: () => unknown) {
 	menuOpen.value = false;

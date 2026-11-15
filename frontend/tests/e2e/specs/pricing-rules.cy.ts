@@ -188,8 +188,7 @@ describe("pricing rules in the cart", () => {
 			cy.bootPos({ routes: { [RECONCILE]: reconcileWith({}) } });
 
 			cy.addItemToCart("Espresso Beans");
-			cy.cartRow("Espresso Beans").find("[aria-label='Line options']").click();
-			cy.contains("[role='menuitem']", "Add discount").click();
+			cy.cartRow("Espresso Beans").find("[data-testid='row-action-item_discount']").click();
 			cy.cartRow("Espresso Beans").find("input[aria-label='Discount']").clear().type("25{enter}");
 
 			cy.cartRow("Espresso Beans").should("contain", "-$25");

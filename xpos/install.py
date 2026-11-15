@@ -31,6 +31,11 @@ POS_PERMISSIONS = (
 	# Reports
 	("current_stock_by_brand", "Current Stock by Brand", "Reports"),
 	("current_stock_report", "Current Stock Report", "Reports"),
+	("gift_card_liability_report", "Gift Card Liability Report", "Reports"),
+	# Stock Receiving
+	("receive_stock_draft", "Save Stock Receipt Draft", "Stock Receiving"),
+	("receive_stock_submit", "Submit Stock Receipt", "Stock Receiving"),
+	("receive_stock_rates", "View and Edit Receiving Rates", "Stock Receiving"),
 	# Administration
 	("manage_role_permissions", "Manage Role Permissions", "Administration"),
 )

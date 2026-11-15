@@ -272,7 +272,7 @@
 					v-if="invoice && !invoice.is_return"
 					variant="outline"
 					size="sm"
-					class="text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
+					class="text-info border-info/30 hover:bg-info-soft"
 					:disabled="isRepeatLoading"
 					@click="repeatFromOrder(invoice)"
 				>
@@ -284,7 +284,7 @@
 					v-if="invoice && !invoice.is_return && invoice.status !== 'Cancelled'"
 					variant="outline"
 					size="sm"
-					class="text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950"
+					class="text-warning border-warning/30 hover:bg-warning-soft"
 					@click="returnFromOrder(invoice)"
 				>
 					<RotateCcw class="w-4 h-4" />
@@ -313,6 +313,7 @@ import { DateTimePicker } from "@/components/ui/datetime-picker";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
 import { useCartStore } from "@/stores/cartStore";
+import { useCartSessionStore } from "@/stores/cartSessionStore";
 import __ from "@/lib/translate";
 import { ref } from "vue";
 import { Invoice } from "@/types/pos.types";
@@ -331,6 +332,7 @@ const posStore = usePosStore();
 const { openInvoicePrintView } = usePrintInvoice();
 const { money, amount, qty, percent } = useMoney();
 const cartStore = useCartStore();
+const cartSessions = useCartSessionStore();
 const router = useRouter();
 
 const isRepeatLoading = ref(false);
@@ -389,11 +391,17 @@ async function repeatFromOrder(order: Invoice) {
 			return;
 		}
 
-		cartStore.loadFromInvoice({
-			customer: result.customer,
-			customer_name: result.customer_name,
-			items: result.items,
-		});
+		const target = await cartSessions.loadIntoCart(() =>
+			cartStore.loadFromInvoice({
+				customer: result.customer,
+				customer_name: result.customer_name,
+				items: result.items,
+			}),
+		);
+		if (!target.ok) {
+			showError(target.reason || "");
+			return;
+		}
 
 		emit("close");
 		router.push("/pos");
@@ -426,6 +434,11 @@ async function returnFromOrder(order: Invoice) {
 			invoice_name: order.name,
 		});
 
+		const prepared = cartSessions.prepareForLoad();
+		if (!prepared.ok) {
+			showError(prepared.reason || "");
+			return;
+		}
 		cartStore.clearCart();
 		const allowedItemCodes = (details?.items || []).map((i) => i.item_code);
 		cartStore.enterReturnMode(order.name, allowedItemCodes);

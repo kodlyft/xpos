@@ -1,398 +1,618 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
-import { usePurchaseStore } from "@/stores/purchaseStore";
-import { usePosStore } from "@/stores/posStore";
-import { useMoney } from "@/composables/useMoney";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeRouteLeave } from "vue-router";
 import {
-	PackageCheck,
 	ArrowLeft,
-	RefreshCw,
-	CheckCircle2,
-	ChevronRight,
-	AlertTriangle,
-	Loader2,
 	ArrowRightLeft,
-	CornerDownLeft,
-	Warehouse,
+	FileCheck2,
+	Loader2,
+	PackageCheck,
+	RefreshCw,
+	RotateCcw,
+	ScanBarcode,
+	Search,
+	Send,
+	Save,
+	WifiOff,
+	ChevronRight,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NumberInput } from "@/components/ui/number-input";
+import { DateTimePicker } from "@/components/ui/datetime-picker";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { InTransitEntry, ReceiveTransitItem, ReturnShortageItem } from "@/types/pos.types";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/state";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import ReceivingLines from "@/components/receiving/ReceivingLines.vue";
+import { useReceivingStore } from "@/stores/receivingStore";
+import { useMoney } from "@/composables/useMoney";
+import { toast } from "@/services/toast";
+import { receiptIssues } from "@/services/receivingRules";
 import __ from "@/lib/translate";
 
-const purchaseStore = usePurchaseStore();
-const posStore = usePosStore();
-const { money, ratePrecision, percent, qty } = useMoney();
+const store = useReceivingStore();
+const { money, qty: fmtQty, percent } = useMoney();
 
-interface TransitFormItem {
-	ste_detail: string;
-	item_code: string;
-	item_name: string;
-	original_qty: number;
-	pending_qty: number;
-	receive_qty: number;
-	return_qty: number;
-	uom: string;
-	basic_rate: number;
-	s_warehouse: string;
-	t_warehouse: string;
-}
+const scan = ref("");
+const scanInput = ref<HTMLInputElement | null>(null);
+const search = ref("");
+const leaveOpen = ref(false);
+const pendingLeave = ref<null | (() => void)>(null);
+const confirmClear = ref(false);
+const confirmBack = ref(false);
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
-const transitFormItems = ref<TransitFormItem[]>([]);
-const transitRemarks = ref("");
-const isSubmittingTransit = ref(false);
-
-const hasTransitFormData = computed(() => transitFormItems.value.some((i) => i.receive_qty > 0));
-
-const hasShortageData = computed(() => transitFormItems.value.some((i) => i.return_qty > 0));
+const issues = computed(() => receiptIssues(store.lines));
+const blockedReason = computed(() => {
+	if (!store.online)
+		return __("You are offline. Receiving needs a connection, nothing can be saved or submitted.");
+	return "";
+});
+const returnsOnly = computed(() => store.totalQty === 0 && store.totalReturn > 0);
+const canSaveDraft = computed(
+	() => store.canDraft && !store.saving && !blockedReason.value && !issues.value.length && !store.draftDoc,
+);
+const canSubmit = computed(
+	() =>
+		store.canSubmit &&
+		!store.saving &&
+		!blockedReason.value &&
+		!returnsOnly.value &&
+		(store.draftDoc ? !store.dirty : !issues.value.length),
+);
+const needsLeaveGuard = computed(() => !!store.transfer && store.dirty);
 
 function formatDate(d: string): string {
-	if (!d) return "";
-	const dt = new Date(d);
-	return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+	return d ? new Date(d).toLocaleDateString() : "";
 }
 
-async function selectTransit(entry: InTransitEntry): Promise<void> {
-	const detail = await purchaseStore.fetchTransitDetail(entry.name);
-	if (detail) {
-		transitFormItems.value = detail.items
-			.filter((i) => i.pending_qty > 0)
-			.map((item) => ({
-				ste_detail: item.ste_detail,
-				item_code: item.item_code,
-				item_name: item.item_name,
-				original_qty: item.qty,
-				pending_qty: item.pending_qty,
-				receive_qty: item.pending_qty,
-				return_qty: 0,
-				uom: item.uom,
-				basic_rate: item.basic_rate,
-				s_warehouse: item.s_warehouse,
-				t_warehouse: item.t_warehouse,
-			}));
-		transitRemarks.value = "";
+function onSearch(): void {
+	if (searchTimer) clearTimeout(searchTimer);
+	searchTimer = setTimeout(() => store.loadList(search.value.trim()), 250);
+}
+
+function focusScan(): void {
+	nextTick(() => scanInput.value?.focus());
+}
+
+async function open(name: string): Promise<void> {
+	if (await store.openTransfer(name)) focusScan();
+}
+
+function back(): void {
+	if (store.dirty) {
+		confirmBack.value = true;
+		return;
+	}
+	closeAndRefresh();
+}
+
+function closeAndRefresh(): void {
+	confirmBack.value = false;
+	store.closeTransfer();
+	store.loadList(search.value.trim());
+}
+
+async function onScanEnter(): Promise<void> {
+	const code = scan.value.trim();
+	scan.value = "";
+	if (code) {
+		try {
+			const itemCode = await store.lookupItem(code);
+			const result = itemCode ? store.countScan(itemCode) : "unknown";
+			if (result === "unknown")
+				toast.error(__("No item matches {0}.").replace("{0}", code), { id: "receiving-scan" });
+			else if (result === "missing")
+				toast.error(__("{0} is not on this transfer.").replace("{0}", itemCode ?? code), {
+					id: "receiving-scan",
+				});
+			else if (result === "full")
+				toast.warning(__("{0}: nothing more is in transit.").replace("{0}", itemCode ?? code), {
+					id: "receiving-scan",
+				});
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : String(e), { id: "receiving-scan" });
+		}
+	}
+	focusScan();
+}
+
+async function run(action: "draft" | "submit"): Promise<void> {
+	if (store.draftDoc && action === "submit") await store.submitDraft();
+	else await store.save(action);
+	if (!store.transfer) await store.loadList(search.value.trim());
+	else focusScan();
+}
+
+function onOnline(): void {
+	store.setOnline(true);
+}
+function onOffline(): void {
+	store.setOnline(false);
+}
+function onBeforeUnload(e: BeforeUnloadEvent): void {
+	if (needsLeaveGuard.value) {
+		e.preventDefault();
+		e.returnValue = "";
 	}
 }
 
-function goBackToTransitList(): void {
-	purchaseStore.clearSelectedTransit();
-	transitFormItems.value = [];
-	transitRemarks.value = "";
+onBeforeRouteLeave((_to, _from, next) => {
+	if (!needsLeaveGuard.value) return next();
+	pendingLeave.value = () => next();
+	leaveOpen.value = true;
+	next(false);
+});
+
+function leaveAnyway(): void {
+	const go = pendingLeave.value;
+	leaveOpen.value = false;
+	store.dirty = false;
+	go?.();
 }
 
-function receiveAllTransit(index: number): void {
-	const item = transitFormItems.value[index];
-	item.receive_qty = item.pending_qty;
-	item.return_qty = 0;
-}
-
-function returnAllTransit(index: number): void {
-	const item = transitFormItems.value[index];
-	item.receive_qty = 0;
-	item.return_qty = item.pending_qty;
-}
-
-function onTransitReceiveChange(index: number): void {
-	const item = transitFormItems.value[index];
-	if (item.receive_qty < 0) item.receive_qty = 0;
-	if (item.receive_qty > item.pending_qty) item.receive_qty = item.pending_qty;
-	item.return_qty = Math.min(item.return_qty, item.pending_qty - item.receive_qty);
-}
-
-function onTransitReturnChange(index: number): void {
-	const item = transitFormItems.value[index];
-	if (item.return_qty < 0) item.return_qty = 0;
-	if (item.return_qty > item.pending_qty) item.return_qty = item.pending_qty;
-	item.receive_qty = Math.min(item.receive_qty, item.pending_qty - item.return_qty);
-}
-
-async function submitTransitReceive(): Promise<void> {
-	if (!purchaseStore.selectedTransit || (!hasTransitFormData.value && !hasShortageData.value)) return;
-
-	const entryName = purchaseStore.selectedTransit.name;
-
-	isSubmittingTransit.value = true;
-	try {
-		const receiveItems: ReceiveTransitItem[] = transitFormItems.value
-			.filter((i) => i.receive_qty > 0)
-			.map((i) => ({
-				ste_detail: i.ste_detail,
-				item_code: i.item_code,
-				receive_qty: i.receive_qty,
-			}));
-
-		if (receiveItems.length > 0) {
-			await purchaseStore.receiveTransitStock(entryName, receiveItems, transitRemarks.value);
-		}
-
-		const returnItems: ReturnShortageItem[] = transitFormItems.value
-			.filter((i) => i.return_qty > 0)
-			.map((i) => ({
-				ste_detail: i.ste_detail,
-				item_code: i.item_code,
-				return_qty: i.return_qty,
-				reason: transitRemarks.value,
-			}));
-
-		if (returnItems.length > 0) {
-			await purchaseStore.returnShortageToSource(entryName, returnItems, transitRemarks.value);
-		}
-
-		goBackToTransitList();
-	} finally {
-		isSubmittingTransit.value = false;
+onMounted(async () => {
+	window.addEventListener("online", onOnline);
+	window.addEventListener("offline", onOffline);
+	window.addEventListener("beforeunload", onBeforeUnload);
+	await store.loadSetup();
+	if (store.setupError) return;
+	if (store.restore()) {
+		toast.info(__("Your unsaved receiving work was restored."), { id: "receiving-restored" });
+		if (store.uncertain) await store.reconcile().catch(() => undefined);
+		focusScan();
 	}
-}
+	await store.loadList();
+});
 
-onMounted(() => {
-	purchaseStore.fetchInTransitTransfers();
+onBeforeUnmount(() => {
+	window.removeEventListener("online", onOnline);
+	window.removeEventListener("offline", onOffline);
+	window.removeEventListener("beforeunload", onBeforeUnload);
+	if (searchTimer) clearTimeout(searchTimer);
 });
 </script>
 
 <template>
-	<div class="h-full flex flex-col overflow-hidden bg-card">
-		<template v-if="purchaseStore.selectedTransit">
-			<div class="p-4 border-b border-border bg-muted shrink-0">
-				<div class="flex items-center gap-3">
-					<Button @click="goBackToTransitList" variant="ghost" size="icon" class="shrink-0">
-						<ArrowLeft class="w-4 h-4" />
-					</Button>
-					<div class="flex-1 min-w-0">
-						<h3 class="font-semibold text-foreground truncate">
-							{{ purchaseStore.selectedTransit.name }}
-						</h3>
-						<p class="text-sm text-muted-foreground truncate">
-							{{
-								purchaseStore.selectedTransit.source_warehouse ||
-								purchaseStore.selectedTransit.from_warehouse
-							}}
-							&rarr;
-							{{
-								purchaseStore.selectedTransit.transit_warehouse ||
-								purchaseStore.selectedTransit.to_warehouse
-							}}
-						</p>
-					</div>
-					<Badge
-						variant="secondary"
-						class="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
-					>
-						{{ percent(purchaseStore.selectedTransit.per_transferred, 0) }}
-						{{ __("transferred") }}
-					</Badge>
-				</div>
+	<div class="flex h-full min-h-0 flex-col overflow-hidden">
+		<h1 class="sr-only">{{ __("Stock Receiving") }}</h1>
+		<LoadingState v-if="store.loadingSetup && !store.setup" class="m-auto" />
+		<ErrorState
+			v-else-if="store.setupError"
+			:title="__('Stock receiving is not available')"
+			:description="store.setupError"
+			retryable
+			class="m-auto"
+			@retry="store.loadSetup()"
+		/>
+
+		<template v-else-if="store.setup">
+			<div
+				v-if="!store.online"
+				role="status"
+				class="mx-3 mt-3 flex items-center gap-2 rounded-xl border border-warning/30 bg-warning-soft px-4 py-2 text-sm text-warning"
+			>
+				<WifiOff class="size-4 shrink-0" />
+				{{
+					__(
+						"You are offline. Stock receiving is online-only; your entries are kept on this device.",
+					)
+				}}
 			</div>
 
-			<div class="px-4 py-2 bg-blue-50 dark:bg-blue-950/30 border-b border-border shrink-0">
-				<p class="text-xs text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
-					<Warehouse class="w-3.5 h-3.5" />
-					{{ __("Receiving at") }}: <strong>{{ posStore.warehouse }}</strong>
-				</p>
-			</div>
-
-			<ScrollArea class="flex-1 min-h-0">
-				<div class="divide-y divide-border">
-					<div
-						v-for="(item, index) in transitFormItems"
-						:key="item.ste_detail"
-						class="p-4 space-y-3"
-					>
-						<div class="flex items-start justify-between gap-2">
-							<div class="min-w-0">
-								<p class="font-medium text-foreground truncate">
-									{{ item.item_name }}
-								</p>
-								<p class="text-xs text-muted-foreground">
-									{{ item.item_code }} &middot; {{ item.uom }}
-								</p>
-							</div>
-							<div class="text-end shrink-0">
-								<p class="text-sm font-medium text-foreground">
-									{{ money(item.basic_rate) }}
-								</p>
-								<p class="text-xs text-muted-foreground">
-									{{ __("In Transit") }}:
-									<span class="font-semibold">{{ item.pending_qty }}</span>
-								</p>
-							</div>
-						</div>
-
-						<div class="grid grid-cols-2 gap-3">
-							<div>
-								<label class="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-									<CheckCircle2 class="w-3 h-3 text-green-500" />
-									{{ __("Receive Qty") }}
-								</label>
-								<div class="flex items-center gap-1">
-									<NumberInput
-										v-model="item.receive_qty"
-										@change="onTransitReceiveChange(index)"
-										:min="0"
-										:max="item.pending_qty"
-										:precision="ratePrecision"
-										class="h-8"
-									/>
-									<Button
-										@click="receiveAllTransit(index)"
-										variant="outline"
-										size="sm"
-										class="h-8 text-xs px-2 shrink-0"
-										>{{ __("All") }}</Button
-									>
-								</div>
-							</div>
-							<div>
-								<label class="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-									<CornerDownLeft class="w-3 h-3 text-amber-500" />
-									{{ __("Return Qty") }}
-								</label>
-								<div class="flex items-center gap-1">
-									<NumberInput
-										v-model="item.return_qty"
-										@change="onTransitReturnChange(index)"
-										:min="0"
-										:max="item.pending_qty"
-										:precision="ratePrecision"
-										class="h-8"
-									/>
-									<Button
-										@click="returnAllTransit(index)"
-										variant="outline"
-										size="sm"
-										class="h-8 text-xs px-2 text-amber-600 shrink-0"
-										>{{ __("All") }}</Button
-									>
-								</div>
-							</div>
-						</div>
-
-						<div
-							v-if="item.return_qty > 0"
-							class="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"
-						>
-							<CornerDownLeft class="w-3 h-3" />
-							<span
-								>{{ qty(item.return_qty) }} {{ item.uom }} {{ __("will be returned to") }}
-								{{ item.s_warehouse }}</span
-							>
-						</div>
-
-						<div
-							v-if="item.pending_qty - item.receive_qty - item.return_qty > 0"
-							class="flex items-center gap-2 text-xs text-red-500"
-						>
-							<AlertTriangle class="w-3 h-3" />
-							<span
-								>{{ qty(item.pending_qty - item.receive_qty - item.return_qty) }}
-								{{ item.uom }} {{ __("unaccounted") }}</span
-							>
-						</div>
-					</div>
-				</div>
-			</ScrollArea>
-
-			<div class="p-4 border-t border-border bg-muted shrink-0 space-y-3">
-				<Input
-					v-model="transitRemarks"
-					:placeholder="__('Remarks (optional, e.g. missing or damaged items)')"
-					class="text-sm"
-				/>
-				<div class="flex gap-2">
-					<Button @click="goBackToTransitList" variant="outline" class="flex-1">{{
-						__("Cancel")
-					}}</Button>
-					<Button
-						@click="submitTransitReceive"
-						class="flex-1"
-						:disabled="(!hasTransitFormData && !hasShortageData) || isSubmittingTransit"
-					>
-						<PackageCheck class="w-4 h-4 me-1" />
-						{{ isSubmittingTransit ? __("Processing...") : __("Receive & Return") }}
-					</Button>
-				</div>
-			</div>
-		</template>
-		<template v-else>
-			<div class="p-4 border-b border-border bg-muted shrink-0">
-				<div class="flex items-center justify-between">
-					<h3 class="font-semibold text-foreground flex items-center gap-2">
-						<ArrowRightLeft class="w-5 h-5" />
-						{{ __("In-Transit Stock") }}
-					</h3>
-					<Button
-						@click="purchaseStore.fetchInTransitTransfers()"
-						variant="outline"
-						size="sm"
-						:disabled="purchaseStore.isLoadingTransits"
-					>
-						<RefreshCw
-							class="w-4 h-4 me-1"
-							:class="{ 'animate-spin': purchaseStore.isLoadingTransits }"
-						/>
-						{{ __("Refresh") }}
-					</Button>
-				</div>
-				<p class="text-xs text-muted-foreground mt-1">
-					{{ __("Material transfers awaiting receipt at your warehouse") }}
-				</p>
-			</div>
-
-			<ScrollArea class="flex-1 min-h-0">
-				<div v-if="purchaseStore.isLoadingTransits" class="p-8 text-center text-muted-foreground">
-					<Loader2 class="w-8 h-8 mx-auto mb-3 animate-spin text-muted-foreground/40" />
-					<p>{{ __("Loading in-transit stock...") }}</p>
-				</div>
-
-				<div
-					v-else-if="purchaseStore.inTransitEntries.length === 0"
-					class="p-8 text-center text-muted-foreground"
+			<div v-if="!store.transfer" class="flex min-h-0 flex-1 p-3">
+				<section
+					class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card/50 shadow-raised"
+					:aria-label="__('In-transit stock')"
 				>
-					<ArrowRightLeft class="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
-					<p class="font-medium">{{ __("No in-transit stock") }}</p>
-					<p class="text-sm mt-1">{{ __("No material transfers pending receipt") }}</p>
-				</div>
-
-				<div v-else class="divide-y divide-border">
-					<button
-						v-for="entry in purchaseStore.inTransitEntries"
-						:key="entry.name"
-						@click="selectTransit(entry)"
-						class="w-full p-4 text-start hover:bg-muted transition-colors flex items-center gap-3"
-					>
+					<div class="flex shrink-0 items-center gap-2 p-3 pb-1.5">
 						<div
-							class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0"
+							class="relative flex h-12 min-w-0 flex-1 items-center rounded-xl border border-border bg-card shadow-inset transition-[border-color,box-shadow] duration-fast focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/12"
 						>
-							<ArrowRightLeft class="w-5 h-5 text-blue-600 dark:text-blue-400" />
+							<Search
+								class="pointer-events-none absolute inset-s-3.5 size-5 text-muted-foreground"
+								aria-hidden="true"
+							/>
+							<input
+								v-model="search"
+								type="text"
+								autocomplete="off"
+								enterkeyhint="search"
+								class="h-full w-full min-w-0 bg-transparent ps-11 pe-4 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
+								:placeholder="__('Search transfers...')"
+								:aria-label="__('Search transfers')"
+								@input="onSearch"
+							/>
 						</div>
-						<div class="flex-1 min-w-0">
-							<div class="flex items-center justify-between">
-								<p class="font-medium text-foreground truncate">
-									{{ entry.name }}
-								</p>
-								<Badge
-									variant="secondary"
-									class="shrink-0 ms-2 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
+						<Button
+							variant="outline"
+							size="icon"
+							class="size-12 shrink-0 rounded-xl"
+							:aria-label="__('Refresh')"
+							:disabled="store.loadingList"
+							@click="store.loadList(search.trim())"
+						>
+							<RefreshCw :class="{ 'animate-spin': store.loadingList }" />
+						</Button>
+					</div>
+
+					<ScrollArea class="min-h-0 flex-1">
+						<LoadingState
+							v-if="store.loadingList && !store.transfers.length && !store.drafts.length"
+							class="py-16"
+						/>
+						<ErrorState
+							v-else-if="store.listError"
+							:title="__('Could not load in-transit stock')"
+							:description="store.listError"
+							retryable
+							@retry="store.loadList(search.trim())"
+						/>
+						<EmptyState
+							v-else-if="!store.transfers.length && !store.drafts.length"
+							:icon="ArrowRightLeft"
+							:title="__('No in-transit stock')"
+							:description="__('No material transfers are waiting to be received here.')"
+						/>
+						<template v-else>
+							<div v-if="store.drafts.length" class="p-3 pb-0">
+								<h2
+									class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
 								>
-									{{ entry.total_pending_items }} {{ __("items") }}
-								</Badge>
+									{{ __("Saved drafts") }}
+								</h2>
+								<ul
+									class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-raised"
+								>
+									<li
+										v-for="d in store.drafts"
+										:key="d.name"
+										class="flex items-center gap-3 px-4 py-3"
+									>
+										<FileCheck2 class="size-5 shrink-0 text-info" />
+										<div class="min-w-0 flex-1">
+											<p class="truncate text-sm font-semibold">{{ d.name }}</p>
+											<p class="truncate text-xs text-muted-foreground">
+												{{ d.outgoing_stock_entry }} ·
+												{{ formatDate(d.posting_date) }}
+											</p>
+										</div>
+										<Button
+											size="sm"
+											:disabled="!store.canSubmit || store.saving || !store.online"
+											@click="store.submitDraft(d.name)"
+										>
+											<Send />{{ __("Submit") }}
+										</Button>
+									</li>
+								</ul>
 							</div>
-							<p class="text-sm text-muted-foreground truncate">
-								{{ entry.source_warehouse || entry.from_warehouse }} &rarr;
-								{{ __("In Transit") }}
-							</p>
-							<div class="flex items-center gap-3 mt-1 text-xs text-muted-foreground/70">
-								<span>{{ formatDate(entry.posting_date) }}</span>
-								<span>{{ money(entry.total_amount) }}</span>
-								<span>{{ percent(entry.per_transferred, 0) }} {{ __("received") }}</span>
+
+							<div class="p-3">
+								<h2
+									class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+								>
+									{{ __("Awaiting receipt") }}
+								</h2>
+								<ul
+									class="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-raised"
+								>
+									<li v-for="t in store.transfers" :key="t.name">
+										<button
+											type="button"
+											class="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+											:disabled="store.loadingTransfer"
+											@click="open(t.name)"
+										>
+											<span
+												class="flex size-10 shrink-0 items-center justify-center rounded-full bg-info-soft"
+											>
+												<ArrowRightLeft class="size-5 text-info" />
+											</span>
+											<span class="min-w-0 flex-1">
+												<span class="flex items-center justify-between gap-2">
+													<span
+														class="truncate text-sm font-semibold text-foreground"
+														>{{ t.name }}</span
+													>
+													<Badge variant="secondary" class="shrink-0">
+														{{
+															t.open_rows === 1
+																? __("1 item")
+																: __("{0} items").replace(
+																		"{0}",
+																		String(t.open_rows),
+																	)
+														}}
+													</Badge>
+												</span>
+												<span class="block truncate text-sm text-muted-foreground">
+													{{ t.from_warehouse }} → {{ t.destination }}
+												</span>
+												<span
+													class="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground"
+												>
+													<span>{{ formatDate(t.posting_date) }}</span>
+													<span class="tabular-nums"
+														>{{ fmtQty(t.pending_qty) }}
+														{{ __("in transit") }}</span
+													>
+													<span class="tabular-nums"
+														>{{ percent(t.per_transferred, 0) }}
+														{{ __("received") }}</span
+													>
+												</span>
+											</span>
+											<ChevronRight
+												class="size-4 shrink-0 text-muted-foreground rtl:rotate-180"
+											/>
+										</button>
+									</li>
+								</ul>
+							</div>
+						</template>
+					</ScrollArea>
+				</section>
+			</div>
+
+			<div
+				v-else
+				class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 pb-24 lg:flex-row lg:overflow-hidden lg:pb-3"
+			>
+				<section
+					class="flex min-h-96 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card/50 shadow-raised"
+					:aria-label="__('Items to receive')"
+				>
+					<div class="shrink-0 space-y-2 p-3 pb-1.5">
+						<div class="flex items-center gap-2">
+							<Button
+								variant="outline"
+								size="icon"
+								class="size-12 shrink-0 rounded-xl"
+								:aria-label="__('Back to the list')"
+								@click="back"
+							>
+								<ArrowLeft class="rtl:rotate-180" />
+							</Button>
+							<div class="min-w-0 flex-1">
+								<p class="truncate text-base font-semibold text-foreground">
+									{{ store.transfer.name }}
+								</p>
+								<p class="truncate text-xs text-muted-foreground">
+									{{ store.transfer.from_warehouse }} → {{ store.transfer.destination }} ·
+									{{ percent(store.transfer.per_transferred, 0) }} {{ __("received") }}
+								</p>
 							</div>
 						</div>
-						<ChevronRight class="w-4 h-4 text-muted-foreground shrink-0" />
-					</button>
-				</div>
-			</ScrollArea>
+						<div
+							class="relative flex h-12 items-center rounded-xl border border-border bg-card shadow-inset transition-[border-color,box-shadow] duration-fast focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/12"
+						>
+							<ScanBarcode
+								class="pointer-events-none absolute inset-s-3.5 size-5 text-muted-foreground"
+								aria-hidden="true"
+							/>
+							<input
+								ref="scanInput"
+								v-model="scan"
+								type="text"
+								autocomplete="off"
+								enterkeyhint="done"
+								data-testid="receiving-scan"
+								class="h-full w-full min-w-0 bg-transparent ps-11 pe-4 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
+								:placeholder="__('Scan a barcode or type an item code...')"
+								:aria-label="__('Scan barcode')"
+								@keydown.enter.prevent="onScanEnter"
+							/>
+						</div>
+					</div>
+					<ScrollArea class="min-h-0 flex-1">
+						<LoadingState v-if="store.loadingTransfer" class="py-12" />
+						<ReceivingLines
+							v-else
+							:lines="store.lines"
+							:show-rates="store.seeRates"
+							:disabled="store.saving"
+							@change="store.touch()"
+						/>
+					</ScrollArea>
+				</section>
+
+				<section
+					class="flex min-w-0 flex-none flex-col overflow-hidden rounded-2xl border border-border bg-card/50 shadow-raised lg:w-104"
+					:aria-label="__('Receipt details')"
+				>
+					<div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+						<div>
+							<p class="mb-1 text-xs font-medium text-muted-foreground">
+								{{ __("Receiving at") }}
+							</p>
+							<p
+								class="flex h-control items-center rounded-lg border border-border bg-muted px-3 text-sm font-medium text-foreground"
+							>
+								{{ store.transfer.destination }}
+							</p>
+						</div>
+						<div>
+							<label class="mb-1 block text-xs font-medium text-muted-foreground">{{
+								__("Received on")
+							}}</label>
+							<DateTimePicker
+								v-model="store.header.posting_date"
+								mode="date"
+								:clearable="false"
+								:max-date="new Date().toISOString().slice(0, 10)"
+								@change="store.touch()"
+							/>
+						</div>
+						<div>
+							<label class="mb-1 block text-xs font-medium text-muted-foreground">{{
+								__("Remarks")
+							}}</label>
+							<Input
+								v-model="store.header.remarks"
+								:placeholder="__('e.g. missing or damaged items')"
+								@input="store.touch()"
+							/>
+						</div>
+					</div>
+
+					<div class="shrink-0 space-y-2 border-t border-border bg-card p-3">
+						<div
+							v-if="store.draftDoc"
+							role="status"
+							class="flex items-center gap-2 rounded-lg border border-info/30 bg-info-soft px-3 py-2 text-sm text-info"
+						>
+							<FileCheck2 class="size-4 shrink-0" />
+							<span>{{
+								__(
+									"{0} is saved as a draft. No stock has moved until it is submitted.",
+								).replace("{0}", store.draftDoc.name)
+							}}</span>
+						</div>
+						<div
+							v-if="store.uncertain"
+							role="alert"
+							class="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning"
+						>
+							{{
+								__(
+									"The last save got no answer. Saving again first checks with the server, so it cannot be made twice.",
+								)
+							}}
+						</div>
+						<p v-if="blockedReason" class="text-xs text-muted-foreground">{{ blockedReason }}</p>
+						<p v-else-if="issues.length && !returnsOnly" class="text-xs text-destructive">
+							{{ issues[0] }}
+						</p>
+
+						<dl class="grid grid-cols-3 gap-2 text-sm">
+							<div>
+								<dt class="text-xs text-muted-foreground">{{ __("Receiving") }}</dt>
+								<dd class="font-semibold tabular-nums">{{ fmtQty(store.totalQty) }}</dd>
+							</div>
+							<div>
+								<dt class="text-xs text-muted-foreground">{{ __("Returning") }}</dt>
+								<dd class="font-semibold tabular-nums">{{ fmtQty(store.totalReturn) }}</dd>
+							</div>
+							<div v-if="store.seeRates">
+								<dt class="text-xs text-muted-foreground">{{ __("Value") }}</dt>
+								<dd class="font-semibold tabular-nums">{{ money(store.totalAmount) }}</dd>
+							</div>
+						</dl>
+
+						<button
+							v-if="!returnsOnly"
+							type="button"
+							class="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground shadow-primary transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-55 disabled:shadow-none"
+							:disabled="!canSubmit"
+							:aria-busy="store.saving"
+							data-testid="receiving-submit"
+							@click="run('submit')"
+						>
+							<Loader2 v-if="store.saving" class="size-5 animate-spin" /><PackageCheck
+								v-else
+								class="size-5"
+							/>
+							{{ store.draftDoc ? __("Submit draft") : __("Receive stock") }}
+						</button>
+						<button
+							v-else
+							type="button"
+							class="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-base font-semibold text-primary-foreground shadow-primary transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-55 disabled:shadow-none"
+							:disabled="store.saving || !store.canSubmit || !store.online"
+							@click="store.returnShortage()"
+						>
+							<Send class="size-5" />{{ __("Return to source") }}
+						</button>
+						<div class="flex gap-2">
+							<Button
+								variant="outline"
+								class="h-11 flex-1 rounded-xl"
+								:disabled="!canSaveDraft"
+								data-testid="receiving-draft"
+								@click="run('draft')"
+							>
+								<Save />{{ __("Save draft") }}
+							</Button>
+							<Button
+								variant="ghost"
+								class="h-11 rounded-xl"
+								:disabled="store.saving"
+								@click="confirmClear = true"
+							>
+								<RotateCcw />{{ __("Reset") }}
+							</Button>
+						</div>
+					</div>
+				</section>
+			</div>
 		</template>
+
+		<Dialog v-model:open="leaveOpen">
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>{{ __("Leave without saving?") }}</DialogTitle>
+					<DialogDescription>
+						{{
+							__(
+								"This receipt has not been saved. It is kept on this device, but no document exists yet.",
+							)
+						}}
+					</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button variant="outline" @click="leaveOpen = false">{{ __("Keep working") }}</Button>
+					<Button variant="destructive" @click="leaveAnyway">{{ __("Leave") }}</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+
+		<Dialog v-model:open="confirmBack">
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>{{ __("Go back to the list?") }}</DialogTitle>
+					<DialogDescription>{{
+						__("What you entered for this transfer is discarded.")
+					}}</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button variant="outline" @click="confirmBack = false">{{ __("Keep working") }}</Button>
+					<Button variant="destructive" @click="closeAndRefresh">{{
+						__("Discard and go back")
+					}}</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+
+		<Dialog v-model:open="confirmClear">
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>{{ __("Reset the quantities?") }}</DialogTitle>
+					<DialogDescription>{{
+						__(
+							"Quantities go back to everything in transit. A saved draft document is not deleted.",
+						)
+					}}</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button variant="outline" @click="confirmClear = false">{{ __("Cancel") }}</Button>
+					<Button
+						variant="destructive"
+						@click="
+							store.openTransfer(store.transfer!.name);
+							confirmClear = false;
+						"
+						>{{ __("Reset") }}</Button
+					>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	</div>
 </template>

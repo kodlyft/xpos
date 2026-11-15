@@ -153,6 +153,69 @@
 							/>
 						</div>
 					</div>
+					<div data-testid="cart-shortcuts">
+						<h3 class="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+							<Layers class="w-4 h-4" />
+							{{ __("Carts") }}
+						</h3>
+						<div class="space-y-1.5">
+							<div
+								v-for="action in cartActions"
+								:key="action"
+								class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/50"
+							>
+								<span class="text-sm text-muted-foreground">{{ __(labels[action]) }}</span>
+								<div class="flex items-center gap-2">
+									<span class="flex items-center gap-1">
+										<template v-if="capturing === action">
+											<span class="text-xs text-muted-foreground">{{
+												__("Press the new keys…")
+											}}</span>
+										</template>
+										<template v-else>
+											<span
+												v-for="(key, i) in display(action)"
+												:key="i"
+												class="inline-flex items-center justify-center min-w-6 h-6 px-1.5 text-xs font-medium bg-muted border border-border rounded"
+												>{{ key }}</span
+											>
+										</template>
+									</span>
+									<Button
+										variant="ghost"
+										size="sm"
+										:data-testid="`change-${action}`"
+										@click="startCapture(action)"
+									>
+										{{ capturing === action ? __("Cancel") : __("Change") }}
+									</Button>
+									<Button
+										v-if="isCustom(action)"
+										variant="ghost"
+										size="sm"
+										@click="resetCartShortcut(action)"
+									>
+										{{ __("Reset") }}
+									</Button>
+								</div>
+							</div>
+						</div>
+						<p v-if="captureError" class="mt-2 text-xs text-destructive" role="alert">
+							{{ captureError }}
+						</p>
+						<p class="mt-2 text-xs text-muted-foreground" data-testid="cart-shortcut-note">
+							<template v-if="ctrlCarts">
+								{{ __("Ctrl+T, Ctrl+Tab and Ctrl+Shift+Tab also work in this window.") }}
+							</template>
+							<template v-else>
+								{{
+									__(
+										"Ctrl+T, Ctrl+Tab and Ctrl+Shift+Tab belong to the browser in a normal tab, so this page cannot use them. Install the app or use fullscreen to enable them. Alt+Left and Alt+Right can be Back and Forward in some browsers; change them here if so.",
+									)
+								}}
+							</template>
+						</p>
+					</div>
 				</div>
 			</ScrollArea>
 
@@ -166,7 +229,7 @@
 </template>
 
 <script setup lang="ts">
-import { h } from "vue";
+import { h, onBeforeUnmount, ref } from "vue";
 import {
 	Dialog,
 	DialogContent,
@@ -179,11 +242,71 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { __ } from "@/lib/translate";
-import { Keyboard, Monitor, Navigation, ShoppingCart, Package, List, Clock } from "lucide-vue-next";
+import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
+import {
+	CART_ACTION_LABELS,
+	cartKeys,
+	cartShortcutOverrides,
+	resetCartShortcut,
+	setCartShortcut,
+	validateCartKeys,
+	type CartAction,
+} from "@/services/cartShortcuts";
+import { Layers, Keyboard, Monitor, Navigation, ShoppingCart, Package, List, Clock } from "lucide-vue-next";
 
 defineProps<{
 	open: boolean;
 }>();
+
+const { takenCombos, ctrlCarts, formatShortcut } = useKeyboardShortcuts();
+const cartActions: CartAction[] = ["new-cart", "next-cart", "prev-cart", "close-cart"];
+const labels = CART_ACTION_LABELS;
+const capturing = ref<CartAction | null>(null);
+const captureError = ref("");
+
+function display(action: CartAction): string[] {
+	return formatShortcut(cartKeys(action)).split(" + ");
+}
+
+function isCustom(action: CartAction): boolean {
+	return !!cartShortcutOverrides.value[action];
+}
+
+function onCaptureKey(e: KeyboardEvent): void {
+	const action = capturing.value;
+	if (!action) return;
+	e.preventDefault();
+	e.stopPropagation();
+	if (e.key === "Escape") return stopCapture();
+	if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
+	const keys = [
+		...(e.ctrlKey || e.metaKey ? ["ctrl"] : []),
+		...(e.altKey ? ["alt"] : []),
+		...(e.shiftKey ? ["shift"] : []),
+		e.key.toLowerCase(),
+	];
+	const verdict = validateCartKeys(action, keys, takenCombos());
+	if (!verdict.ok) {
+		captureError.value = __(verdict.reason || "");
+		return;
+	}
+	setCartShortcut(action, keys);
+	stopCapture();
+}
+
+function startCapture(action: CartAction): void {
+	if (capturing.value === action) return stopCapture();
+	capturing.value = action;
+	captureError.value = "";
+	window.addEventListener("keydown", onCaptureKey, true);
+}
+
+function stopCapture(): void {
+	capturing.value = null;
+	window.removeEventListener("keydown", onCaptureKey, true);
+}
+
+onBeforeUnmount(stopCapture);
 
 defineEmits<{
 	close: [];

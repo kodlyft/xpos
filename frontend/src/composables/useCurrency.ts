@@ -140,7 +140,7 @@ export function formatWithSymbol(
 	const amount = formatFor(currency, value, precision);
 	if (hideCurrencySymbol() || !meta.symbol) return amount;
 
-	return meta.symbol_on_right ? `${amount} ${meta.symbol}` : `${meta.symbol}${amount}`;
+	return meta.symbol_on_right ? `${amount} ${meta.symbol}` : `${meta.symbol} ${amount}`;
 }
 
 export function convertToBase(

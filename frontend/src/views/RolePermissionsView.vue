@@ -1,17 +1,14 @@
 <template>
 	<div class="h-full min-h-0 flex flex-col bg-background text-foreground">
-		<div class="flex items-center justify-between px-4 py-3 border-b border-border">
-			<div>
-				<h1 class="text-lg font-semibold">{{ __("Role Permissions") }}</h1>
-				<p class="text-xs text-muted-foreground">
-					{{ __("Configure which POS actions each role may perform.") }}
-				</p>
-			</div>
+		<PageHeader
+			:title="__('Role Permissions')"
+			:subtitle="__('Configure which POS actions each role may perform.')"
+		>
 			<Button size="sm" variant="outline" :disabled="isLoading" @click="load">
 				<RefreshCw class="w-4 h-4 me-1" :class="{ 'animate-spin': isLoading }" />
 				{{ __("Refresh") }}
 			</Button>
-		</div>
+		</PageHeader>
 
 		<div
 			v-if="error"
@@ -81,6 +78,7 @@
 </template>
 
 <script setup lang="ts">
+import { PageHeader } from "@/components/ui/page";
 import { ref, computed, onMounted } from "vue";
 import { RefreshCw } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
@@ -140,6 +138,15 @@ const PERMISSION_GROUPS: { title: string; items: { key: string; label: string }[
 		items: [
 			{ key: "current_stock_by_brand", label: "Current Stock by Brand" },
 			{ key: "current_stock_report", label: "Current Stock Report" },
+			{ key: "gift_card_liability_report", label: "Gift Card Liability Report" },
+		],
+	},
+	{
+		title: "Stock Receiving",
+		items: [
+			{ key: "receive_stock_draft", label: "Save Stock Receipt Draft" },
+			{ key: "receive_stock_submit", label: "Submit Stock Receipt" },
+			{ key: "receive_stock_rates", label: "View and Edit Receiving Rates" },
 		],
 	},
 	{

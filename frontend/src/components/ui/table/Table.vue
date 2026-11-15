@@ -31,6 +31,7 @@ const props = withDefaults(
 		rows: ChildTableRow[];
 		columns: ChildTableColumn[];
 		label?: string;
+		flush?: boolean;
 		minWidth?: string;
 		showRowNumbers?: boolean;
 		showCheckboxes?: boolean;
@@ -734,7 +735,10 @@ function handleTableKeyDown(event: KeyboardEvent): void {
 
 <template>
 	<div
-		class="child-table flex min-h-0 flex-col border border-border rounded-lg overflow-hidden bg-card shadow-raised"
+		:class="[
+			'child-table flex min-h-0 flex-col overflow-hidden bg-card',
+			flush ? '' : 'rounded-lg border border-border shadow-raised',
+		]"
 		@keydown="handleTableKeyDown"
 	>
 		<div

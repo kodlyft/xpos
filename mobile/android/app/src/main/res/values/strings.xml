@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">XPOS Mobile</string>
+    <string name="title_activity_main">XPOS Mobile</string>
+    <string name="package_name">com.kodlyft.xpos.mobile.dev</string>
+    <string name="custom_url_scheme">com.kodlyft.xpos.mobile.dev</string>
+</resources>

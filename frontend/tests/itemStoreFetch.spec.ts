@@ -1,6 +1,6 @@
 /**
- * itemStore.fetchItems: a search that lands while another fetch is in flight must not be lost,
- * and a failed load must be told apart from an empty catalogue.
+ * itemStore.fetchItems: the latest search wins and an older answer is never shown, a load-more
+ * asked for mid-fetch is not lost, and a failed load must be told apart from an empty catalogue.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
@@ -61,6 +61,66 @@ describe("itemStore.fetchItems", () => {
 		first.resolve([]);
 		await initial;
 		expect(call).toHaveBeenCalledTimes(1);
+	});
+
+	const rows = (n: number, prefix: string) =>
+		Array.from({ length: n }, (_, i) => ({ item_code: `${prefix}-${i}`, item_name: `${prefix} ${i}` }));
+
+	it("never shows a slow answer to an older search over the newer one", async () => {
+		const store = useItemStore();
+		const slow = deferred<unknown[]>();
+		call.mockImplementationOnce(() => slow.promise);
+		call.mockResolvedValueOnce([{ item_code: "NEW", item_name: "Newer search" }]);
+
+		store.setSearchTerm("dri");
+		const older = store.fetchItems("Main");
+		store.setSearchTerm("drill");
+		await store.fetchItems("Main");
+		expect(store.items.map((i) => i.item_code)).toEqual(["NEW"]);
+		expect(store.isLoading).toBe(false);
+
+		slow.resolve([{ item_code: "OLD", item_name: "Older search" }]);
+		await older;
+		expect(store.items.map((i) => i.item_code)).toEqual(["NEW"]);
+		expect(store.isLoading).toBe(false);
+	});
+
+	it("drops a next page that arrives after the list was replaced by a new search", async () => {
+		const store = useItemStore();
+		call.mockResolvedValueOnce(rows(40, "A"));
+		await store.fetchItems("Main");
+		expect(store.hasMore).toBe(true);
+
+		const page = deferred<unknown[]>();
+		call.mockImplementationOnce(() => page.promise);
+		const more = store.fetchItems("Main", true);
+
+		call.mockResolvedValueOnce([{ item_code: "HIT", item_name: "Hit" }]);
+		store.setSearchTerm("hit");
+		await store.fetchItems("Main");
+
+		page.resolve(rows(40, "LATE"));
+		await more;
+		expect(store.items.map((i) => i.item_code)).toEqual(["HIT"]);
+		expect(store.hasMore).toBe(false);
+	});
+
+	it("runs a load-more that was asked for while the previous page was loading", async () => {
+		const store = useItemStore();
+		call.mockResolvedValueOnce(rows(40, "A"));
+		await store.fetchItems("Main");
+
+		const second = deferred<unknown[]>();
+		call.mockImplementationOnce(() => second.promise);
+		call.mockResolvedValueOnce(rows(40, "C"));
+		const inFlight = store.fetchItems("Main", true);
+		await store.fetchItems("Main", true); // asked for again while the page is loading
+
+		second.resolve(rows(40, "B"));
+		await inFlight;
+		await vi.waitFor(() => expect(store.items).toHaveLength(120));
+		expect(call.mock.calls.map((c) => c[1].start)).toEqual([0, 40, 80]);
+		expect(store.items.map((i) => i.item_code).slice(39, 42)).toEqual(["A-39", "B-0", "B-1"]);
 	});
 
 	it("records a failed load and clears it on the next attempt", async () => {

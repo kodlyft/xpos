@@ -2,10 +2,12 @@
 import { ref, onMounted, computed, reactive, watch } from "vue";
 import { useRouter } from "vue-router";
 import { usePurchaseStore } from "@/stores/purchaseStore";
+import { PageHeader } from "@/components/ui/page";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Table } from "@/components/ui/table";
 import { Autocomplete, type AutocompleteOption } from "@/components/ui/autocomplete";
 import type { TableColumn } from "@/components/ui/table/types";
@@ -70,8 +72,18 @@ const invoiceHeader = reactive({
 const additionalDiscountPercent = ref(0);
 const additionalDiscountAmount = ref(0);
 
-// ─── Payment mode ──────────────────────────────────────────────────────────
 const selectedPaymentMode = ref(posStore.cashModeOfPayment || "Cash");
+const NO_PAYMENT = "__none__";
+const paymentSelectValue = computed({
+	get: () => selectedPaymentMode.value || NO_PAYMENT,
+	set: (v) => {
+		selectedPaymentMode.value = v === NO_PAYMENT ? "" : v;
+	},
+});
+const paymentItems = computed(() => [
+	{ label: __("No Payment"), value: NO_PAYMENT },
+	...posStore.paymentMethods.map((pm) => ({ label: pm.mode_of_payment, value: pm.mode_of_payment })),
+]);
 
 const invoiceItems = ref<InvoiceItem[]>([]);
 
@@ -518,7 +530,7 @@ const invoiceColumns = computed<TableColumn[]>(() => {
 			width: "w-[90px]",
 			align: "right" as const,
 			editable: false,
-			cellClass: "text-green-600 font-medium",
+			cellClass: "text-success font-medium",
 			format: (_: any, row: any) => formatCurrency(getTotalAmount(row)),
 		},
 		{
@@ -538,7 +550,8 @@ const invoiceColumns = computed<TableColumn[]>(() => {
 			align: "right" as const,
 			editable: false,
 			format: (_: any, row: any) => percent(getMarginPercent(row), 1),
-			cellClass: (_: any, row: any) => (getMarginPercent(row) >= 0 ? "text-green-600" : "text-red-500"),
+			cellClass: (_: any, row: any) =>
+				getMarginPercent(row) >= 0 ? "text-success" : "text-destructive",
 		},
 	);
 
@@ -885,384 +898,376 @@ onMounted(() => {
 </script>
 
 <template>
-	<div class="h-full flex flex-col bg-background overflow-hidden">
-		<header class="bg-card border-b border-border px-4 py-2.5 shrink-0">
-			<div class="flex items-center justify-between gap-3">
-				<div class="flex items-center gap-2">
-					<Receipt class="w-5 h-5 text-primary" />
-					<h1 class="text-lg font-semibold text-foreground">
-						{{ __("Purchase Invoice") }}
-					</h1>
+	<div class="h-full flex flex-col overflow-y-auto p-3 lg:overflow-hidden">
+		<section
+			class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card/50 shadow-raised"
+		>
+			<PageHeader :title="__('Purchase Invoice')" :icon="Receipt" class="py-2.5">
+				<template #meta>
 					<span
 						v-if="currentDraftName"
 						class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded"
 					>
 						{{ currentDraftName }}
 					</span>
-				</div>
-				<div class="flex items-center gap-1.5">
-					<Button @click="clearForm" variant="outline" size="sm" class="h-7 text-xs">
-						<X class="w-3.5 h-3.5 me-1" />
-						{{ __("Clear") }}
-					</Button>
-					<Button
-						@click="saveDraft"
-						variant="outline"
-						size="sm"
-						class="h-7 text-xs"
-						:disabled="
-							!purchaseStore.selectedSupplier || invoiceItems.length === 0 || isDraftSaving
-						"
-					>
-						<Save class="w-3.5 h-3.5 me-1" />
-						{{ isDraftSaving ? __("Saving...") : __("Save Draft") }}
-					</Button>
-					<Button
-						v-if="currentDraftName"
-						@click="submitDraft"
-						:disabled="isProcessing"
-						size="sm"
-						class="h-7 text-xs"
-					>
-						<Send class="w-3.5 h-3.5 me-1" />
-						{{ isProcessing ? __("Submitting...") : __("Submit") }}
-					</Button>
-					<Button
-						v-else
-						@click="createInvoice"
-						:disabled="
-							!purchaseStore.selectedSupplier || invoiceItems.length === 0 || isProcessing
-						"
-						size="sm"
-						class="h-7 text-xs"
-					>
-						<Send class="w-3.5 h-3.5 me-1" />
-						{{ isProcessing ? __("Creating...") : __("Create & Submit") }}
-					</Button>
-					<div class="w-px h-5 bg-border mx-0.5"></div>
-					<Button @click="loadDrafts" variant="outline" size="sm" class="h-7 text-xs">
-						<FileDown class="w-3.5 h-3.5 me-1" />
-						{{ __("Drafts") }}
-					</Button>
-					<Button @click="fetchPurchaseOrders" variant="outline" size="sm" class="h-7 text-xs">
-						<ShoppingCart class="w-3.5 h-3.5 me-1" />
-						{{ __("From PO") }}
-					</Button>
-					<Button @click="goToList" variant="outline" size="sm" class="h-7 text-xs">
-						<List class="w-3.5 h-3.5 me-1" />
-						{{ __("Invoices") }}
-					</Button>
-				</div>
-			</div>
-		</header>
-
-		<div class="bg-card border-b border-border px-4 py-2.5 shrink-0">
-			<div class="grid grid-cols-5 gap-3">
-				<div>
-					<label class="text-xs text-muted-foreground mb-1 block">{{ __("Date") }}</label>
-					<DateTimePicker v-model="invoiceHeader.posting_date" mode="date" class="h-8 text-sm" />
-				</div>
-				<div>
-					<label class="text-xs text-muted-foreground mb-1 block">{{ __("Supplier") }} *</label>
-					<div class="flex gap-1">
-						<Autocomplete
-							v-model="purchaseStore.selectedSupplierName"
-							doctype="Supplier"
-							placeholder="Select Supplier"
-							class="h-8 text-sm flex-1"
-						/>
-						<Button
-							@click="showNewSupplierDialog = true"
-							variant="outline"
-							size="icon"
-							class="h-8 w-8 shrink-0"
-						>
-							<Plus class="w-3.5 h-3.5" />
-						</Button>
-					</div>
-				</div>
-				<div>
-					<label class="text-xs text-muted-foreground mb-1 block">{{ __("Supp. Inv #") }}</label>
-					<Input v-model="invoiceHeader.supplier_invoice_no" class="h-8 text-sm" />
-				</div>
-				<div>
-					<label class="text-xs text-muted-foreground mb-1 block">{{ __("Supp. Inv Date") }}</label>
-					<DateTimePicker
-						v-model="invoiceHeader.supplier_invoice_date"
-						mode="date"
-						:showToday="true"
-						class="h-8 text-sm"
-					/>
-				</div>
-				<div>
-					<label class="text-xs text-muted-foreground mb-1 block">{{ __("Remarks") }}</label>
-					<Input
-						v-model="invoiceHeader.remarks"
-						class="h-8 text-sm"
-						:placeholder="__('Optional notes...')"
-					/>
-				</div>
-			</div>
-		</div>
-
-		<div class="flex-1 flex min-h-0 overflow-hidden">
-			<div
-				v-if="showDraftPanel"
-				class="w-72 border-e border-border bg-card shrink-0 flex flex-col overflow-hidden"
-			>
-				<div class="px-3 py-2 border-b border-border flex items-center justify-between">
-					<span class="text-sm font-medium">{{ __("Saved Drafts") }}</span>
-					<Button @click="showDraftPanel = false" variant="ghost" size="icon" class="h-6 w-6">
-						<X class="w-3.5 h-3.5" />
-					</Button>
-				</div>
-				<div class="flex-1 overflow-y-auto p-2 space-y-2">
-					<div v-if="draftList.length === 0" class="text-center text-muted-foreground text-xs py-8">
-						{{ __("No drafts found") }}
-					</div>
-					<div
-						v-for="draft in draftList"
-						:key="draft.name"
-						class="border border-border rounded-md p-2 text-xs hover:bg-accent/50 transition-colors"
-					>
-						<div class="flex items-center justify-between mb-1">
-							<span class="font-medium truncate">{{ draft.name }}</span>
-							<span class="text-muted-foreground"
-								>{{ draft.items_count }} {{ __("items") }}</span
-							>
-						</div>
-						<div class="text-muted-foreground truncate mb-1.5">
-							{{ draft.supplier_name || draft.supplier }}
-						</div>
-						<div class="flex gap-1">
-							<Button
-								@click="loadDraft(draft.name)"
-								variant="outline"
-								size="sm"
-								class="h-6 text-xs flex-1"
-							>
-								<Edit3 class="w-3 h-3 me-1" />
-								{{ __("Load") }}
-							</Button>
-							<Button
-								@click="deleteDraft(draft.name)"
-								variant="outline"
-								size="sm"
-								class="h-6 text-xs text-destructive hover:text-destructive"
-							>
-								<Trash2 class="w-3 h-3" />
-							</Button>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<div
-				v-if="showPOPanel"
-				class="w-80 border-e border-border bg-card shrink-0 flex flex-col overflow-hidden"
-			>
-				<div class="px-3 py-2 border-b border-border flex items-center justify-between">
-					<span class="text-sm font-medium">{{ __("Purchase Orders") }}</span>
-					<Button @click="showPOPanel = false" variant="ghost" size="icon" class="h-6 w-6">
-						<X class="w-3.5 h-3.5" />
-					</Button>
-				</div>
-				<div class="flex-1 overflow-y-auto p-2 space-y-2">
-					<div v-if="isLoadingPOs" class="text-center py-8">
-						<Loader2 class="w-5 h-5 animate-spin mx-auto text-muted-foreground" />
-					</div>
-					<div
-						v-else-if="purchaseOrders.length === 0"
-						class="text-center text-muted-foreground text-xs py-8"
-					>
-						{{ __("No pending purchase orders") }}
-					</div>
-					<div
-						v-for="po in purchaseOrders"
-						:key="po.name"
-						class="border border-border rounded-md p-2 text-xs hover:bg-accent/50 transition-colors"
-					>
-						<div class="flex items-center justify-between mb-1">
-							<span class="font-medium">{{ po.name }}</span>
-							<span class="text-green-600 font-medium">{{
-								formatCurrency(po.grand_total)
-							}}</span>
-						</div>
-						<div class="text-muted-foreground mb-1">
-							{{ po.transaction_date }} &middot; {{ (po.items || []).length }} {{ __("items") }}
-						</div>
-						<div class="text-muted-foreground mb-1.5">
-							{{ __("Billed") }}: {{ percent(po.per_billed || 0) }} &middot;
-							{{ __("Received") }}:
-							{{ percent(po.per_received || 0) }}
-						</div>
-						<Button
-							@click="loadFromPO(po)"
-							variant="outline"
-							size="sm"
-							class="h-6 text-xs w-full"
-						>
-							<FileUp class="w-3 h-3 me-1" />
-							{{ __("Load Items") }}
-						</Button>
-					</div>
-				</div>
-			</div>
-
-			<div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-				<Table
-					:rows="invoiceItems"
-					:columns="invoiceColumns"
-					label="Items"
-					min-width="1400px"
-					:show-add-row="true"
-					:show-checkboxes="true"
-					:show-row-numbers="true"
-					:show-delete-button="true"
-					:keyboard-navigation="true"
-					:allow-reorder="true"
-					:allow-duplicate="true"
-					:show-column-settings="true"
-					:highlight-new-rows="true"
-					:tab-to-add-row="true"
-					:show-edit-row="true"
-					empty-message="No items added"
-					empty-description="Add a row and search for items, or load from a Purchase Order"
-					@add-row="addEmptyRow"
-					@cell-change="onCellChange"
-					@link-select="onItemLinkSelect"
-					class="flex-1 min-h-0 flex flex-col"
+				</template>
+				<Button @click="clearForm" variant="outline" size="sm">
+					<X class="w-3.5 h-3.5 me-1" />
+					{{ __("Clear") }}
+				</Button>
+				<Button
+					@click="saveDraft"
+					variant="outline"
+					size="sm"
+					:disabled="!purchaseStore.selectedSupplier || invoiceItems.length === 0 || isDraftSaving"
 				>
-					<template #toolbar>
-						<div class="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
-							<div class="relative w-full sm:w-auto">
-								<ScanBarcode
-									class="absolute inset-s-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground"
-								/>
-								<Input
-									v-model="barcodeValue"
-									class="ps-7 h-7 w-full text-xs sm:w-40"
-									:class="{
-										'ring-2 ring-green-500/50 border-green-500':
-											barcodeFlash === 'success',
-										'ring-2 ring-red-500/50 border-red-500': barcodeFlash === 'error',
-									}"
-									:placeholder="__('Scan barcode...')"
-									@keydown.enter.prevent="onBarcodeScan"
-									@paste="onBarcodePaste"
-								/>
-								<Loader2
-									v-if="isBarcodeScan"
-									class="absolute inset-e-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin"
-								/>
-							</div>
+					<Save class="w-3.5 h-3.5 me-1" />
+					{{ isDraftSaving ? __("Saving...") : __("Save Draft") }}
+				</Button>
+				<Button v-if="currentDraftName" @click="submitDraft" :disabled="isProcessing" size="sm">
+					<Send class="w-3.5 h-3.5 me-1" />
+					{{ isProcessing ? __("Submitting...") : __("Submit") }}
+				</Button>
+				<Button
+					v-else
+					@click="createInvoice"
+					:disabled="!purchaseStore.selectedSupplier || invoiceItems.length === 0 || isProcessing"
+					size="sm"
+				>
+					<Send class="w-3.5 h-3.5 me-1" />
+					{{ isProcessing ? __("Creating...") : __("Create & Submit") }}
+				</Button>
+				<div class="hidden sm:block w-px h-5 bg-border"></div>
+				<Button @click="loadDrafts" variant="outline" size="sm">
+					<FileDown class="w-3.5 h-3.5 me-1" />
+					{{ __("Drafts") }}
+				</Button>
+				<Button @click="fetchPurchaseOrders" variant="outline" size="sm">
+					<ShoppingCart class="w-3.5 h-3.5 me-1" />
+					{{ __("From PO") }}
+				</Button>
+				<Button @click="goToList" variant="outline" size="sm">
+					<List class="w-3.5 h-3.5 me-1" />
+					{{ __("Invoices") }}
+				</Button>
+			</PageHeader>
+
+			<div class="bg-card border-b border-border px-4 py-2.5 shrink-0">
+				<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+					<div>
+						<label class="text-xs text-muted-foreground mb-1 block">{{ __("Date") }}</label>
+						<DateTimePicker v-model="invoiceHeader.posting_date" mode="date" compact />
+					</div>
+					<div>
+						<label class="text-xs text-muted-foreground mb-1 block">{{ __("Supplier") }} *</label>
+						<div class="flex gap-1">
+							<Autocomplete
+								v-model="purchaseStore.selectedSupplierName"
+								doctype="Supplier"
+								placeholder="Select Supplier"
+								compact
+								class="flex-1"
+							/>
 							<Button
-								@click="showNewItemDialog = true"
+								@click="showNewSupplierDialog = true"
 								variant="outline"
-								size="sm"
-								class="h-7 w-full text-xs sm:w-auto"
+								size="icon-sm"
+								class="shrink-0"
 							>
-								<Plus class="w-3.5 h-3.5 me-1" />
-								{{ __("New Item") }}
+								<Plus class="w-3.5 h-3.5" />
 							</Button>
 						</div>
-					</template>
-				</Table>
+					</div>
+					<div>
+						<label class="text-xs text-muted-foreground mb-1 block">{{
+							__("Supp. Inv #")
+						}}</label>
+						<Input v-model="invoiceHeader.supplier_invoice_no" size="compact" />
+					</div>
+					<div>
+						<label class="text-xs text-muted-foreground mb-1 block">{{
+							__("Supp. Inv Date")
+						}}</label>
+						<DateTimePicker
+							v-model="invoiceHeader.supplier_invoice_date"
+							mode="date"
+							:showToday="true"
+							compact
+						/>
+					</div>
+					<div>
+						<label class="text-xs text-muted-foreground mb-1 block">{{ __("Remarks") }}</label>
+						<Input
+							v-model="invoiceHeader.remarks"
+							size="compact"
+							:placeholder="__('Optional notes...')"
+						/>
+					</div>
+				</div>
+			</div>
 
-				<div class="border-t border-border bg-muted shrink-0">
-					<div class="px-4 py-2 grid grid-cols-7 gap-3 text-xs">
-						<div>
-							<span class="text-muted-foreground block">{{ __("Items") }}</span>
-							<span class="font-semibold text-sm">{{ invoiceItems.length }}</span>
+			<div class="relative flex lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+				<div
+					v-if="showDraftPanel"
+					class="absolute inset-y-0 inset-s-0 z-20 w-[min(18rem,90vw)] shadow-overlay lg:static lg:z-auto lg:w-72 lg:shadow-none border-e border-border bg-card shrink-0 flex flex-col overflow-hidden"
+				>
+					<div class="px-3 py-2 border-b border-border flex items-center justify-between">
+						<span class="text-sm font-medium">{{ __("Saved Drafts") }}</span>
+						<Button @click="showDraftPanel = false" variant="ghost" size="icon" class="h-6 w-6">
+							<X class="w-3.5 h-3.5" />
+						</Button>
+					</div>
+					<div class="flex-1 overflow-y-auto p-2 space-y-2">
+						<div
+							v-if="draftList.length === 0"
+							class="text-center text-muted-foreground text-xs py-8"
+						>
+							{{ __("No drafts found") }}
 						</div>
-						<div>
-							<span class="text-muted-foreground block">{{ __("Total Qty") }}</span>
-							<span class="font-semibold text-sm">{{ totalQty }}</span>
-						</div>
-						<div>
-							<span class="text-muted-foreground block">{{ __("Gross Total") }}</span>
-							<span class="font-semibold text-sm">{{ formatCurrency(grossTotal) }}</span>
-						</div>
-						<div>
-							<span class="text-muted-foreground block">{{ __("Item Discount") }}</span>
-							<span class="font-semibold text-sm text-red-500"
-								>-{{ formatCurrency(totalDiscount) }}</span
-							>
-						</div>
-						<div>
-							<span class="text-muted-foreground block">{{ __("Net Total") }}</span>
-							<span class="font-semibold text-sm">{{ formatCurrency(netTotal) }}</span>
-						</div>
-						<div>
-							<span class="text-muted-foreground block">{{ __("Tax Total") }}</span>
-							<span class="font-semibold text-sm">{{ formatCurrency(totalTax) }}</span>
-						</div>
-						<div>
-							<span class="text-muted-foreground block">{{ __("Addl. Discount") }}</span>
-							<div class="flex items-center gap-1">
-								<Input
-									v-model.number="additionalDiscountPercent"
-									type="number"
-									min="0"
-									max="100"
-									step="0.1"
-									class="h-6 text-xs w-14"
-									placeholder="%"
-								/>
-								<span class="text-muted-foreground">{{ __("or") }}</span>
-								<Input
-									v-model.number="additionalDiscountAmount"
-									type="number"
-									min="0"
-									step="1"
-									class="h-6 text-xs w-20"
-									placeholder="Amt"
-								/>
+						<div
+							v-for="draft in draftList"
+							:key="draft.name"
+							class="border border-border rounded-md p-2 text-xs hover:bg-accent/50 transition-colors"
+						>
+							<div class="flex items-center justify-between mb-1">
+								<span class="font-medium truncate">{{ draft.name }}</span>
+								<span class="text-muted-foreground"
+									>{{ draft.items_count }} {{ __("items") }}</span
+								>
+							</div>
+							<div class="text-muted-foreground truncate mb-1.5">
+								{{ draft.supplier_name || draft.supplier }}
+							</div>
+							<div class="flex gap-1">
+								<Button
+									@click="loadDraft(draft.name)"
+									variant="outline"
+									size="sm"
+									class="h-6 text-xs flex-1"
+								>
+									<Edit3 class="w-3 h-3 me-1" />
+									{{ __("Load") }}
+								</Button>
+								<Button
+									@click="deleteDraft(draft.name)"
+									variant="outline"
+									size="sm"
+									class="h-6 text-xs text-destructive hover:text-destructive"
+								>
+									<Trash2 class="w-3 h-3" />
+								</Button>
 							</div>
 						</div>
 					</div>
+				</div>
 
-					<div class="px-4 py-2.5 border-t border-border flex items-center justify-between">
-						<div class="flex items-center gap-4">
-							<div class="flex items-center gap-2">
-								<label class="text-xs text-muted-foreground whitespace-nowrap">{{
-									__("Payment")
-								}}</label>
-								<select
-									v-model="selectedPaymentMode"
-									class="h-7 text-xs rounded-md border border-input bg-background px-2 focus:outline-none focus:ring-1 focus:ring-ring"
+				<div
+					v-if="showPOPanel"
+					class="absolute inset-y-0 inset-s-0 z-20 w-[min(20rem,90vw)] shadow-overlay lg:static lg:z-auto lg:w-80 lg:shadow-none border-e border-border bg-card shrink-0 flex flex-col overflow-hidden"
+				>
+					<div class="px-3 py-2 border-b border-border flex items-center justify-between">
+						<span class="text-sm font-medium">{{ __("Purchase Orders") }}</span>
+						<Button @click="showPOPanel = false" variant="ghost" size="icon" class="h-6 w-6">
+							<X class="w-3.5 h-3.5" />
+						</Button>
+					</div>
+					<div class="flex-1 overflow-y-auto p-2 space-y-2">
+						<div v-if="isLoadingPOs" class="text-center py-8">
+							<Loader2 class="w-5 h-5 animate-spin mx-auto text-muted-foreground" />
+						</div>
+						<div
+							v-else-if="purchaseOrders.length === 0"
+							class="text-center text-muted-foreground text-xs py-8"
+						>
+							{{ __("No pending purchase orders") }}
+						</div>
+						<div
+							v-for="po in purchaseOrders"
+							:key="po.name"
+							class="border border-border rounded-md p-2 text-xs hover:bg-accent/50 transition-colors"
+						>
+							<div class="flex items-center justify-between mb-1">
+								<span class="font-medium">{{ po.name }}</span>
+								<span class="text-success font-medium">{{
+									formatCurrency(po.grand_total)
+								}}</span>
+							</div>
+							<div class="text-muted-foreground mb-1">
+								{{ po.transaction_date }} &middot; {{ (po.items || []).length }}
+								{{ __("items") }}
+							</div>
+							<div class="text-muted-foreground mb-1.5">
+								{{ __("Billed") }}: {{ percent(po.per_billed || 0) }} &middot;
+								{{ __("Received") }}:
+								{{ percent(po.per_received || 0) }}
+							</div>
+							<Button
+								@click="loadFromPO(po)"
+								variant="outline"
+								size="sm"
+								class="h-6 text-xs w-full"
+							>
+								<FileUp class="w-3 h-3 me-1" />
+								{{ __("Load Items") }}
+							</Button>
+						</div>
+					</div>
+				</div>
+
+				<div class="flex-1 flex flex-col min-w-0 lg:min-h-0 lg:overflow-hidden">
+					<Table
+						:rows="invoiceItems"
+						:columns="invoiceColumns"
+						label="Items"
+						flush
+						min-width="1400px"
+						:show-add-row="true"
+						:show-checkboxes="true"
+						:show-row-numbers="true"
+						:show-delete-button="true"
+						:keyboard-navigation="true"
+						:allow-reorder="true"
+						:allow-duplicate="true"
+						:show-column-settings="true"
+						:highlight-new-rows="true"
+						:tab-to-add-row="true"
+						:show-edit-row="true"
+						empty-message="No items added"
+						empty-description="Add a row and search for items, or load from a Purchase Order"
+						@add-row="addEmptyRow"
+						@cell-change="onCellChange"
+						@link-select="onItemLinkSelect"
+						class="flex-1 min-h-88 lg:min-h-0 flex flex-col"
+					>
+						<template #toolbar>
+							<div class="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
+								<div class="relative w-full sm:w-auto">
+									<ScanBarcode
+										class="absolute inset-s-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground"
+									/>
+									<Input
+										v-model="barcodeValue"
+										size="compact"
+										class="ps-7 w-full sm:w-40"
+										:class="{
+											'ring-2 ring-success/50 border-success/30':
+												barcodeFlash === 'success',
+											'ring-2 ring-destructive/50 border-destructive/30':
+												barcodeFlash === 'error',
+										}"
+										:placeholder="__('Scan barcode...')"
+										@keydown.enter.prevent="onBarcodeScan"
+										@paste="onBarcodePaste"
+									/>
+									<Loader2
+										v-if="isBarcodeScan"
+										class="absolute inset-e-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin"
+									/>
+								</div>
+								<Button
+									@click="showNewItemDialog = true"
+									variant="outline"
+									size="sm"
+									class="w-full sm:w-auto"
 								>
-									<option value="">{{ __("No Payment") }}</option>
-									<option
-										v-for="pm in posStore.paymentMethods"
-										:key="pm.mode_of_payment"
-										:value="pm.mode_of_payment"
-									>
-										{{ pm.mode_of_payment }}
-									</option>
-								</select>
+									<Plus class="w-3.5 h-3.5 me-1" />
+									{{ __("New Item") }}
+								</Button>
+							</div>
+						</template>
+					</Table>
+
+					<div class="border-t border-border bg-muted shrink-0">
+						<div class="px-4 py-2 grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3 text-xs">
+							<div>
+								<span class="text-muted-foreground block">{{ __("Items") }}</span>
+								<span class="font-semibold text-sm">{{ invoiceItems.length }}</span>
 							</div>
 							<div>
-								<span class="text-sm text-muted-foreground">{{ __("Grand Total") }}</span>
-								<div class="text-xl font-bold text-green-600">
-									{{ formatCurrency(grandTotal) }}
+								<span class="text-muted-foreground block">{{ __("Total Qty") }}</span>
+								<span class="font-semibold text-sm">{{ totalQty }}</span>
+							</div>
+							<div>
+								<span class="text-muted-foreground block">{{ __("Gross Total") }}</span>
+								<span class="font-semibold text-sm">{{ formatCurrency(grossTotal) }}</span>
+							</div>
+							<div>
+								<span class="text-muted-foreground block">{{ __("Item Discount") }}</span>
+								<span class="font-semibold text-sm text-destructive"
+									>-{{ formatCurrency(totalDiscount) }}</span
+								>
+							</div>
+							<div>
+								<span class="text-muted-foreground block">{{ __("Net Total") }}</span>
+								<span class="font-semibold text-sm">{{ formatCurrency(netTotal) }}</span>
+							</div>
+							<div>
+								<span class="text-muted-foreground block">{{ __("Tax Total") }}</span>
+								<span class="font-semibold text-sm">{{ formatCurrency(totalTax) }}</span>
+							</div>
+							<div>
+								<span class="text-muted-foreground block">{{ __("Addl. Discount") }}</span>
+								<div class="flex items-center gap-1">
+									<Input
+										v-model.number="additionalDiscountPercent"
+										type="number"
+										min="0"
+										max="100"
+										step="0.1"
+										size="compact"
+										class="w-16"
+										placeholder="%"
+									/>
+									<span class="text-muted-foreground">{{ __("or") }}</span>
+									<Input
+										v-model.number="additionalDiscountAmount"
+										type="number"
+										min="0"
+										step="1"
+										size="compact"
+										class="w-24"
+										placeholder="Amt"
+									/>
+								</div>
+							</div>
+						</div>
+
+						<div class="px-4 py-2.5 border-t border-border flex items-center justify-between">
+							<div class="flex items-center gap-4">
+								<div class="flex items-center gap-2">
+									<label class="text-xs text-muted-foreground whitespace-nowrap">{{
+										__("Payment")
+									}}</label>
+									<Select
+										v-model="paymentSelectValue"
+										:items="paymentItems"
+										:placeholder="__('No Payment')"
+										class="h-control-compact w-44"
+										side="top"
+									/>
+								</div>
+								<div>
+									<span class="text-sm text-muted-foreground">{{ __("Grand Total") }}</span>
+									<div class="text-xl font-bold text-success">
+										{{ formatCurrency(grandTotal) }}
+									</div>
 								</div>
 							</div>
 						</div>
 					</div>
 				</div>
 			</div>
-		</div>
 
-		<CreateItemDialog
-			v-model:open="showNewItemDialog"
-			:initial-name="itemSearchTerm"
-			@created="onItemCreated"
-		/>
+			<CreateItemDialog
+				v-model:open="showNewItemDialog"
+				:initial-name="itemSearchTerm"
+				@created="onItemCreated"
+			/>
 
-		<CreateSupplierDialog
-			v-model:open="showNewSupplierDialog"
-			:initial-name="purchaseStore.selectedSupplierName"
-		/>
+			<CreateSupplierDialog
+				v-model:open="showNewSupplierDialog"
+				:initial-name="purchaseStore.selectedSupplierName"
+			/>
+		</section>
 	</div>
 </template>

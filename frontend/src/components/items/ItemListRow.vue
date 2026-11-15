@@ -1,16 +1,23 @@
 <template>
 	<div
-		class="group flex min-w-0 items-center gap-1 border-b border-border/70 pe-1.5 transition-colors duration-fast"
+		class="group flex min-w-0 items-center gap-1 border-x border-b border-x-border border-b-border/70 pe-1.5 transition-colors duration-fast"
 		:class="[
-			highlighted ? 'bg-surface-selected' : 'hover:bg-surface-hover/60',
+			highlighted ? 'bg-surface-selected' : 'bg-card hover:bg-surface-hover',
 			isUnavailable && 'text-muted-foreground',
 		]"
 		:data-state="isUnavailable ? 'unavailable' : isTemplate ? 'template' : undefined"
 	>
 		<button
 			type="button"
-			class="flex min-h-12 min-w-0 flex-1 select-none items-center gap-3 rounded-lg py-1.5 ps-2 pe-1 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
-			:class="isUnavailable ? 'cursor-not-allowed' : 'cursor-pointer'"
+			class="flex min-w-0 flex-1 select-none items-center gap-3 rounded-lg py-1.5 ps-2 pe-1 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+			:class="[
+				isUnavailable ? 'cursor-not-allowed' : 'cursor-pointer',
+				layoutStore.device.density === 'compact'
+					? 'min-h-10'
+					: layoutStore.device.density === 'touch'
+						? 'min-h-16'
+						: 'min-h-12',
+			]"
 			:aria-label="actionLabel"
 			:aria-disabled="isUnavailable || undefined"
 			data-testid="item-add"
@@ -85,9 +92,12 @@
 					>
 						{{ __("No price") }}
 					</span>
-					<span v-else class="text-sm font-bold text-foreground tabular-nums">{{
-						money(item.rate)
-					}}</span>
+					<span v-else class="text-sm font-bold text-foreground tabular-nums"
+						>{{ money(item.rate)
+						}}<span v-if="showUom" class="ms-1 text-xs font-normal text-muted-foreground"
+							>/ {{ item.stock_uom }}</span
+						></span
+					>
 				</span>
 			</span>
 			<span
@@ -115,6 +125,7 @@
 <script setup lang="ts">
 import { toRef } from "vue";
 import { useMoney } from "@/composables/useMoney";
+import { useLayoutStore } from "@/stores/layoutStore";
 import { itemRowGrid, STOCK_TONE_CLASS, useItemTileState } from "@/composables/useItemTileState";
 import { ChevronRight, Info, Layers, Package, Plus } from "lucide-vue-next";
 import type { POSItem } from "@/types/pos.types";
@@ -129,6 +140,7 @@ const props = defineProps({
 const emit = defineEmits(["click", "showDetail"]);
 
 const { money } = useMoney();
+const layoutStore = useLayoutStore();
 const {
 	showItemCode,
 	hasStockFigure,
@@ -140,6 +152,7 @@ const {
 	imageFailed,
 	showImage,
 	showThumbColumn,
+	showUom,
 	actionLabel,
 } = useItemTileState(toRef(props, "item"));
 

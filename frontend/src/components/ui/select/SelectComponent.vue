@@ -17,6 +17,7 @@ const props = withDefaults(
 		placeholder?: string;
 		disabled?: boolean;
 		class?: string;
+		ariaLabel?: string;
 		side?: "top" | "bottom" | "left" | "right";
 	}>(),
 	{
@@ -45,6 +46,7 @@ defineExpose({ focus, getTriggerEl });
 			ref="triggerRef"
 			:placeholder="placeholder"
 			:disabled="disabled"
+			:aria-label="ariaLabel"
 			:class="props.class"
 		>
 			<SelectValue :placeholder="placeholder" />

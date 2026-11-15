@@ -73,6 +73,7 @@ export interface POSProfile {
 	allow_coupon_entry?: boolean;
 	hide_closing_shift?: boolean;
 	use_offline_mode?: boolean;
+	offline_payment_modes?: { mode_of_payment: string }[];
 	cash_mode_of_payment?: string;
 	use_customer_credit?: boolean;
 	use_cashback?: boolean;

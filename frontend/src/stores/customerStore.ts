@@ -2,7 +2,8 @@ import { defineStore } from "pinia";
 import { ref, computed, type ComputedRef } from "vue";
 import { call } from "@/services/api";
 import { usePosStore } from "@/stores/posStore";
-import { cacheCustomers, getCachedCustomers, searchCachedCustomers } from "@/services/dbBridge";
+import { getCachedCustomers, mergeCachedCustomers, searchCachedCustomers } from "@/services/dbBridge";
+import { syncCatalog } from "@/services/catalogSync";
 import type {
 	Customer,
 	CustomerAddress,
@@ -56,7 +57,7 @@ export const useCustomerStore = defineStore("customers", () => {
 				customers.value = result || [];
 				if (customers.value.length > 0 && usePosStore().useOfflineMode) {
 					try {
-						await cacheCustomers(customers.value);
+						await mergeCachedCustomers(customers.value);
 					} catch (error) {
 						console.warn("[XPOS Offline] Failed to cache customers:", error);
 					}
@@ -83,21 +84,8 @@ export const useCustomerStore = defineStore("customers", () => {
 	}
 
 	async function cacheAllCustomers(posProfile?: string): Promise<void> {
-		if (!isOnline()) return;
-
-		try {
-			const result = await call<Customer[]>("xpos.api.customers.get_customers", {
-				search_term: "",
-				pos_profile: posProfile || "",
-				limit: 1000,
-			});
-
-			if (result && result.length > 0) {
-				await cacheCustomers(result);
-			}
-		} catch (error) {
-			console.warn("[XPOS Offline] Failed to pre-cache customers:", error);
-		}
+		if (!isOnline() || !posProfile) return;
+		await syncCatalog(posProfile);
 	}
 
 	async function createCustomer(data: Record<string, unknown>): Promise<Customer> {

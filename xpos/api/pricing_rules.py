@@ -191,6 +191,7 @@ def apply_item_rules(doc) -> dict[str, Any]:
 				"child_doctype": row.doctype,
 				"child_docname": row.name,
 				"transaction_date": doc.posting_date,
+				"price_list": doc.get("selling_price_list"),
 				"ignore_pricing_rule": 0,
 			}
 		)

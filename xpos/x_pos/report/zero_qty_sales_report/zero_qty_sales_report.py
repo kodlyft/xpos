@@ -4,6 +4,8 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
 	columns, data = get_columns(), get_sales_data(filters)
@@ -11,6 +13,7 @@ def execute(filters=None):
 
 
 def get_sales_data(filters):
+	scope.enforce(filters)
 	query = """
         SELECT
             tsi.item_code,
@@ -24,25 +27,26 @@ def get_sales_data(filters):
         FROM `tabSales Invoice Item` tsi
         INNER JOIN `tabSales Invoice` ts ON tsi.parent = ts.name
         LEFT JOIN `tabItem` ti ON tsi.item_code = ti.name
-        LEFT JOIN `tabBin` bin ON tsi.item_code = bin.item_code
+        LEFT JOIN `tabBin` bin ON tsi.item_code = bin.item_code {bin_scope}
 		LEFT JOIN `tabItem Supplier` iv ON ti.name = iv.parent
         WHERE
             ts.docstatus = 1
             AND ts.company = %(company)s
 			AND ts.posting_date >= %(from_date)s AND ts.posting_date <= %(to_date)s
             AND IFNULL(bin.actual_qty, 0) <= 0
+            {sales_scope}
         GROUP BY tsi.item_code
     """
 
-	data = frappe.db.sql(
-		query,
-		{
-			"from_date": filters.get("from_date"),
-			"to_date": filters.get("to_date"),
-			"company": filters.get("company"),
-		},
-		as_dict=True,
+	params = {
+		"from_date": filters.get("from_date"),
+		"to_date": filters.get("to_date"),
+		"company": filters.get("company"),
+	}
+	query = query.replace("{bin_scope}", scope.warehouse_condition("bin.warehouse", params)).replace(
+		"{sales_scope}", scope.warehouse_condition("tsi.warehouse", params)
 	)
+	data = frappe.db.sql(query, params, as_dict=True)
 	return data
 
 

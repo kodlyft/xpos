@@ -1,6 +1,6 @@
 import { newInvoiceId } from "@/services/invoiceSubmission";
 import { defineStore } from "pinia";
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, nextTick } from "vue";
 import { call } from "@/services/api";
 import { usePosStore } from "./posStore";
 import { useSettingsStore } from "./settingsStore";
@@ -40,6 +40,80 @@ import {
 import type { CartPricingLine, FreeItemLine } from "@/services/pricingEngine";
 import { nowDate, toDateOrNow } from "@/utils/datetime";
 import { debounce, isOnline } from "@/utils";
+
+export interface CartSnapshot {
+	v: 1;
+	cartId: string;
+	localId: string;
+	pricingDirty: boolean;
+	items: CartItem[];
+	selectedCartIndex: number;
+	customer: { name: string; customer_name?: string; [key: string]: unknown } | null;
+	discountPercentage: number;
+	discountAmount: number;
+	ruleDiscountPercentage: number;
+	ruleDiscountAmount: number;
+	customerDiscountPercentage: number;
+	applyDiscountOn: string;
+	appliedOffers: POSOffer[];
+	appliedCoupon: POSCoupon | null;
+	couponCode: string;
+	redeemLoyaltyPoints: boolean;
+	loyaltyPoints: number;
+	loyaltyAmount: number;
+	orderNotes: string;
+	deliveryDate: string;
+	postingDate: string;
+	salesPerson: string;
+	writeOffAmount: number;
+	selectedDeliveryCharge: DeliveryCharge | null;
+	currency: string;
+	conversionRate: number;
+	isReturnMode: boolean;
+	returnAgainst: string;
+	returnItemCodes: string[];
+	returnGiftCards: GiftCardRefund[];
+	giftCardTender: boolean;
+	sourceOrder: { name: string; deposit: number } | null;
+	sourceQuotation: string;
+	currentDraftName: string;
+	currentDraftModified: string;
+	payments: InvoicePayment[];
+	changeLegs: InvoiceChangeLeg[];
+	changeAmount: number;
+	effectivePriceList: string;
+	pricingSource: PricingSource;
+	repriceReview: RepriceResponse | null;
+	offerConflict: boolean;
+}
+
+export interface CartToken {
+	cartId: string;
+	epoch: number;
+}
+
+/** What other open carts hold, so one serial or batch is not promised to two customers. */
+export interface ForeignClaims {
+	serialCart(serial: string): string;
+	batchQty(itemCode: string, batchNo: string): number;
+}
+
+const EMPTY_CLAIMS: ForeignClaims = { serialCart: () => "", batchQty: () => 0 };
+
+export function splitSerials(value: string | undefined): string[] {
+	return (value || "")
+		.split(/[\n,]+/)
+		.map((serial) => serial.trim())
+		.filter(Boolean);
+}
+
+export function newCartId(): string {
+	const rand =
+		typeof crypto !== "undefined" && "randomUUID" in crypto
+			? crypto.randomUUID().replace(/-/g, "")
+			: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+	return `cart_${rand}`;
+}
 
 let cartRowSeq = 0;
 
@@ -213,13 +287,32 @@ export const useCartStore = defineStore("cart", () => {
 		);
 	});
 
-	const calculatedTaxes = computed(() => {
+	/**
+	 * An additional discount on "Net Total" comes off the pre-tax net, and ERPNext then charges
+	 * the taxes on what is left. Offers flatten every discount into one amount off the grand
+	 * total (getInvoiceData), so with an offer the discount is taken off the grand total instead.
+	 */
+	const discountOnNetTotal = computed(
+		() =>
+			applyDiscountOn.value === "Net Total" &&
+			!isReturnMode.value &&
+			!isGiftCardSale.value &&
+			(discountPercentage.value > 0 || discountAmount.value > 0) &&
+			!(offerItemDiscountTotal.value > 0 || offerGrandTotalDiscountPct.value > 0),
+	);
+
+	const taxBreakdown = computed(() => {
 		const posStore = usePosStore();
-		if (isGiftCardSale.value) return [];
+		const none = { taxes: [] as CalculatedTax[], netTotal: subtotal.value, netDiscount: 0 };
+		if (isGiftCardSale.value) return none;
 		const taxDetails = posStore.taxes || [];
 		const taxInclusive = posStore.taxInclusiveMode;
 
-		const itemNets: { net: number; taxMap: Record<string, number> | undefined }[] = [];
+		const profileAccountHeads = new Set(taxDetails.map((t) => t.account_head));
+		const rateFor = (tax: (typeof taxDetails)[number], taxMap: Record<string, number> | undefined) =>
+			taxMap && tax.account_head in taxMap ? taxMap[tax.account_head] : tax.rate;
+
+		const itemNets: { net: number; taxMap: Record<string, number> | undefined; divisor: number }[] = [];
 		for (const item of items.value) {
 			const itemTotal = item.qty * item.rate;
 			let discount = 0;
@@ -228,32 +321,55 @@ export const useCartStore = defineStore("cart", () => {
 			} else if (item.discount_amount) {
 				discount = item.qty < 0 ? -item.discount_amount : item.discount_amount;
 			}
+			// Like ERPNext's determine_exclusive_rate, an inclusive price is split by the sum of
+			// all inclusive rates on the item, not by each rate on its own.
+			let inclusiveRates = 0;
+			if (taxInclusive) {
+				for (const tax of taxDetails) {
+					if (tax.charge_type === "On Net Total") inclusiveRates += rateFor(tax, item.item_tax_map);
+				}
+				for (const [accountHead, rate] of Object.entries(item.item_tax_map || {})) {
+					if (!profileAccountHeads.has(accountHead)) inclusiveRates += rate;
+				}
+			}
 			itemNets.push({
 				net: itemTotal - discount,
 				taxMap: item.item_tax_map,
+				divisor: 100 + inclusiveRates,
 			});
 		}
 
-		if (itemNets.length === 0) return [];
+		if (itemNets.length === 0) return none;
+
+		// The net total before tax, and the discount ERPNext takes off it.
+		const netTotal = itemNets.reduce((sum, { net, divisor }) => sum + (net * 100) / divisor, 0);
+		let netDiscount = 0;
+		if (discountOnNetTotal.value) {
+			netDiscount =
+				discountPercentage.value > 0
+					? (netTotal * discountPercentage.value) / 100
+					: discountAmount.value;
+		}
+		const netFactor = netTotal && netDiscount ? (netTotal - netDiscount) / netTotal : 1;
+		if (netFactor !== 1) {
+			for (const row of itemNets) row.net *= netFactor;
+		}
 
 		const result: CalculatedTax[] = [];
 
 		for (const tax of taxDetails) {
-			const isIncluded = tax.included_in_print_rate === 1;
+			// The server sets every row except "Actual" inclusive or exclusive from the profile's
+			// Tax Inclusive setting (apply_tax_inclusive), whatever the template row says.
+			const isIncluded = taxInclusive && tax.charge_type !== "Actual";
 			let totalTaxAmount = 0;
 
-			for (const { net, taxMap } of itemNets) {
-				let effectiveRate = tax.rate;
-				if (taxMap && tax.account_head in taxMap) {
-					effectiveRate = taxMap[tax.account_head];
-				}
+			for (const { net, taxMap, divisor } of itemNets) {
+				const effectiveRate = rateFor(tax, taxMap);
 
 				if (tax.charge_type === "On Net Total") {
-					if (taxInclusive && isIncluded) {
-						totalTaxAmount += (net * effectiveRate) / (100 + effectiveRate);
-					} else if (!isIncluded) {
-						totalTaxAmount += (net * effectiveRate) / 100;
-					}
+					totalTaxAmount += isIncluded
+						? (net * effectiveRate) / divisor
+						: (net * effectiveRate) / 100;
 				}
 			}
 
@@ -271,14 +387,13 @@ export const useCartStore = defineStore("cart", () => {
 			}
 		}
 
-		const profileAccountHeads = new Set(taxDetails.map((t) => t.account_head));
 		const extraTaxAccounts: Map<string, number> = new Map();
 
-		for (const { net, taxMap } of itemNets) {
+		for (const { net, taxMap, divisor } of itemNets) {
 			if (!taxMap) continue;
 			for (const [accountHead, rate] of Object.entries(taxMap)) {
 				if (profileAccountHeads.has(accountHead)) continue;
-				const taxAmount = (net * rate) / 100;
+				const taxAmount = taxInclusive ? (net * rate) / divisor : (net * rate) / 100;
 				extraTaxAccounts.set(accountHead, (extraTaxAccounts.get(accountHead) || 0) + taxAmount);
 			}
 		}
@@ -290,13 +405,15 @@ export const useCartStore = defineStore("cart", () => {
 					description: desc,
 					rate: 0,
 					amount: Math.round(amount * 100) / 100,
-					included_in_print_rate: false,
+					included_in_print_rate: taxInclusive,
 				});
 			}
 		}
 
-		return result;
+		return { taxes: result, netTotal, netDiscount };
 	});
+
+	const calculatedTaxes = computed(() => taxBreakdown.value.taxes);
 
 	const taxAmount = computed(() => {
 		return calculatedTaxes.value
@@ -314,7 +431,7 @@ export const useCartStore = defineStore("cart", () => {
 		return calculatedTaxes.value.reduce((sum, t) => sum + t.amount, 0);
 	});
 
-	const totalBeforeDeposit = computed(() => {
+	const totalAfterOffers = computed(() => {
 		let total = subtotal.value + taxAmount.value;
 
 		// Apply offer item-level discounts
@@ -326,13 +443,23 @@ export const useCartStore = defineStore("cart", () => {
 		if (offerGrandTotalDiscountPct.value > 0) {
 			total -= (total * offerGrandTotalDiscountPct.value) / 100;
 		}
+		return total;
+	});
 
-		if (discountPercentage.value > 0) {
-			const base = applyDiscountOn.value === "Net Total" ? subtotal.value : total;
-			total -= (base * discountPercentage.value) / 100;
-		} else if (discountAmount.value > 0) {
-			total -= discountAmount.value;
-		}
+	/** The additional (invoice-level) discount, as the amount it takes off. */
+	const additionalDiscount = computed(() => {
+		if (discountOnNetTotal.value) return taxBreakdown.value.netDiscount;
+		if (discountPercentage.value > 0) return (totalAfterOffers.value * discountPercentage.value) / 100;
+		return discountAmount.value > 0 ? discountAmount.value : 0;
+	});
+
+	const totalBeforeDeposit = computed(() => {
+		// With a Net Total discount the taxes are already on the discounted net, and an
+		// included tax shrinks with it: total = net total - discount + taxes.
+		let total = discountOnNetTotal.value
+			? taxBreakdown.value.netTotal + totalTaxAmount.value
+			: totalAfterOffers.value;
+		total -= additionalDiscount.value;
 		if (!isReturnMode.value && redeemLoyaltyPoints.value && loyaltyAmount.value > 0) {
 			total -= loyaltyAmount.value;
 		}
@@ -394,13 +521,23 @@ export const useCartStore = defineStore("cart", () => {
 			.map(([item_code, stock_qty]) => ({ item_code, stock_qty }));
 	}
 
+	/** What the other open carts hold. Set by the session store; empty with a single cart. */
+	let foreignClaimsProvider: () => ForeignClaims = () => EMPTY_CLAIMS;
+	function setForeignClaims(provider: (() => ForeignClaims) | null): void {
+		foreignClaimsProvider = provider ?? (() => EMPTY_CLAIMS);
+	}
+
 	function committedStockQty(itemCode: string, batchNo?: string): number {
-		return items.value
-			.filter((i: CartItem) => {
-				if (i.item_code !== itemCode) return false;
-				return batchNo ? i.batch_no === batchNo : true;
-			})
-			.reduce((sum: number, i: CartItem) => sum + stockQtyOf(i), 0);
+		const elsewhere = batchNo ? foreignClaimsProvider().batchQty(itemCode, batchNo) : 0;
+		return (
+			elsewhere +
+			items.value
+				.filter((i: CartItem) => {
+					if (i.item_code !== itemCode) return false;
+					return batchNo ? i.batch_no === batchNo : true;
+				})
+				.reduce((sum: number, i: CartItem) => sum + stockQtyOf(i), 0)
+		);
 	}
 
 	function checkAvailability(
@@ -485,8 +622,15 @@ export const useCartStore = defineStore("cart", () => {
 			return { valid: true, messages: [] };
 		}
 
+		const token = captureCart();
 		const itemCodes = [...new Set(stockItems.map((i: CartItem) => i.item_code))];
 		const freshMap = await fetchAvailability(itemCodes, warehouse, posStore.profileName);
+		if (!isCurrentCart(token)) {
+			return {
+				valid: false,
+				messages: [__("The cart changed while stock was being checked. Try again.")],
+			};
+		}
 
 		if (freshMap.size === 0) {
 			return { valid: true, messages: [] };
@@ -562,8 +706,13 @@ export const useCartStore = defineStore("cart", () => {
 			return { success: false, message: stockCheck.message };
 		}
 
+		const sellingUom = item.uom || item.stock_uom;
 		const existing = items.value.find(
-			(i: CartItem) => i.item_code === item.item_code && !i.serial_no && !i.batch_no,
+			(i: CartItem) =>
+				i.item_code === item.item_code &&
+				!i.serial_no &&
+				!i.batch_no &&
+				(i.uom || i.stock_uom) === sellingUom,
 		);
 
 		if (existing) {
@@ -643,9 +792,7 @@ export const useCartStore = defineStore("cart", () => {
 		issuedGiftCards.value = cards;
 	}
 
-	function dismissIssuedGiftCards(): void {
-		issuedGiftCards.value = [];
-	}
+	function dismissIssuedGiftCards(): void {}
 
 	function canAddItemWithDetails(
 		item: POSItem,
@@ -671,6 +818,19 @@ export const useCartStore = defineStore("cart", () => {
 			!returnItemCodes.value.includes(item.item_code)
 		) {
 			return { success: false, message: __("This item is not in the original invoice") };
+		}
+
+		if (!isReturnMode.value) {
+			const taken = splitSerials(serialNo).find((serial) => foreignClaimsProvider().serialCart(serial));
+			if (taken) {
+				return {
+					success: false,
+					message: __("Serial {0} is already in {1}", [
+						taken,
+						foreignClaimsProvider().serialCart(taken),
+					]),
+				};
+			}
 		}
 
 		if (!isReturnMode.value) {
@@ -1062,6 +1222,10 @@ export const useCartStore = defineStore("cart", () => {
 		ruleDiscountAmount.value = 0;
 	}
 
+	/** True while hydrate() assigns a snapshot: its values are already priced, so the watchers stay quiet. */
+	let hydrating = false;
+	/** A repricing was scheduled or in flight when the cart left the screen. */
+	let pricingPending = false;
 	let pricingRequestId = 0;
 
 	/**
@@ -1120,6 +1284,7 @@ export const useCartStore = defineStore("cart", () => {
 	}
 
 	const schedulePricingRules = debounce(() => {
+		pricingPending = false;
 		applyPricingRules().catch((error) => {
 			console.error("Pricing rule reconciliation failed:", error);
 		});
@@ -1140,7 +1305,11 @@ export const useCartStore = defineStore("cart", () => {
 					)
 					.join("|"),
 			].join("~"),
-		() => schedulePricingRules(),
+		() => {
+			if (hydrating) return;
+			pricingPending = true;
+			schedulePricingRules();
+		},
 	);
 
 	const effectivePriceList = ref("");
@@ -1196,6 +1365,7 @@ export const useCartStore = defineStore("cart", () => {
 				const profilePriced =
 					!key || !cachedCustomerList || cachedCustomerList === posStore.sellingPriceList;
 				const cachedItem = profilePriced ? await getCachedItemByCode(line.item_code) : null;
+				if (requestId !== priceListRequestId) return;
 				if (cachedItem && (line.uom || line.stock_uom) === cachedItem.stock_uom) {
 					line.rate = normalizeItemRate(cachedItem.rate);
 					line.pos_price_unavailable = false;
@@ -1295,7 +1465,11 @@ export const useCartStore = defineStore("cart", () => {
 					.map((i) => `${i.uid}:${i.uom}:${linePriceKey(i)}`)
 					.join("|"),
 			].join("~"),
-		() => scheduleCustomerPriceList(),
+		() => {
+			if (hydrating) return;
+			pricingPending = true;
+			scheduleCustomerPriceList();
+		},
 	);
 
 	function customerDiscountRate(): number {
@@ -1356,7 +1530,10 @@ export const useCartStore = defineStore("cart", () => {
 				discountAmount.value,
 				isReturnMode.value,
 			].join("~"),
-		() => syncCustomerDiscount(),
+		() => {
+			if (hydrating) return;
+			syncCustomerDiscount();
+		},
 	);
 
 	/** Lines checkout must refuse: unresolved prices, and zero-price lines the profile does not allow. */
@@ -1445,8 +1622,22 @@ export const useCartStore = defineStore("cart", () => {
 	});
 
 	/** Everything that stops this sale being paid: pricing issues plus missing serial numbers. */
+	/** Serial numbers this cart shares with another open cart: only one of them can sell it. */
+	const serialConflicts = computed<string[]>(() => {
+		const claims = foreignClaimsProvider();
+		const out: string[] = [];
+		for (const line of items.value) {
+			for (const serial of splitSerials(line.serial_no)) {
+				const cart = claims.serialCart(serial);
+				if (cart) out.push(__("Serial {0} is already in {1}", [serial, cart]));
+			}
+		}
+		return out;
+	});
+
 	const checkoutBlockers = computed<string[]>(() => [
 		...pricingIssues.value,
+		...serialConflicts.value,
 		...pendingRequirements.value.filter((r) => r.blocking).map((r) => r.message),
 	]);
 
@@ -1458,6 +1649,16 @@ export const useCartStore = defineStore("cart", () => {
 		const line = items.value[index];
 		if (!line) return { success: false, message: __("Item not found") };
 		const serials = tracking.serials || [];
+		const taken = serials.find((serial) => foreignClaimsProvider().serialCart(serial));
+		if (taken) {
+			return {
+				success: false,
+				message: __("Serial {0} is already in {1}", [
+					taken,
+					foreignClaimsProvider().serialCart(taken),
+				]),
+			};
+		}
 		const lineQty = Math.abs(line.qty);
 		const needsSerials = !!line.has_serial_no && !line.serial_no;
 		if (needsSerials && serials.length !== lineQty) {
@@ -1555,7 +1756,28 @@ export const useCartStore = defineStore("cart", () => {
 		conversionRate.value = rate;
 	}
 
+	/** Stable identity of the cart on screen. Async work captures it before it awaits. */
+	const cartId = ref(newCartId());
+	/** Bumped whenever the cart's contents are replaced, so a late response can tell it is stale. */
+	const cartEpoch = ref(0);
+
+	function captureCart(): CartToken {
+		return { cartId: cartId.value, epoch: cartEpoch.value };
+	}
+
+	function isCurrentCart(token: CartToken | null | undefined): boolean {
+		return !!token && token.cartId === cartId.value && token.epoch === cartEpoch.value;
+	}
+
+	function invalidateInFlight(): void {
+		cartEpoch.value += 1;
+		pricingRequestId += 1;
+		priceListRequestId += 1;
+		isPricingCart.value = false;
+	}
+
 	function clearCart(): void {
+		invalidateInFlight();
 		invoiceLocalId = "";
 		items.value = [];
 		effectivePriceList.value = "";
@@ -1649,6 +1871,7 @@ export const useCartStore = defineStore("cart", () => {
 			}
 
 			clearCart();
+			const token = captureCart();
 
 			postingDate.value = posStore.allowChangePostingDate
 				? toDateOrNow(result.posting_date)
@@ -1667,10 +1890,12 @@ export const useCartStore = defineStore("cart", () => {
 
 				const { useItemStore } = await import("@/stores/itemStore");
 				const itemStore = useItemStore();
+				if (!isCurrentCart(token)) return false;
 				const inMemoryMap = new Map<string, number>(
 					itemStore.items.map((i: POSItem) => [i.item_code, i.actual_qty ?? 0]),
 				);
 
+				const loaded: CartItem[] = [];
 				for (const item of result.items) {
 					let actualQty: number = inMemoryMap.get(item.item_code) ?? -1;
 
@@ -1688,7 +1913,7 @@ export const useCartStore = defineStore("cart", () => {
 						}
 					}
 
-					items.value.push({
+					loaded.push({
 						uid: nextRowId(),
 						item_code: item.item_code,
 						item_name: item.item_name,
@@ -1714,6 +1939,8 @@ export const useCartStore = defineStore("cart", () => {
 						pos_pricing_rules: parsePricingRules(item.pricing_rules),
 					} as CartItem);
 				}
+				if (!isCurrentCart(token)) return false;
+				items.value.push(...loaded);
 			}
 
 			if (result.additional_discount_percentage) {
@@ -1840,6 +2067,128 @@ export const useCartStore = defineStore("cart", () => {
 		sourceQuotation.value = quotation.name;
 	}
 
+	/** The idempotency identity of this cart's sale, or "" before checkout has started. */
+	function currentLocalId(): string {
+		return invoiceLocalId;
+	}
+
+	/**
+	 * Everything a cart owns, as plain data. An allow-list: computed caches, the one-shot gift
+	 * card codes and dialog flags are deliberately left out.
+	 */
+	function snapshot(): CartSnapshot {
+		const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+		return {
+			v: 1,
+			cartId: cartId.value,
+			localId: invoiceLocalId,
+			pricingDirty: pricingPending || isPricingCart.value,
+			items: copy(items.value),
+			selectedCartIndex: selectedCartIndex.value,
+			customer: copy(customer.value),
+			discountPercentage: discountPercentage.value,
+			discountAmount: discountAmount.value,
+			ruleDiscountPercentage: ruleDiscountPercentage.value,
+			ruleDiscountAmount: ruleDiscountAmount.value,
+			customerDiscountPercentage: customerDiscountPercentage.value,
+			applyDiscountOn: applyDiscountOn.value,
+			appliedOffers: copy(appliedOffers.value),
+			appliedCoupon: copy(appliedCoupon.value),
+			couponCode: couponCode.value,
+			redeemLoyaltyPoints: redeemLoyaltyPoints.value,
+			loyaltyPoints: loyaltyPoints.value,
+			loyaltyAmount: loyaltyAmount.value,
+			orderNotes: orderNotes.value,
+			deliveryDate: deliveryDate.value,
+			postingDate: postingDate.value,
+			salesPerson: salesPerson.value,
+			writeOffAmount: writeOffAmount.value,
+			selectedDeliveryCharge: copy(selectedDeliveryCharge.value),
+			currency: currency.value,
+			conversionRate: conversionRate.value,
+			isReturnMode: isReturnMode.value,
+			returnAgainst: returnAgainst.value,
+			returnItemCodes: copy(returnItemCodes.value),
+			returnGiftCards: copy(returnGiftCards.value),
+			giftCardTender: giftCardTender.value,
+			sourceOrder: copy(sourceOrder.value),
+			sourceQuotation: sourceQuotation.value,
+			currentDraftName: currentDraftName.value,
+			currentDraftModified: currentDraftModified.value,
+			payments: copy(payments.value),
+			changeLegs: copy(changeLegs.value),
+			changeAmount: changeAmount.value,
+			effectivePriceList: effectivePriceList.value,
+			pricingSource: pricingSource.value,
+			repriceReview: copy(repriceReview.value),
+			offerConflict: offerConflict.value,
+		};
+	}
+
+	/** Put a snapshot on screen. Cancels in-flight work for the cart it replaces. */
+	function hydrate(snap: CartSnapshot): void {
+		hydrating = true;
+		invalidateInFlight();
+		cartId.value = snap.cartId;
+		invoiceLocalId = snap.localId || "";
+		items.value = snap.items;
+		selectedCartIndex.value = snap.selectedCartIndex;
+		customer.value = snap.customer;
+		discountPercentage.value = snap.discountPercentage;
+		discountAmount.value = snap.discountAmount;
+		ruleDiscountPercentage.value = snap.ruleDiscountPercentage;
+		ruleDiscountAmount.value = snap.ruleDiscountAmount;
+		customerDiscountPercentage.value = snap.customerDiscountPercentage;
+		applyDiscountOn.value = snap.applyDiscountOn;
+		appliedOffers.value = snap.appliedOffers;
+		appliedCoupon.value = snap.appliedCoupon;
+		couponCode.value = snap.couponCode;
+		redeemLoyaltyPoints.value = snap.redeemLoyaltyPoints;
+		loyaltyPoints.value = snap.loyaltyPoints;
+		loyaltyAmount.value = snap.loyaltyAmount;
+		orderNotes.value = snap.orderNotes;
+		deliveryDate.value = snap.deliveryDate;
+		postingDate.value = snap.postingDate;
+		salesPerson.value = snap.salesPerson;
+		writeOffAmount.value = snap.writeOffAmount;
+		selectedDeliveryCharge.value = snap.selectedDeliveryCharge;
+		currency.value = snap.currency;
+		conversionRate.value = snap.conversionRate;
+		isReturnMode.value = snap.isReturnMode;
+		returnAgainst.value = snap.returnAgainst;
+		returnItemCodes.value = snap.returnItemCodes;
+		returnGiftCards.value = snap.returnGiftCards;
+		giftCardTender.value = snap.giftCardTender;
+		sourceOrder.value = snap.sourceOrder;
+		sourceQuotation.value = snap.sourceQuotation;
+		currentDraftName.value = snap.currentDraftName;
+		currentDraftModified.value = snap.currentDraftModified;
+		payments.value = snap.payments;
+		changeLegs.value = snap.changeLegs;
+		changeAmount.value = snap.changeAmount;
+		effectivePriceList.value = snap.effectivePriceList;
+		pricingSource.value = snap.pricingSource;
+		repriceReview.value = snap.repriceReview;
+		offerConflict.value = snap.offerConflict;
+		showPaymentDialog.value = false;
+		pricingPending = false;
+		// Watchers run before the next tick; once it has passed, real edits count again.
+		void nextTick().then(() => {
+			hydrating = false;
+			if (snap.pricingDirty) {
+				pricingPending = true;
+				schedulePricingRules();
+				scheduleCustomerPriceList();
+			}
+		});
+	}
+
+	/** A cart with a different identity and nothing in it, with the default customer seeded. */
+	function startNewCart(id: string = newCartId()): void {
+		clearAll();
+		cartId.value = id;
+	}
+
 	let invoiceLocalId = "";
 	function getInvoiceData(posProfile: string, posOpeningShift: string): InvoiceData {
 		const data: InvoiceData = {
@@ -1911,6 +2260,8 @@ export const useCartStore = defineStore("cart", () => {
 
 			data.discount_amount = Math.round(totalDisc * 100) / 100;
 			data.additional_discount_percentage = 0;
+			// the amount above is worked out on the grand total
+			data.apply_discount_on = "Grand Total";
 		}
 
 		if (currentDraftName.value) {
@@ -2016,7 +2367,7 @@ export const useCartStore = defineStore("cart", () => {
 		});
 
 		const itemDiscountTotal = snapshotItems.reduce((sum, it) => sum + (it.discount_amount || 0), 0);
-		const totalDiscount = Math.round((itemDiscountTotal + (discountAmount.value || 0)) * 100) / 100;
+		const totalDiscount = Math.round((itemDiscountTotal + additionalDiscount.value) * 100) / 100;
 		const totalQty = items.value.reduce((sum: number, item: CartItem) => sum + item.qty, 0);
 		const paid = totalPayments.value;
 		const change = paid - grandTotal.value;
@@ -2051,7 +2402,10 @@ export const useCartStore = defineStore("cart", () => {
 				})),
 			subtotal: Math.round(subtotal.value * 100) / 100,
 			total_discount: totalDiscount,
-			net_total: Math.round((subtotal.value + includedTaxAmount.value) * 100) / 100,
+			// After a Net Total discount the net is what is left once the discount is off, as in ERPNext.
+			net_total: discountOnNetTotal.value
+				? Math.round((taxBreakdown.value.netTotal - taxBreakdown.value.netDiscount) * 100) / 100
+				: Math.round((subtotal.value - includedTaxAmount.value) * 100) / 100,
 			grand_total: grandTotal.value,
 			total_qty: totalQty,
 			change: change > 0.01 && !isReturnMode.value ? Math.round(change * 100) / 100 : 0,
@@ -2066,6 +2420,17 @@ export const useCartStore = defineStore("cart", () => {
 	}
 
 	return {
+		serialCartElsewhere: (serial: string) => foreignClaimsProvider().serialCart(serial),
+		setForeignClaims,
+		serialConflicts,
+		cartId,
+		cartEpoch,
+		captureCart,
+		isCurrentCart,
+		snapshot,
+		hydrate,
+		startNewCart,
+		currentLocalId,
 		items,
 		customer,
 		returnGiftCards,
@@ -2122,6 +2487,7 @@ export const useCartStore = defineStore("cart", () => {
 		calculatedTaxes,
 		taxAmount,
 		includedTaxAmount,
+		additionalDiscount,
 		totalTaxAmount,
 		grandTotal,
 		unroundedTotal,

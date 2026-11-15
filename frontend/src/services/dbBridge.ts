@@ -1,5 +1,9 @@
-import type { PendingPurchase } from "./idbService";
+import type { PendingPurchase, PendingInvoice } from "./idbService";
 import { sanitizeForIdb } from "./idbSanitize";
+import { newInvoiceId } from "./saleIdentity";
+import { currentOwner } from "./sessionScope";
+import { StorageWriteError, classifyStorageError } from "./storageHealth";
+import { tabId } from "./tabId";
 import type { POSItem, ItemGroup, Customer } from "@/types/pos.types";
 
 export async function getItems(opts?: { search?: string; group?: string; limit?: number; offset?: number }) {
@@ -152,40 +156,94 @@ export async function updateStockQty(warehouse: string, itemCode: string, qty: n
 	return true;
 }
 
+export const SEND_CLAIM_MS = 2 * 60_000;
+
 export async function addPendingInvoice(record: {
 	data: unknown;
 	customer_name?: string;
 	grand_total?: number;
 	receipt?: import("@/types/pos.types").ReceiptSnapshot;
+	reservations?: { item_code: string; stock_qty: number }[];
+	owner?: PendingInvoice["owner"];
+	catalog_evidence?: PendingInvoice["catalog_evidence"];
+	claim?: boolean;
+	hold?: PendingInvoice["hold"];
 }) {
-	// The cart hands over live Vue arrays (payments, change legs); IndexedDB can only
-	// store plain data and throw DataCloneError otherwise.
-	record = sanitizeForIdb(record);
-	const { db } = await import("./idbService");
-	const data = record.data as Record<string, unknown>;
-	const localId = String(data.local_id || `inv_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-	const table = db.table("pendingInvoices");
-	return db.transaction("rw", table, async () => {
-		const existing = await table.filter((row) => row.local_id === localId).first();
-		if (existing) {
-			if (JSON.stringify(existing.data) !== JSON.stringify(record.data)) {
-				throw new Error(
-					"This sale is awaiting confirmation. Retry the original sale from Pending Invoices before changing it.",
-				);
+	try {
+		record = sanitizeForIdb(record);
+		const idb = await import("./idbService");
+		await idb.ensureDatabaseReady();
+		const data = record.data as Record<string, unknown>;
+		const localId = String(data.local_id || newInvoiceId());
+		const table = idb.db.table("pendingInvoices");
+		return await idb.db.transaction("rw", table, async () => {
+			const existing = await table.filter((row) => row.local_id === localId).first();
+			if (existing) {
+				if (JSON.stringify(existing.data) !== JSON.stringify(record.data)) {
+					const conflict = new Error(
+						"This sale is awaiting confirmation. Retry the original sale from Pending Invoices before changing it.",
+					);
+					conflict.name = "SaleConflict";
+					throw conflict;
+				}
+				if (record.hold && existing.hold !== record.hold) {
+					await table.update(existing.id as number, { hold: record.hold });
+				}
+				return { id: existing.id as number, local_id: localId };
 			}
-			return { id: existing.id as number, local_id: localId };
-		}
-		const id = await table.add({
-			local_id: localId,
-			data: record.data,
-			status: "pending",
-			customer_name: record.customer_name,
-			grand_total: record.grand_total,
-			receipt: record.receipt,
-			created_at: new Date().toISOString(),
+			const id = await table.add({
+				local_id: localId,
+				data: record.data,
+				status: "pending",
+				customer_name: record.customer_name,
+				grand_total: record.grand_total,
+				receipt: record.receipt,
+				reservations: record.reservations,
+				owner: record.owner === undefined ? currentOwner() : record.owner,
+				catalog_evidence: record.catalog_evidence ?? null,
+				attempts: 0,
+				hold: record.hold ?? null,
+				claimed_by: record.claim ? tabId : null,
+				claim_expires: record.claim ? new Date(Date.now() + SEND_CLAIM_MS).toISOString() : null,
+				created_at: new Date().toISOString(),
+			});
+			const saved = await table.get(id);
+			if (!saved || saved.local_id !== localId) throw new StorageWriteError("unknown");
+			return { id: id as number, local_id: localId };
 		});
-		return { id: id as number, local_id: localId };
-	});
+	} catch (error) {
+		if ((error as Error)?.name === "SaleConflict") throw error;
+		throw error instanceof StorageWriteError
+			? error
+			: new StorageWriteError(classifyStorageError(error), error);
+	}
+}
+
+export async function findPendingInvoiceByLocalId(localId: string): Promise<PendingInvoice | undefined> {
+	const idb = await import("./idbService");
+	await idb.ensureDatabaseReady();
+	return idb.db.pendingInvoices.filter((row) => row.local_id === localId).first();
+}
+
+export async function claimPendingInvoice(id: number, ttlMs: number = SEND_CLAIM_MS) {
+	const idb = await import("./idbService");
+	return idb.claimPendingInvoice(id, tabId, ttlMs);
+}
+
+export async function recoverStaleClaims() {
+	const idb = await import("./idbService");
+	await idb.ensureDatabaseReady();
+	return idb.recoverStaleClaims();
+}
+
+export async function exportPendingInvoices(): Promise<string> {
+	const idb = await import("./idbService");
+	const rows = await idb.getAllPendingInvoices();
+	return JSON.stringify(
+		{ exported_at: new Date().toISOString(), host: location.host, invoices: rows },
+		null,
+		2,
+	);
 }
 
 export async function getPendingInvoices(status?: string) {
@@ -211,7 +269,9 @@ export async function deletePendingInvoice(id: number) {
 export async function countPendingInvoices() {
 	const idb = await import("./idbService");
 	const records = await idb.getAllPendingInvoices();
-	return records.filter((record) => record.status === "pending" || record.status === "failed").length;
+	return records.filter(
+		(record) => record.status === "pending" || record.status === "failed" || record.status === "syncing",
+	).length;
 }
 
 export async function addPendingPurchase(record: {
@@ -373,6 +433,40 @@ export async function searchCachedItems(
 	return idb.searchCachedItems(term, group, searchFields);
 }
 
+export async function searchCachedItemsPage(
+	term: string,
+	group: string,
+	searchFields: string[] | undefined,
+	offset: number,
+	limit: number,
+): Promise<{ items: POSItem[]; hasMore: boolean; total: number }> {
+	const idb = await import("./idbService");
+	return idb.searchCachedItemsPage(term, group, searchFields, offset, limit);
+}
+
+export async function findCachedItem(value: string): Promise<POSItem | undefined> {
+	const idb = await import("./idbService");
+	return idb.findCachedItem(value);
+}
+
+export async function findCachedScan(value: string) {
+	const idb = await import("./idbService");
+	return idb.findCachedScan(value);
+}
+
+export async function warmCatalogIndex(searchFields?: string[]): Promise<void> {
+	const idb = await import("./idbService");
+	await idb.warmCatalogIndex(searchFields);
+}
+
+export async function getCachedStockForItems(
+	warehouse: string,
+	itemCodes: string[],
+): Promise<Map<string, number>> {
+	const idb = await import("./idbService");
+	return idb.getCachedStockForItems(warehouse, itemCodes);
+}
+
 export async function cacheItemGroups(groups: ItemGroup[], parentGroups: ItemGroup[]): Promise<void> {
 	const idb = await import("./idbService");
 	await idb.cacheItemGroups(groups, parentGroups);
@@ -423,6 +517,11 @@ export async function adjustCachedStock(
 export async function cacheCustomers(customers: Customer[]): Promise<void> {
 	const idb = await import("./idbService");
 	await idb.cacheCustomers(customers);
+}
+
+export async function mergeCachedCustomers(customers: Customer[]): Promise<void> {
+	const idb = await import("./idbService");
+	await idb.mergeCachedCustomers(customers);
 }
 
 export async function getCachedCustomers(): Promise<Customer[]> {

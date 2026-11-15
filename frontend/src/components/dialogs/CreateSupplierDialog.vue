@@ -3,6 +3,7 @@ import { ref, computed, watch } from "vue";
 import { usePurchaseStore } from "@/stores/purchaseStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import __ from "@/lib/translate";
 
@@ -75,13 +76,13 @@ async function handleCreate(): Promise<void> {
 				<div class="grid grid-cols-2 gap-4">
 					<div>
 						<label class="text-sm font-medium mb-1 block">{{ __("Type") }}</label>
-						<select
+						<Select
 							v-model="newSupplier.supplier_type"
-							class="w-full h-9 px-3 border border-border rounded-md text-sm"
-						>
-							<option value="Company">{{ __("Company") }}</option>
-							<option value="Individual">{{ __("Individual") }}</option>
-						</select>
+							:items="[
+								{ label: __('Company'), value: 'Company' },
+								{ label: __('Individual'), value: 'Individual' },
+							]"
+						/>
 					</div>
 					<div>
 						<label class="text-sm font-medium mb-1 block">{{ __("Tax ID") }}</label>

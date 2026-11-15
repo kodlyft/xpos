@@ -51,6 +51,14 @@
 					>
 						<WifiOff class="size-3" /> {{ __("Offline") }}
 					</Badge>
+					<div
+						v-if="offlineBlockerMessages.length"
+						class="basis-full text-xs text-destructive whitespace-pre-line"
+						role="alert"
+						data-testid="payment-offline-blockers"
+					>
+						{{ offlineBlockerMessages.join("\n") }}
+					</div>
 					<Button
 						variant="ghost"
 						size="icon-sm"
@@ -334,7 +342,7 @@
 							</template>
 						</div>
 
-						<div v-if="!isSplitPayment" class="grid grid-cols-4 gap-2">
+						<div v-if="!isSplitPayment" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
 							<Button
 								v-for="(amount, idx) in quickAmounts"
 								:key="amount"
@@ -767,7 +775,7 @@
 									:model-value="leg.amount"
 									:min="0"
 									:precision="precisionFor(leg.currency)"
-									class="w-28 text-right text-sm py-1"
+									class="w-28 text-end text-sm py-1"
 									data-testid="change-leg-input"
 									@update:model-value="updateChangeLeg(idx, Number($event) || 0)"
 								/>
@@ -948,6 +956,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
 import { useCartStore } from "@/stores/cartStore";
+import { useCartSessionStore } from "@/stores/cartSessionStore";
 import { useCustomerStore } from "@/stores/customerStore";
 import { useAuthStore } from "@/stores/authStore";
 import { usePaymentStore } from "@/stores/paymentStore";
@@ -955,7 +964,8 @@ import { call, showSuccess, showError, showInfo, isNetworkError } from "@/servic
 import { __ } from "@/lib/translate";
 import { usePrintInvoice } from "@/composables/usePrintInvoice";
 import { submitDurableInvoice } from "@/services/invoiceSubmission";
-import { useOfflineSale } from "@/composables/useOfflineSale";
+import { captureSaleOrigin, useOfflineSale, type SaleOrigin } from "@/composables/useOfflineSale";
+import { offlineSaleBlockers } from "@/services/offlinePolicy";
 import {
 	completeLocalFiscalization,
 	FiscalUncertainError,
@@ -1041,8 +1051,9 @@ import {
 const posStore = usePosStore();
 const { moneyPrecision, percent } = useMoney();
 const { printInvoice } = usePrintInvoice();
-const { completeOfflineSale } = useOfflineSale();
+const { completeOfflineSale, lastFailure } = useOfflineSale();
 const cartStore = useCartStore();
+const cartSessions = useCartSessionStore();
 const customerStore = useCustomerStore();
 const authStore = useAuthStore();
 const paymentStore = usePaymentStore();
@@ -1353,8 +1364,32 @@ const outstandingSubmissionHint = computed(() => {
 	return __("Invoice will be submitted with a partial payment.");
 });
 
+const offlineBlockerMessages = computed(() => {
+	if (offlineStore.isOnline) return [];
+	return offlineSaleBlockers({
+		invoice: {
+			items: cartStore.items.map((item) => ({ gift_card_issue: item.gift_card_issue }) as never),
+			payments: activeLegs.value.map((leg) => ({
+				mode_of_payment: leg.mode_of_payment,
+				amount: leg.base_amount,
+				gift_card: leg.gift_card,
+				gift_card_auth: leg.gift_card_auth,
+			})) as never,
+			is_credit_sale: remainingAmount.value > 0,
+			customer_credit: creditApplied.value > 0 ? [{ source_type: "", source_name: "", amount: 0 }] : [],
+			is_return: cartStore.isReturnMode,
+		},
+		offlinePaymentModes: posStore.offlinePaymentModes,
+		outstanding: remainingAmount.value,
+		catalog: offlineStore.catalogStatus,
+		dbState: offlineStore.dbState,
+		storage: offlineStore.storageHealth,
+	}).map((blocker) => blocker.message);
+});
+
 const canSubmit = computed(() => {
 	if (cartStore.isEmpty) return false;
+	if (offlineBlockerMessages.value.length) return false;
 	if (isGiftCardSale.value && !offlineStore.isOnline) return false;
 	if (selectedRateMissing.value) return false;
 	if (!isSplitPayment.value && referenceMissing.value) return false;
@@ -1813,8 +1848,17 @@ function buildInvoicePayload(): InvoiceData {
 	return invoiceData;
 }
 
+/** The cart this checkout belongs to. Every response is applied to it, never to the cart on screen. */
+let origin: SaleOrigin | null = null;
+/** The server may or may not have the sale: the cart stays locked until Pay finishes it. */
+let outcomeUnknown = false;
+
 async function submitPayment(withPrint: boolean = true) {
 	if (isSubmitting.value) return;
+	if (cartSessions.submitBlockedReason) {
+		failSubmit(cartSessions.submitBlockedReason);
+		return;
+	}
 
 	if (showLoyaltyInput.value && !cartStore.redeemLoyaltyPoints && (redeemPointsInput.value || 0) > 0) {
 		applyLoyalty();
@@ -1834,10 +1878,14 @@ async function submitPayment(withPrint: boolean = true) {
 	}
 
 	isSubmitting.value = true;
+	const cartId = cartStore.cartId;
+	cartSessions.beginSubmit(cartId);
+	outcomeUnknown = false;
 	setSubmitState("checking", __("Checking stock..."));
 	const stockCheck = await cartStore.revalidateStock();
 	if (!stockCheck.valid) {
 		isSubmitting.value = false;
+		cartSessions.endSubmit(cartId, "idle");
 		failSubmit(stockCheck.messages.join("\n"));
 		return;
 	}
@@ -1846,6 +1894,7 @@ async function submitPayment(withPrint: boolean = true) {
 	setSubmitState("saving", __("Saving the sale. Keep this window open."));
 
 	const invoiceData = buildInvoicePayload();
+	origin = captureSaleOrigin(cartStore, invoiceData, authStore.userFullName);
 	const giftCardSale = hasGiftCardActivity(invoiceData);
 	try {
 		const shiftName = posStore.posOpeningShift?.name || "";
@@ -1859,20 +1908,17 @@ async function submitPayment(withPrint: boolean = true) {
 			const saved = await completeOfflineSale(invoiceData, {
 				withPrint,
 				cashier: authStore.userFullName,
+				origin: origin ?? undefined,
 			});
-			if (!saved) failSubmit(__("Failed to save invoice offline"));
+			if (!saved) failSubmit(lastFailure.value || __("Failed to save invoice offline"));
 			return;
 		}
-		const result = await submitDurableInvoice(
-			invoiceData,
-			cartStore.getReceiptSnapshot("", authStore.userFullName),
-			async () => {
-				let response = await call<CreateInvoiceResult>("xpos.api.invoices.create_invoice", {
-					data: JSON.stringify(invoiceData),
-				});
-				return await finalizeWithLocalFbr(response);
-			},
-		);
+		const result = await submitDurableInvoice(invoiceData, origin.receipt, async () => {
+			let response = await call<CreateInvoiceResult>("xpos.api.invoices.create_invoice", {
+				data: JSON.stringify(invoiceData),
+			});
+			return await finalizeWithLocalFbr(response);
+		});
 		if (handleRepricing(result)) return;
 
 		posStore.lastInvoiceName = result.name;
@@ -1883,7 +1929,7 @@ async function submitPayment(withPrint: boolean = true) {
 			showSuccess(__("Invoice {0} saved successfully!", [result.name]));
 		}
 
-		cartStore.clearAll();
+		finishOrigin();
 		if (withPrint && result.name) {
 			try {
 				await printInvoice(result.name);
@@ -1902,9 +1948,11 @@ async function submitPayment(withPrint: boolean = true) {
 			const saved = await completeOfflineSale(invoiceData, {
 				withPrint,
 				cashier: authStore.userFullName,
+				origin: origin ?? undefined,
 			});
 			if (saved) return;
-			failSubmit(__("You are offline. Invoice could not be saved locally."));
+			outcomeUnknown = true;
+			failSubmit(lastFailure.value || __("You are offline. Invoice could not be saved locally."));
 		} else {
 			failSubmit(__("Payment failed: {0}", [extractErrorMessage(error)]));
 		}
@@ -1912,8 +1960,16 @@ async function submitPayment(withPrint: boolean = true) {
 	} finally {
 		isSubmitting.value = false;
 		printAfterSave.value = false;
+		cartSessions.endSubmit(cartId, outcomeUnknown ? "uncertain" : "idle");
+		origin = null;
 		if (submitState.value === "checking" || submitState.value === "saving") setSubmitState("idle");
 	}
+}
+
+/** The sale is done: finish the cart it came from, and only that one. */
+function finishOrigin() {
+	if (origin) cartSessions.finish({ cartId: origin.cartId, localId: origin.localId });
+	else cartStore.clearAll();
 }
 
 /**
@@ -1940,6 +1996,7 @@ async function submitGiftCardSale(invoiceData: InvoiceData, withPrint: boolean) 
 		if (error instanceof FiscalUncertainError) {
 			await holdForFiscalCheck(error, invoiceData, false);
 		} else if (isNetworkError(error)) {
+			outcomeUnknown = true;
 			failSubmit(
 				__(
 					"The connection dropped before the server answered. Press Pay again to finish this sale; it will not be charged twice.",
@@ -1956,7 +2013,7 @@ async function submitGiftCardSale(invoiceData: InvoiceData, withPrint: boolean) 
 	posStore.lastInvoiceName = result.name;
 	showSuccess(__("Invoice {0} saved successfully!", [result.name]));
 	if (result.issued_gift_cards?.length) cartStore.showIssuedGiftCards(result.issued_gift_cards);
-	cartStore.clearAll();
+	finishOrigin();
 	if (withPrint && result.name) {
 		try {
 			await printInvoice(result.name);
@@ -1968,8 +2025,16 @@ async function submitGiftCardSale(invoiceData: InvoiceData, withPrint: boolean) 
 
 function handleRepricing(result: CreateInvoiceResult): boolean {
 	if (result.status !== "reprice_required") return false;
-	cartStore.applyServerRepricing(result as unknown as RepriceResponse);
-	showError((result as unknown as RepriceResponse).message);
+	const response = result as unknown as RepriceResponse;
+	if (!origin || origin.cartId === cartStore.cartId) {
+		cartStore.applyServerRepricing(response);
+	} else {
+		// The cashier has moved on: flag the cart it belongs to rather than repricing this one.
+		cartSessions.applyToCart(origin.cartId, (snapshot) => {
+			snapshot.repriceReview = response;
+		});
+	}
+	showError(response.message);
 	cartStore.closePaymentDialog();
 	return true;
 }
@@ -2012,12 +2077,12 @@ async function holdForFiscalCheck(error: FiscalUncertainError, invoiceData: Invo
 	if (!queued) {
 		await addPendingInvoice({
 			data: invoiceData,
-			receipt: cartStore.getReceiptSnapshot("", authStore.userFullName),
+			receipt: origin?.receipt ?? cartStore.getReceiptSnapshot("", authStore.userFullName),
 			customer_name: invoiceData.customer,
-			grand_total: cartStore.grandTotal,
+			grand_total: origin?.grandTotal ?? cartStore.grandTotal,
 		});
 	}
-	cartStore.clearAll();
+	finishOrigin();
 	cartStore.closePaymentDialog();
 	showError(
 		__("FBR did not confirm invoice {0}. Check it under Pending invoices before selling it again.", [

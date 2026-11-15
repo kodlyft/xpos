@@ -14,8 +14,8 @@
 						class="w-8 h-8 rounded-lg flex items-center justify-center"
 						:class="
 							paymentStore.cashMovementType === 'expense'
-								? 'bg-red-500/10 text-red-500'
-								: 'bg-emerald-500/10 text-emerald-500'
+								? 'bg-destructive/10 text-destructive'
+								: 'bg-success/10 text-success'
 						"
 					>
 						<ArrowDownCircle v-if="paymentStore.cashMovementType === 'expense'" class="w-4 h-4" />
@@ -103,7 +103,7 @@
 								<span
 									class="font-bold"
 									:class="
-										mov.movement_type === 'Expense' ? 'text-red-500' : 'text-emerald-500'
+										mov.movement_type === 'Expense' ? 'text-destructive' : 'text-success'
 									"
 								>
 									{{ mov.movement_type === "Expense" ? "-" : "+" }}{{ money(mov.amount) }}
@@ -120,8 +120,8 @@
 					class="flex-1 font-bold"
 					:class="
 						paymentStore.cashMovementType === 'expense'
-							? 'bg-red-500 hover:bg-red-600 text-white'
-							: 'bg-emerald-500 hover:bg-emerald-600 text-white'
+							? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
+							: 'bg-success hover:bg-success/90 text-success-foreground'
 					"
 					:disabled="!canSubmit || isSubmitting"
 					@click="submit"

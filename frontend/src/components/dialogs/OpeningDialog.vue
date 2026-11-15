@@ -1,12 +1,10 @@
 <template>
-	<div
-		class="fixed inset-0 bg-linear-to-br from-primary via-primary/90 to-primary/95 z-50 flex flex-col items-center overflow-y-auto p-4"
-	>
+	<div class="fixed inset-0 bg-background z-50 flex flex-col items-center overflow-y-auto p-4">
 		<div class="w-full max-w-md animate-in fade-in zoom-in-95 duration-300 my-auto">
 			<div class="text-center mb-8">
 				<XposLogo :size="64" class="mx-auto mb-4" />
-				<h1 class="text-2xl font-bold text-primary-foreground mb-1">X POS</h1>
-				<p class="text-primary-foreground/70 text-sm">{{ __("Open your shift to get started") }}</p>
+				<h1 class="text-2xl font-bold text-foreground mb-1">X POS</h1>
+				<p class="text-muted-foreground text-sm">{{ __("Open your shift to get started") }}</p>
 			</div>
 
 			<Card>
@@ -88,7 +86,7 @@
 
 						<Button
 							size="xl"
-							class="w-full font-bold bg-linear-to-r from-primary to-primary/90"
+							class="w-full font-bold"
 							:disabled="!selectedProfile || isOpening"
 							@click="handleOpenShift"
 						>
@@ -108,7 +106,7 @@
 			<div class="text-center mt-4">
 				<a
 					href="/desk"
-					class="text-primary-foreground/60 hover:text-primary-foreground text-sm transition-colors no-underline"
+					class="text-muted-foreground hover:text-foreground text-sm transition-colors no-underline"
 				>
 					← {{ __("Back to Desk") }}
 				</a>

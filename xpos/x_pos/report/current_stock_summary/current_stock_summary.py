@@ -4,8 +4,11 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
+	scope.enforce(filters)
 	columns, data = get_columns(), get_data(filters.get("warehouse"))
 	return columns, data
 

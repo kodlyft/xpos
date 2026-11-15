@@ -21,19 +21,18 @@
 			</template>
 
 			<template #item="{ item: drop }">
-				<Card
-					class="p-3 sm:p-4 cursor-pointer transition-all duration-200 border-border/60 dark:border-transparent hover:border-primary/40 hover:shadow-md dark:hover:bg-accent/50 dark:hover:shadow-primary/5"
-					@click="openBankDropDetail(drop)"
-				>
+				<Card interactive class="p-3 sm:p-4" @click="openBankDropDetail(drop)">
 					<div class="flex items-center gap-2 sm:gap-4">
 						<div
-							class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-emerald-500/10 text-emerald-500"
+							class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-success/10 text-success"
 						>
 							<ArrowUpCircle class="w-4 h-4" />
 						</div>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1 flex-wrap">
-								<span class="font-semibold text-foreground text-sm leading-tight">
+								<span
+									class="font-semibold text-foreground text-sm leading-tight min-w-0 wrap-anywhere"
+								>
 									{{ bankDropTitle(drop) }}
 								</span>
 								<Badge
@@ -69,7 +68,7 @@
 						</div>
 
 						<div class="text-end shrink-0">
-							<div class="font-bold text-base sm:text-lg leading-tight text-emerald-500">
+							<div class="font-bold text-base sm:text-lg leading-tight text-success">
 								{{ money(drop.amount) }}
 							</div>
 							<div class="text-xs text-muted-foreground whitespace-nowrap">
@@ -98,7 +97,7 @@
 				<DialogHeader>
 					<div class="flex items-center gap-2">
 						<div
-							class="w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-500/10 text-emerald-500"
+							class="w-8 h-8 rounded-lg flex items-center justify-center bg-success/10 text-success"
 						>
 							<ArrowUpCircle class="w-4 h-4" />
 						</div>
@@ -146,7 +145,7 @@
 						{{ __("Cancel") }}
 					</Button>
 					<Button
-						class="flex-1 font-bold bg-emerald-500 hover:bg-emerald-600 text-white"
+						class="flex-1 font-bold bg-success hover:bg-success/90 text-success-foreground"
 						:disabled="!canSubmit || isSaving"
 						@click="handleSave"
 					>

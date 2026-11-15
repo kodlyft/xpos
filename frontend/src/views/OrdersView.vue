@@ -35,7 +35,12 @@
 			>
 				<template #item="{ item: order }">
 					<Card
-						class="p-3 sm:p-4 cursor-pointer transition-all duration-200 border-border/60 dark:border-transparent hover:border-primary/40 hover:shadow-md dark:hover:bg-accent/50 dark:hover:shadow-primary/5"
+						interactive
+						class="bg-surface-raised p-3 hover:border-border hover:bg-surface-hover active:bg-surface-pressed aria-selected:bg-surface-selected sm:p-4"
+						:aria-selected="
+							showDetails && selectedOrder?.name === order.name ? 'true' : undefined
+						"
+						:aria-label="`${order.name} ${order.customer_name || order.customer}`"
 						@click="viewOrder(order)"
 					>
 						<div class="flex items-center gap-2 sm:gap-4">
@@ -45,7 +50,7 @@
 									<span class="font-semibold text-foreground text-sm leading-tight">{{
 										order.customer_name || order.customer
 									}}</span>
-									<Badge :variant="statusVariant(order.status)" class="text-[10px]">
+									<Badge :variant="statusVariant(order.status)" class="text-xs">
 										{{ __(order.status) }}
 									</Badge>
 								</div>
@@ -71,24 +76,25 @@
 								</div>
 							</div>
 
-							<div class="text-end shrink-0">
+							<div class="text-end shrink-0 tabular-nums">
 								<div class="font-bold text-foreground text-base sm:text-lg leading-tight">
 									{{ money(order.grand_total) }}
 								</div>
 								<div class="flex flex-col items-end gap-0 text-xs">
 									<span class="text-muted-foreground whitespace-nowrap">
-										Paid:
+										{{ __("Paid:") }}
 										{{ money((order.paid_amount || 0) - (order.change_amount || 0)) }}
 									</span>
 									<span
 										v-if="order.total_taxes_and_charges"
 										class="text-muted-foreground hidden sm:inline whitespace-nowrap"
 									>
-										Tax: {{ money(Number(order.total_taxes_and_charges) || 0) }}
+										{{ __("Tax:") }}
+										{{ money(Number(order.total_taxes_and_charges) || 0) }}
 									</span>
 								</div>
 							</div>
-							<ChevronRight class="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground/40 shrink-0" />
+							<ChevronRight class="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground shrink-0" />
 						</div>
 					</Card>
 				</template>
@@ -136,7 +142,8 @@ async function viewOrder(order: Invoice) {
 
 function formatDate(date: string) {
 	if (!date) return "";
-	return new Date(date).toLocaleDateString(undefined, {
+	const [year, month, day] = date.split("-").map(Number);
+	return new Date(year, month - 1, day).toLocaleDateString(undefined, {
 		year: "numeric",
 		month: "short",
 		day: "numeric",

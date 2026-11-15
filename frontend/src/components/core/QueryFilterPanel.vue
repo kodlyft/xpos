@@ -3,14 +3,11 @@
 		<Button
 			ref="filterBtnRef"
 			variant="outline"
-			size="sm"
-			class="h-8 gap-1"
-			:class="{
-				'bg-primary text-primary-foreground hover:bg-primary/90': modelQueryFilters.length > 0,
-			}"
+			class="gap-1.5 font-semibold"
+			:aria-pressed="modelQueryFilters.length > 0"
 			@click="togglePanel"
 		>
-			<Filter class="h-3.5 w-3.5" />
+			<Filter class="h-4 w-4" />
 			{{ __("Filters") }}
 			<Badge
 				v-if="modelQueryFilters.length > 0"
@@ -22,24 +19,30 @@
 		</Button>
 
 		<Teleport to="body">
-			<div v-if="showPanel" class="fixed inset-0 z-[998]" @click="showPanel = false" />
+			<div v-if="showPanel" class="fixed inset-0 z-998" @click="showPanel = false" />
 			<div
 				v-if="showPanel"
-				class="fixed z-[999] w-[min(500px,calc(100vw-1rem))] bg-popover border border-border rounded-lg shadow-lg"
+				role="dialog"
+				:aria-label="__('Query Filters')"
+				class="fixed z-999 w-[min(500px,calc(100vw-1rem))] bg-popover border border-border rounded-xl shadow-overlay"
 				:style="panelStyle"
 			>
 				<div class="p-3 border-b border-border">
 					<div class="flex items-center justify-between">
 						<span class="text-sm font-semibold text-foreground">{{ __("Query Filters") }}</span>
-						<Button variant="outline" size="sm" class="h-7 text-xs" @click="addFilter">
+						<Button variant="outline" class="gap-1.5 font-semibold" @click="addFilter">
 							<Plus class="h-3 w-3" />
 							{{ __("Add Filter") }}
 						</Button>
 					</div>
 				</div>
 
-				<div class="p-3 space-y-2 max-h-[300px] overflow-y-auto">
-					<div v-for="(filter, index) in localFilters" :key="index" class="flex items-center gap-2">
+				<div class="p-3 space-y-2 max-h-75 overflow-y-auto">
+					<div
+						v-for="(filter, index) in localFilters"
+						:key="index"
+						class="flex items-center gap-2 rounded-xl border border-border bg-surface-raised p-2 shadow-raised"
+					>
 						<Autocomplete
 							v-model="filter.field"
 							:options="fieldOptions"
@@ -48,13 +51,14 @@
 							:clearable="false"
 							:max-visible="10"
 							:empty-text="__('No fields')"
-							class="w-[150px]"
+							class="w-37.5"
 							@update:model-value="onFilterFieldChange(index)"
 						/>
 
 						<Select
 							v-model="filter.operator"
-							class="w-[130px] shrink-0"
+							class="w-32.5 shrink-0"
+							:aria-label="__('Operator')"
 							@update:model-value="emitFilters"
 							:items="
 								getOperatorsForFilter(filter).map((op) => ({
@@ -108,19 +112,36 @@
 							]"
 						/>
 
+						<DateTimePicker
+							v-else-if="getFieldType(filter.field) === 'Date'"
+							mode="date"
+							:model-value="filter.value"
+							:placeholder="__('Select date')"
+							:aria-label="__('Value')"
+							class="min-w-0 flex-1"
+							@update:model-value="
+								(val: string) => {
+									filter.value = val;
+									emitFilters();
+								}
+							"
+						/>
+
 						<Input
 							v-else
 							v-model="filter.value"
 							type="text"
 							:placeholder="__('Value')"
-							class="h-8 flex-1"
+							:aria-label="__('Value')"
+							class="flex-1"
 							@change="emitFilters"
 						/>
 
 						<Button
-							variant="ghost"
-							size="icon-sm"
-							class="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+							variant="outline"
+							size="icon"
+							class="shrink-0 text-muted-foreground hover:text-destructive"
+							:aria-label="__('Remove filter')"
 							@click="removeFilter(index)"
 						>
 							<X class="h-3.5 w-3.5" />
@@ -136,10 +157,10 @@
 				</div>
 
 				<div v-if="localFilters.length > 0" class="p-3 border-t border-border flex justify-end gap-2">
-					<Button variant="ghost" size="sm" class="h-7" @click="clearAll">
+					<Button variant="outline" class="font-semibold" @click="clearAll">
 						{{ __("Clear All") }}
 					</Button>
-					<Button size="sm" class="h-7" @click="showPanel = false">
+					<Button class="font-semibold" @click="showPanel = false">
 						{{ __("Apply") }}
 					</Button>
 				</div>
@@ -153,6 +174,7 @@ import { ref, reactive, computed, watch } from "vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Autocomplete } from "@/components/ui/autocomplete";
+import { DateTimePicker } from "@/components/ui/datetime-picker";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import { Badge } from "@/components/ui/badge";
 import { Filter, Plus, X } from "lucide-vue-next";

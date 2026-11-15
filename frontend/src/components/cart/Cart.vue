@@ -26,11 +26,26 @@
 		</div>
 
 		<div class="shrink-0 space-y-2 px-4 pt-3 pb-2">
-			<div class="flex items-center justify-between gap-3">
-				<h2 class="flex min-w-0 items-center gap-2 text-lg font-bold text-foreground">
+			<div class="flex items-center justify-between gap-2">
+				<h2 class="flex shrink-0 items-center gap-2 text-lg font-bold text-foreground">
 					<ShoppingCart class="size-5 shrink-0 text-primary" aria-hidden="true" />
-					<span class="truncate">{{ __("Current sale") }}</span>
+					<span class="truncate" :title="__('Current sale')">{{ __("Sale") }}</span>
 				</h2>
+				<Autocomplete
+					v-if="posStore.salesPersonEnabled && !cartStore.isReturnMode"
+					v-model="cartStore.salesPerson"
+					doctype="Sales Person"
+					query="xpos.api.customers.sales_person_query"
+					:filters="{ pos_profile: posStore.profileName }"
+					:placeholder="__('Sales Person')"
+					:open-on-focus="true"
+					:clearable="true"
+					:min-chars="0"
+					compact
+					:show-search-icon="false"
+					class="min-w-0 flex-1"
+					data-testid="cart-sales-person"
+				/>
 				<span
 					class="shrink-0 rounded-lg border border-border bg-surface-sunken px-2 py-0.5 text-xs font-semibold text-muted-foreground tabular-nums"
 					data-testid="cart-item-count"
@@ -99,31 +114,30 @@
 						>
 							{{ cartStore.customer ? __("Change") : __("Select") }}
 						</Button>
-						<Popover v-if="cartStore.customer" v-model:open="customerMenuOpen">
-							<PopoverTrigger as-child>
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									class="shrink-0"
-									:aria-label="__('Customer actions')"
-									data-testid="customer-more"
-								>
-									<MoreHorizontal class="size-4.5!" />
-								</Button>
-							</PopoverTrigger>
-							<PopoverContentStyled class="w-56 p-1.5" align="end" role="menu">
-								<PopoverMenuItem @click="runCustomerAction(handleEditCustomer)">
-									<template #icon><Pencil /></template>
-									{{ __("Edit Customer") }}
-								</PopoverMenuItem>
-								<PopoverMenuItem
-									@click="runCustomerAction(() => (customerStore.showLoyaltyDialog = true))"
-								>
-									<template #icon><Gift /></template>
-									{{ __("Loyalty Program") }}
-								</PopoverMenuItem>
-							</PopoverContentStyled>
-						</Popover>
+						<template v-if="cartStore.customer">
+							<Button
+								variant="outline"
+								size="icon-sm"
+								class="shrink-0"
+								:aria-label="__('Edit Customer')"
+								:title="__('Edit Customer')"
+								data-testid="customer-edit"
+								@click="handleEditCustomer"
+							>
+								<Pencil class="size-4!" />
+							</Button>
+							<Button
+								variant="outline"
+								size="icon-sm"
+								class="shrink-0"
+								:aria-label="__('Loyalty Program')"
+								:title="__('Loyalty Program')"
+								data-testid="customer-loyalty"
+								@click="customerStore.showLoyaltyDialog = true"
+							>
+								<Gift class="size-4!" />
+							</Button>
+						</template>
 					</template>
 				</div>
 
@@ -160,19 +174,6 @@
 						}}
 					</p>
 				</div>
-
-				<Autocomplete
-					v-if="posStore.salesPersonEnabled && !cartStore.isReturnMode"
-					v-model="cartStore.salesPerson"
-					doctype="Sales Person"
-					query="xpos.api.customers.sales_person_query"
-					:filters="{ pos_profile: posStore.profileName }"
-					:placeholder="__('Sales Person')"
-					:open-on-focus="true"
-					:clearable="true"
-					:min-chars="0"
-					class="mt-2"
-				/>
 			</div>
 		</div>
 
@@ -276,20 +277,8 @@ import CartSummary from "./CartSummary.vue";
 import { Button } from "@/components/ui/button";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Popover, PopoverContentStyled, PopoverMenuItem, PopoverTrigger } from "@/components/ui/popover";
 import { EmptyState } from "@/components/ui/state";
-import {
-	ShoppingCart,
-	User,
-	RotateCcw,
-	X,
-	Lock,
-	Gift,
-	Pencil,
-	AlertTriangle,
-	MoreHorizontal,
-	Ticket,
-} from "lucide-vue-next";
+import { ShoppingCart, User, RotateCcw, X, Lock, Gift, Pencil, AlertTriangle, Ticket } from "lucide-vue-next";
 import { initials } from "@/lib/utils";
 import __ from "@/lib/translate";
 import CustomerEditDialog from "@/components/dialogs/CustomerEditDialog.vue";
@@ -300,13 +289,7 @@ const customerStore = useCustomerStore();
 const { money, qty } = useMoney();
 
 const cartScrollContainer = ref<HTMLElement | null>(null);
-const customerMenuOpen = ref(false);
 const customerInitials = computed(() => initials(cartStore.customerName));
-
-function runCustomerAction(action: () => unknown) {
-	customerMenuOpen.value = false;
-	action();
-}
 
 onMounted(() => {
 	window.addEventListener("xpos:focus-cart-item", handleFocusCartItem);

@@ -1,17 +1,26 @@
 <template>
-	<div class="flex items-center justify-between px-2 py-3 border-t border-border">
+	<div
+		class="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border px-3 py-2 sm:px-4"
+	>
 		<div class="flex items-center gap-2 text-sm text-muted-foreground">
-			<span>{{ startRecord }}-{{ endRecord }} of {{ total }}</span>
+			<span>{{ startRecord }}-{{ endRecord }} {{ __("of") }} {{ total }}</span>
 		</div>
 
-		<div class="flex items-center gap-1">
-			<Button variant="ghost" size="icon-sm" :disabled="currentPage === 1" @click="goToPage(1)">
+		<nav class="flex items-center gap-1" :aria-label="__('Pagination')">
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				:aria-label="__('First page')"
+				:disabled="currentPage === 1"
+				@click="goToPage(1)"
+			>
 				<ChevronsLeft class="h-4 w-4" />
 			</Button>
 
 			<Button
 				variant="ghost"
 				size="icon-sm"
+				:aria-label="__('Previous page')"
 				:disabled="currentPage === 1"
 				@click="goToPage(currentPage - 1)"
 			>
@@ -25,6 +34,7 @@
 				<Button
 					v-else
 					:variant="page === currentPage ? 'default' : 'ghost'"
+					:aria-current="page === currentPage ? 'page' : undefined"
 					size="icon-sm"
 					@click="goToPage(page as number)"
 				>
@@ -35,6 +45,7 @@
 			<Button
 				variant="ghost"
 				size="icon-sm"
+				:aria-label="__('Next page')"
 				:disabled="currentPage === totalPages"
 				@click="goToPage(currentPage + 1)"
 			>
@@ -44,17 +55,20 @@
 			<Button
 				variant="ghost"
 				size="icon-sm"
+				:aria-label="__('Last page')"
 				:disabled="currentPage === totalPages"
 				@click="goToPage(totalPages)"
 			>
 				<ChevronsRight class="h-4 w-4" />
 			</Button>
-		</div>
+		</nav>
 
 		<div class="flex items-center gap-2">
 			<span class="hidden sm:inline text-sm text-muted-foreground">{{ __("Per page:") }}</span>
 			<Select
 				v-model="pageSizeStr"
+				class="h-control-compact w-20"
+				:aria-label="__('Per page:')"
 				side="top"
 				:items="pageSizes.map((size) => ({ label: String(size), value: String(size) }))"
 			/>

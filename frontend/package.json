@@ -15,6 +15,8 @@
     "build": "vite build --base=/assets/xpos/xpos/ && yarn copy-html-entry",
     "copy-html-entry": "cp ../xpos/public/xpos/index.html ../xpos/www/xpos.html",
     "preview": "vite preview",
+    "bench": "node bench/run.mjs",
+    "bench:report": "node bench/report.mjs",
     "typecheck": "vue-tsc --noEmit && tsc -p tests/e2e/tsconfig.json --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
@@ -24,8 +26,10 @@
     "test:e2e:run": "node scripts/run-cypress.mjs run"
   },
   "dependencies": {
+    "@tanstack/vue-virtual": "3.13.47",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
+    "air-datepicker": "3.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.20",
@@ -37,7 +41,6 @@
     "tailwindcss-animate": "^1.0.7",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0",
-    "vue-sonner": "^1.1.2",
     "workbox-window": "^7.4.0"
   },
   "devDependencies": {
@@ -45,13 +48,15 @@
     "@types/node": "^26.2.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/test-utils": "^2.4.6",
-    "autoprefixer": "^10.4.19",
+    "autoprefixer": "^10.6.2",
     "cypress": "13.17.0",
+    "fake-indexeddb": "6.2.5",
     "jsdom": "^29.1.1",
+    "playwright-core": "1.63.0",
     "postcss": "^8.5.23",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vite": "^8.0.0",
+    "vite": "^8.2.4",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.11",
     "vue-tsc": "^3.3.6"
@@ -59,7 +64,6 @@
   "resolutions": {
     "ws": "^8.21.0",
     "defu": "^6.1.5",
-    "radix-vue/nanoid": "^5.1.16",
-    "**/postcss/nanoid": "^3.3.18"
+    "radix-vue/nanoid": "^5.1.16"
   }
 }

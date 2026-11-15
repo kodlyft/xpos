@@ -525,8 +525,10 @@ async function createAndSelect() {
 			if (payload[key] === undefined) delete payload[key];
 		});
 
+		const token = cartStore.captureCart();
 		const result = await customerStore.createCustomer(payload);
-		cartStore.setCustomer(result);
+		if (cartStore.isCurrentCart(token)) cartStore.setCustomer(result);
+		else showInfo(__("Customer created. Select them in the cart you want."));
 		const created = result as Record<string, unknown>;
 		showSuccess(
 			created.referral_code

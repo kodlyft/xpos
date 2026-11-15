@@ -37,6 +37,11 @@
 | 28 | [Mixed-Currency Tender Setup](28-mixed-currency-setup.md) | Configure a store that prices in one currency and takes cash in another |
 | 29 | [Gift Cards](29-gift-cards.md) | Stored-value cards: sell, spend in parts, refund, liability report |
 | 30 | [Sales Orders & Quotations](30-sales-orders-quotations.md) | Save the cart as an order or quotation, take a deposit, bill orders in parts |
+| 31 | [Reports](31-reports.md) | What the POS reports read, currency and blind-closing rules, scope for restricted users, limits |
+| 33 | [Selling on XPOS Mobile](33-mobile-selling.md) | Cashier guide for the Android app |
+| 34 | [Cart Tabs](34-cart-tabs.md) | Several carts open at once |
+| 35 | [XPOS Mobile Overview](35-xpos-mobile-overview.md) | Requirements, first run, what the app can and cannot do yet, rollout |
+| 36 | [Price Checker](36-price-checker.md) | Kiosk screen: scan a barcode and see price and stock |
 
 ---
 

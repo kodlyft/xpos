@@ -21,6 +21,11 @@ const delegatedProps = computed(() => {
 });
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits);
+
+function keepOpenForToast(event: Event) {
+	const target = (event as CustomEvent<{ originalEvent: Event }>).detail?.originalEvent?.target;
+	if (target instanceof Element && target.closest("[data-toast-host]")) event.preventDefault();
+}
 </script>
 
 <template>
@@ -28,6 +33,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits);
 		<DialogOverlay class="dialog-overlay fixed inset-0 z-9999 bg-scrim/35" />
 		<DialogContent
 			v-bind="forwarded"
+			@interact-outside="keepOpenForToast"
 			:class="
 				cn(
 					'dialog-panel fixed left-1/2 top-1/2 z-9999 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-3xl border border-border bg-surface-raised p-6 text-card-foreground shadow-overlay',

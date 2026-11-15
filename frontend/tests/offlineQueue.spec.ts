@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 import type { PendingInvoice } from "@/services/idbService";
+import { setSessionScope } from "@/services/sessionScope";
 
 const { db, call } = vi.hoisted(() => ({
 	db: { rows: [] as PendingInvoice[] },
@@ -23,6 +24,15 @@ vi.mock("@/services/api", () => ({
 vi.mock("@/stores/posStore", () => ({ usePosStore: () => ({ useOfflineMode: true }) }));
 vi.mock("@/services/dbBridge", () => ({
 	addPendingInvoice: vi.fn(),
+	findPendingInvoiceByLocalId: vi.fn(),
+	recoverStaleClaims: vi.fn(async () => 0),
+	exportPendingInvoices: vi.fn(),
+	claimPendingInvoice: vi.fn(async (id: number) => {
+		const row = db.rows.find((r) => r.id === id);
+		if (!row) return null;
+		row.status = "syncing";
+		return { ...row };
+	}),
 	getAllPendingInvoices: vi.fn(async () => db.rows.map((r) => ({ ...r }))),
 	updatePendingInvoice: vi.fn(async (id: number, updates: Record<string, unknown>) => {
 		const row = db.rows.find((r) => r.id === id);
@@ -101,6 +111,13 @@ const uncertain = {
 };
 
 beforeEach(() => {
+	setSessionScope({
+		user: "cashier",
+		profile: "Main",
+		company: "TC",
+		warehouse: "Stores",
+		priceList: "Std",
+	});
 	setActivePinia(createPinia());
 	vi.clearAllMocks();
 	call.mockReset();
@@ -167,6 +184,7 @@ describe("offline queue sync", () => {
 		const store = useOfflineStore();
 		await store.syncPendingInvoices();
 		expect(db.rows[0].status).toBe("failed");
+		db.rows[0].next_attempt_at = null;
 
 		await store.syncPendingInvoices();
 		expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -277,5 +295,161 @@ describe("offline queue sync", () => {
 		await useOfflineStore().syncPendingInvoices();
 		expect(db.rows).toHaveLength(1);
 		expect(db.rows[0].status).toBe("failed");
+	});
+});
+
+import { claimPendingInvoice, deletePendingInvoice } from "@/services/dbBridge";
+
+const rejection = (message: string, excType = "ValidationError", status = 417) =>
+	Object.assign(new Error(message), { excType, status });
+
+describe("retries and rejections", () => {
+	it("keeps retrying a sale through repeated network failures and never parks it", async () => {
+		call.mockRejectedValue(new Error("__offline__"));
+		const store = useOfflineStore();
+		for (let attempt = 1; attempt <= 12; attempt++) {
+			db.rows[0].next_attempt_at = null;
+			await store.syncPendingInvoices();
+			expect(db.rows[0].status).toBe("failed");
+			expect(db.rows[0].attempts).toBe(attempt);
+		}
+		expect(deletePendingInvoice).not.toHaveBeenCalled();
+		expect(db.rows[0].rejection).toBeUndefined();
+	});
+
+	it("waits out the backoff instead of resending straight away", async () => {
+		call.mockRejectedValue(new Error("__offline__"));
+		const store = useOfflineStore();
+		await store.syncPendingInvoices();
+		expect(call).toHaveBeenCalledTimes(1);
+		expect(Date.parse(db.rows[0].next_attempt_at as string)).toBeGreaterThan(Date.now());
+
+		await store.syncPendingInvoices();
+		expect(call).toHaveBeenCalledTimes(1);
+	});
+
+	it("treats a server error as transient", async () => {
+		call.mockRejectedValue(Object.assign(new Error("Bad gateway"), { status: 502 }));
+		await useOfflineStore().syncPendingInvoices();
+		expect(db.rows[0].status).toBe("failed");
+		expect(db.rows[0].rejection).toBeUndefined();
+	});
+
+	it("keeps a refused sale for review with the server's reason, and leaves it alone afterwards", async () => {
+		call.mockRejectedValue(rejection("Discount above the allowed limit"));
+		const store = useOfflineStore();
+		await store.syncPendingInvoices();
+
+		expect(db.rows).toHaveLength(1);
+		expect(db.rows[0].status).toBe("dead_letter");
+		expect(db.rows[0].rejection).toMatchObject({
+			code: "ValidationError",
+			message: "Discount above the allowed limit",
+		});
+
+		call.mockClear();
+		for (let pass = 0; pass < 3; pass++) await store.syncPendingInvoices();
+		expect(call).not.toHaveBeenCalled();
+		expect(db.rows).toHaveLength(1);
+	});
+
+	it("deletes a queued sale only when the server confirms it", async () => {
+		const store = useOfflineStore();
+		call.mockRejectedValueOnce(new Error("__offline__")).mockRejectedValueOnce(rejection("No"));
+		await store.syncPendingInvoices();
+		db.rows[0].next_attempt_at = null;
+		await store.syncPendingInvoices();
+		expect(deletePendingInvoice).not.toHaveBeenCalled();
+
+		call.mockResolvedValue({ name: "ACC-SINV-9", status: "Paid" });
+		await store.retrySingle(1);
+		expect(deletePendingInvoice).toHaveBeenCalledTimes(1);
+	});
+
+	it("resolves a replay after a lost response to the same invoice, exactly once", async () => {
+		const server = new Map<string, string>();
+		call.mockImplementation(async (_method: string, args: { local_id: string }) => {
+			const duplicate = server.has(args.local_id);
+			if (!duplicate) server.set(args.local_id, "ACC-SINV-5");
+			if (!duplicate && server.size === 1 && call.mock.calls.length === 1)
+				throw new Error("__offline__");
+			return {
+				name: server.get(args.local_id),
+				status: "Paid",
+				...(duplicate ? { duplicate: true } : {}),
+			};
+		});
+		const store = useOfflineStore();
+		await store.syncPendingInvoices();
+		expect(db.rows).toHaveLength(1);
+
+		db.rows[0].next_attempt_at = null;
+		await store.syncPendingInvoices();
+		expect(db.rows).toHaveLength(0);
+		expect(server.size).toBe(1);
+	});
+
+	it("two counters selling the last unit: one posts, the other is kept for review", async () => {
+		db.rows = [
+			{ ...queued(), id: 1, local_id: "inv_counter_a" },
+			{ ...queued(), id: 2, local_id: "inv_counter_b" },
+		];
+		call.mockResolvedValueOnce({ name: "ACC-SINV-1", status: "Paid" }).mockRejectedValueOnce(
+			rejection("Insufficient stock for ITEM-A", "XPosInsufficientStockError"),
+		);
+		await useOfflineStore().syncPendingInvoices();
+
+		expect(db.rows.map((r) => [r.local_id, r.status])).toEqual([["inv_counter_b", "dead_letter"]]);
+		expect(db.rows[0].rejection?.code).toBe("XPosInsufficientStockError");
+	});
+
+	it("stops a pass after repeated transient failures instead of hammering the server", async () => {
+		db.rows = [1, 2, 3, 4, 5].map((id) => ({ ...queued(), id, local_id: `inv_${id}` }));
+		call.mockRejectedValue(new Error("__offline__"));
+		await useOfflineStore().syncPendingInvoices();
+		expect(call).toHaveBeenCalledTimes(3);
+	});
+});
+
+describe("who may send a sale", () => {
+	it("sends only the signed-in user's sales, and sales saved before owners were recorded", async () => {
+		db.rows = [
+			{
+				...queued(),
+				id: 1,
+				local_id: "inv_mine",
+				owner: { user: "cashier", profile: "Main", company: "TC" },
+			},
+			{
+				...queued(),
+				id: 2,
+				local_id: "inv_theirs",
+				owner: { user: "other", profile: "Main", company: "TC" },
+			},
+			{ ...queued(), id: 3, local_id: "inv_legacy", owner: null },
+		];
+		call.mockResolvedValue({ name: "ACC-SINV-1", status: "Paid" });
+		await useOfflineStore().syncPendingInvoices();
+		expect(db.rows.map((r) => r.local_id)).toEqual(["inv_theirs"]);
+	});
+
+	it("leaves a held sale to the cashier until they ask for it to be sent", async () => {
+		db.rows[0].hold = "offline_blocked";
+		call.mockResolvedValue({ name: "ACC-SINV-1", status: "Paid" });
+		const store = useOfflineStore();
+		await store.syncPendingInvoices();
+		expect(call).not.toHaveBeenCalled();
+
+		await store.retrySingle(1);
+		expect(call).toHaveBeenCalledTimes(1);
+		expect(db.rows).toHaveLength(0);
+	});
+
+	it("does not send a sale that another tab is already sending", async () => {
+		vi.mocked(claimPendingInvoice).mockResolvedValueOnce(null);
+		call.mockResolvedValue({ name: "ACC-SINV-1", status: "Paid" });
+		await useOfflineStore().syncPendingInvoices();
+		expect(call).not.toHaveBeenCalled();
+		expect(db.rows).toHaveLength(1);
 	});
 });

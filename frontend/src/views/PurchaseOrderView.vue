@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { usePurchaseStore, type PurchaseCartItem } from "@/stores/purchaseStore";
 import { Select } from "@/components/ui/select";
+import { PageHeader } from "@/components/ui/page";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
 import { Button } from "@/components/ui/button";
@@ -325,7 +326,7 @@ const poColumns = computed<TableColumn[]>(() => [
 		width: "w-[100px]",
 		align: "right" as const,
 		editable: false,
-		cellClass: "text-green-600 font-medium",
+		cellClass: "text-success font-medium",
 		format: (_: any, row: any) => formatCurrency(getItemAmount(row as PurchaseCartItem)),
 	},
 ]);
@@ -375,23 +376,17 @@ onMounted(() => {
 
 <template>
 	<div class="h-full flex flex-col bg-background overflow-y-auto md:overflow-hidden">
-		<header class="bg-card border-b border-border px-3 py-3 shrink-0 sm:px-4">
-			<div class="flex items-center justify-between gap-3">
-				<div class="flex items-center gap-3 min-w-0">
-					<ShoppingCart class="w-6 h-6 text-primary shrink-0" />
-					<h1 class="text-xl font-semibold text-foreground truncate">
-						{{ __("Purchase Order") }}
-					</h1>
-					<Badge v-if="purchaseStore.currentDraftName" variant="secondary" class="text-xs shrink-0">
-						{{ __("Draft") }}
-					</Badge>
-				</div>
-				<Button @click="goToList" variant="outline" size="sm" class="shrink-0">
-					<List class="w-4 h-4 me-1" />
-					{{ __("View Orders") }}
-				</Button>
-			</div>
-		</header>
+		<PageHeader :title="__('Purchase Order')" :icon="ShoppingCart">
+			<template #meta>
+				<Badge v-if="purchaseStore.currentDraftName" variant="secondary" class="text-xs shrink-0">
+					{{ __("Draft") }}
+				</Badge>
+			</template>
+			<Button @click="goToList" variant="outline" size="sm" class="shrink-0">
+				<List class="w-4 h-4 me-1" />
+				{{ __("View Orders") }}
+			</Button>
+		</PageHeader>
 
 		<div class="bg-card border-b border-border px-3 py-3 shrink-0 sm:px-4">
 			<div class="flex flex-wrap gap-3">
@@ -504,8 +499,8 @@ onMounted(() => {
 			</div>
 		</div>
 
-		<div class="flex-1 flex flex-col min-h-[50vh] md:min-h-0 overflow-hidden">
-			<div class="flex-1 flex flex-col min-h-0 overflow-hidden">
+		<div class="flex-1 flex flex-col md:min-h-0 md:overflow-hidden">
+			<div class="flex-1 flex flex-col md:min-h-0 md:overflow-hidden">
 				<Table
 					:rows="purchaseStore.cartItems"
 					:columns="poColumns"
@@ -527,7 +522,7 @@ onMounted(() => {
 					@add-row="addEmptyRow"
 					@cell-change="onPOCellChange"
 					@link-select="onItemLinkSelect"
-					class="flex-1 min-h-0 flex flex-col"
+					class="flex-1 min-h-88 md:min-h-0 flex flex-col"
 				>
 					<template #toolbar>
 						<div class="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
@@ -539,9 +534,10 @@ onMounted(() => {
 									v-model="barcodeValue"
 									class="ps-7 h-7 w-full text-xs sm:w-40"
 									:class="{
-										'ring-2 ring-green-500/50 border-green-500':
+										'ring-2 ring-success/50 border-success/30':
 											barcodeFlash === 'success',
-										'ring-2 ring-red-500/50 border-red-500': barcodeFlash === 'error',
+										'ring-2 ring-destructive/50 border-destructive/30':
+											barcodeFlash === 'error',
 									}"
 									:placeholder="__('Scan barcode...')"
 									@keydown.enter.prevent="onBarcodeScan"
@@ -588,7 +584,7 @@ onMounted(() => {
 							>
 							<span v-if="totalDiscount > 0" class="text-muted-foreground"
 								>{{ __("Discount") }}:
-								<strong class="text-orange-500"
+								<strong class="text-warning"
 									>-{{ formatCurrency(totalDiscount) }}</strong
 								></span
 							>
@@ -598,7 +594,7 @@ onMounted(() => {
 						>
 							<div class="text-start sm:text-end">
 								<span class="text-sm text-muted-foreground">{{ __("Grand Total") }}</span>
-								<div class="text-xl font-bold text-green-600">
+								<div class="text-xl font-bold text-success">
 									{{ formatCurrency(grandTotal) }}
 								</div>
 							</div>

@@ -1,125 +1,221 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
 	AlertTriangle,
 	ArrowLeft,
-	ArrowUpDown,
 	BarChart3,
+	Clock,
 	Copy,
 	Download,
 	Lock,
 	Printer,
 	RefreshCw,
 	Search,
+	Share2,
+	Star,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select } from "@/components/ui/select";
-import Pagination from "@/components/orders/Pagination.vue";
+import { PageHeader } from "@/components/ui/page";
+import { Popover, PopoverContentStyled, PopoverMenuItem, PopoverTrigger } from "@/components/ui/popover";
 import ReportFilterBar from "@/components/reports/ReportFilterBar.vue";
-import ReportTable, { type ReportSortState } from "@/components/reports/ReportTable.vue";
+import ReportTable from "@/components/reports/ReportTable.vue";
+import ReportSummaryStrip from "@/components/reports/ReportSummaryStrip.vue";
+import ReportChart from "@/components/reports/ReportChart.vue";
+import ReportColumnsMenu from "@/components/reports/ReportColumnsMenu.vue";
+import ReportViewsMenu from "@/components/reports/ReportViewsMenu.vue";
 import __ from "@/lib/translate";
-import { showError, showSuccess } from "@/services/api";
+import { showError, showInfo, showSuccess } from "@/services/api";
+import { useAuthStore } from "@/stores/authStore";
 import { usePosStore } from "@/stores/posStore";
-import { extractErrorMessage, formatQty, isOnline } from "@/utils";
-import { printThermalReport } from "@/services/reportPrint";
+import { extractErrorMessage, isOnline } from "@/utils";
 import {
 	buildInitialReportFilters,
-	buildReportDelimitedRows,
-	compareReportRows,
+	columnCurrency,
+	fetchReportCatalog,
 	fetchReportData,
 	fetchReportMeta,
-	formatReportCell,
-	getReportDefinition,
+	findReportDefinition,
+	getReportPreparedState,
 	getVisibleReportColumns,
 	hydrateReportFiltersFromQuery,
-	isReportAccessible,
+	isReportRunnable,
 	isReportTotalRow,
+	missingRequiredReportFilters,
 	normalizeReportFilters,
 	normalizeReportRows,
+	REPORT_EXPORT_ROW_LIMIT,
 	serializeReportFiltersToQuery,
+	splitShiftBoundFilters,
+	validateReportFilters,
 	type ReportColumn,
+	type ReportDefinition,
 	type ReportFilterDefinition,
+	type ReportPreparedState,
+	type ReportQueryResult,
 	type ReportSummaryItem,
 } from "@/services/reports";
+import {
+	applyLayout,
+	computeFilteredTotals,
+	emptyLayout,
+	hasMixedCurrency,
+	isTreeReport,
+	reconcileLayout,
+	rowHasChildren,
+	selectReportRows,
+	type ReportLayout,
+	type ReportSort,
+} from "@/services/reportGrid";
+import { buildReportExport, CSV_BOM, reportFileName, ReportExportLimitError } from "@/services/reportExport";
+import {
+	openReportPrintWindow,
+	pickPrintFormat,
+	writeReportPrintWindow,
+	type ReportPrintOptions,
+} from "@/services/reportPrint";
+import { createRunGuard } from "@/services/reportRunGuard";
+import { createReportViewStore, reportStorageKey, type ReportView } from "@/services/reportViews";
+import { openDocument, type DrillTarget } from "@/services/reportDrill";
+
+type ViewerStatus = "idle" | "loading" | "ready" | "error";
+
+interface LoadedResult {
+	columns: ReportColumn[];
+	rows: Record<string, unknown>[];
+	summary: ReportSummaryItem[];
+	chart: unknown;
+	prepared: ReportPreparedState;
+	preparedStatus: string;
+	message: string;
+}
 
 const route = useRoute();
 const router = useRouter();
 const posStore = usePosStore();
+const authStore = useAuthStore();
 
 const reportCurrency = computed(() => posStore.invoiceCurrency || posStore.currency || "");
-
-const activeReport = computed(() => getReportDefinition(route.params.reportSlug));
-const isReportVisible = computed(() => Boolean(activeReport.value));
-const isReportAllowed = computed(() => (activeReport.value ? isReportAccessible(activeReport.value) : false));
+const guard = createRunGuard();
+let autoRunTimer: ReturnType<typeof setTimeout> | undefined;
+const catalog = ref<ReportDefinition[]>([]);
+const catalogLoaded = ref(false);
+const activeReport = computed(() => findReportDefinition(catalog.value, route.params.reportSlug));
+const isReportAllowed = computed(() => (activeReport.value ? isReportRunnable(activeReport.value) : false));
 
 const filters = ref<ReportFilterDefinition[]>([]);
 const filterState = reactive<Record<string, unknown>>({});
-const reportColumns = ref<ReportColumn[]>([]);
-const reportRows = ref<Record<string, unknown>[]>([]);
-const reportSummary = ref<ReportSummaryItem[]>([]);
-const isLoading = ref(false);
+const validationErrors = ref<string[]>([]);
+
+const status = ref<ViewerStatus>("idle");
 const errorMessage = ref("");
-const lastRefreshedAt = ref<string | null>(null);
+const result = ref<LoadedResult | null>(null);
+const lastRunPayload = ref<Record<string, unknown> | null>(null);
+const lastRefreshedAt = ref<Date | null>(null);
+
 const searchTerm = ref("");
-const sortState = ref<ReportSortState | null>(null);
-const currentPage = ref(1);
-const pageSize = ref(20);
+const sortState = ref<ReportSort | null>(null);
+const layout = ref<ReportLayout>(emptyLayout());
+const collapsed = ref<ReadonlySet<number>>(new Set());
+
+const viewStore = computed(() =>
+	createReportViewStore(reportStorageKey(window.location.host, authStore.userName)),
+);
+const favorites = ref<string[]>([]);
+const savedViews = ref<ReportView[]>([]);
 
 const contextDefaults = computed(() => ({
 	company: posStore.companyName || "",
 	warehouse: posStore.warehouse || "",
 }));
+const shiftContext = computed(() => ({
+	company: posStore.companyName || "",
+	warehouse: posStore.warehouse || "",
+	pos_profile: posStore.profileName || "",
+}));
+const filterSplit = computed(() => splitShiftBoundFilters(filters.value, shiftContext.value));
+const shownFilters = computed(() => filterSplit.value.visible);
 
-const visibleColumns = computed(() => getVisibleReportColumns(reportColumns.value));
-const summaryItems = computed(() => reportSummary.value || []);
-const dataRows = computed(() => reportRows.value.filter((row) => !isReportTotalRow(row)));
-const totalRowsList = computed(() => reportRows.value.filter((row) => isReportTotalRow(row)));
-const isInitialLoading = computed(() => isLoading.value && reportRows.value.length === 0);
-const sortFieldOptions = computed(() =>
-	visibleColumns.value.map((column) => ({ label: column.label, value: column.fieldname })),
+const isLoading = computed(() => status.value === "loading");
+const currentPayload = computed(() => normalizeReportFilters(filters.value, filterState));
+const isStale = computed(
+	() =>
+		lastRunPayload.value !== null &&
+		JSON.stringify(lastRunPayload.value) !== JSON.stringify(currentPayload.value),
 );
 
-const missingRequiredFilters = computed(() =>
-	filters.value
-		.filter((filter) => filter.required && !isValidFilterValue(filterState[filter.fieldname]))
-		.map((filter) => filter.label),
-);
-
-const filteredRows = computed(() => {
-	const query = searchTerm.value.trim().toLowerCase();
-	const rows = dataRows.value.filter((row) => {
-		if (!query) return true;
-		return visibleColumns.value.some((column) =>
-			formatReportCell(column, row[column.fieldname], reportCurrency.value)
-				.toLowerCase()
-				.includes(query),
-		);
+const baseColumns = computed(() => getVisibleReportColumns(result.value?.columns ?? []));
+const allColumnsOrdered = computed(() => applyLayout(baseColumns.value, { ...layout.value, hidden: [] }));
+const displayColumns = computed(() => applyLayout(baseColumns.value, layout.value));
+const dataRows = computed(() => (result.value?.rows ?? []).filter((row) => !isReportTotalRow(row)));
+const totalRowsList = computed(() => (result.value?.rows ?? []).filter((row) => isReportTotalRow(row)));
+const treeMode = computed(() => isTreeReport(dataRows.value));
+const parents = computed(() => {
+	const set = new Set<number>();
+	dataRows.value.forEach((_, index) => {
+		if (rowHasChildren(dataRows.value, index)) set.add(index);
 	});
-
-	if (!sortState.value) return rows;
-	const column = visibleColumns.value.find((item) => item.fieldname === sortState.value?.fieldname);
-	if (!column) return rows;
-
-	return [...rows]
-		.map((row, index) => ({ row, index }))
-		.sort((left, right) => {
-			const comparison = compareReportRows(left.row, right.row, column);
-			if (comparison !== 0) return sortState.value?.direction === "desc" ? -comparison : comparison;
-			return left.index - right.index;
-		})
-		.map((entry) => entry.row);
+	return set;
 });
+const searchActive = computed(() => searchTerm.value.trim().length > 0);
 
-const totalRows = computed(() => filteredRows.value.length);
-const pagedRows = computed(() => {
-	const start = (currentPage.value - 1) * pageSize.value;
-	return filteredRows.value.slice(start, start + pageSize.value);
+const selection = computed(() =>
+	selectReportRows(dataRows.value, {
+		columns: displayColumns.value,
+		search: searchTerm.value,
+		sort: sortState.value,
+		currency: reportCurrency.value,
+		collapsed: collapsed.value,
+	}),
+);
+const mixedCurrency = computed(() =>
+	hasMixedCurrency(displayColumns.value, dataRows.value, reportCurrency.value, columnCurrency),
+);
+const filteredTotals = computed(() =>
+	searchActive.value
+		? computeFilteredTotals(
+				displayColumns.value,
+				selection.value.rows,
+				totalRowsList.value[0],
+				reportCurrency.value,
+				columnCurrency,
+			)
+		: null,
+);
+
+const isFavorite = computed(() =>
+	activeReport.value ? favorites.value.includes(activeReport.value.id) : false,
+);
+const preparedState = computed(() => result.value?.prepared ?? "none");
+const isEmptyResult = computed(
+	() => status.value === "ready" && preparedState.value === "none" && dataRows.value.length === 0,
+);
+const hasData = computed(
+	() => status.value === "ready" && preparedState.value === "none" && dataRows.value.length > 0,
+);
+const exportScope = computed(() => (searchActive.value ? "filtered" : "complete"));
+
+/** Why export and print are unavailable right now, or empty when they are. */
+const actionBlock = computed(() => {
+	if (isLoading.value) return __("Wait for the report to finish loading.");
+	if (status.value === "error") return __("The last run failed. Run the report again first.");
+	if (preparedState.value !== "none") return __("The report is still being prepared.");
+	if (isStale.value) return __("Filters changed. Run the report before exporting or printing.");
+	if (!hasData.value) return __("There are no rows to export.");
+	if (dataRows.value.length > REPORT_EXPORT_ROW_LIMIT) {
+		return __("Too many rows to export ({0}). The limit is {1}. Narrow the filters.", [
+			String(dataRows.value.length),
+			String(REPORT_EXPORT_ROW_LIMIT),
+		]);
+	}
+	return "";
 });
+const canExport = computed(() => !actionBlock.value && Boolean(activeReport.value?.export.allowed));
+const canPrint = computed(() => !actionBlock.value && Boolean(activeReport.value?.print.allowed));
 
 watch(
 	() => route.params.reportSlug,
@@ -130,25 +226,48 @@ watch(
 );
 
 watch([searchTerm, sortState], () => {
-	currentPage.value = 1;
+	collapsed.value = new Set();
+});
+
+onBeforeUnmount(() => {
+	clearTimeout(autoRunTimer);
+	guard.cancel();
 });
 
 function resetState() {
 	for (const key of Object.keys(filterState)) delete filterState[key];
 	filters.value = [];
-	reportColumns.value = [];
-	reportRows.value = [];
-	reportSummary.value = [];
+	result.value = null;
+	lastRunPayload.value = null;
+	lastRefreshedAt.value = null;
+	validationErrors.value = [];
 	errorMessage.value = "";
+	status.value = "idle";
 	searchTerm.value = "";
 	sortState.value = null;
-	currentPage.value = 1;
-	lastRefreshedAt.value = null;
+	layout.value = emptyLayout();
+	collapsed.value = new Set();
 }
 
 async function loadReport() {
-	const report = activeReport.value;
+	const token = guard.next();
+	clearTimeout(autoRunTimer);
 	resetState();
+	if (!catalogLoaded.value) {
+		try {
+			const rows = await fetchReportCatalog();
+			if (!guard.isCurrent(token)) return;
+			catalog.value = rows;
+		} catch (error) {
+			if (!guard.isCurrent(token)) return;
+			errorMessage.value = extractErrorMessage(error);
+			status.value = "error";
+			showError(errorMessage.value);
+			return;
+		}
+		catalogLoaded.value = true;
+	}
+	const report = activeReport.value;
 
 	if (!report) {
 		document.title = `${__("Reports")} | X POS`;
@@ -156,132 +275,298 @@ async function loadReport() {
 	}
 
 	document.title = `${report.title} | X POS`;
-	if (!isReportAccessible(report)) {
-		errorMessage.value = __("You do not have access to this report.");
+	if (route.params.reportSlug !== report.slug) {
+		await router.replace({ path: `/reports/${report.slug}`, query: route.query });
+		return;
+	}
+	if (!isReportRunnable(report)) {
+		errorMessage.value = __("This report cannot be run from the POS yet.");
 		return;
 	}
 
+	favorites.value = viewStore.value.favorites();
+	savedViews.value = viewStore.value.views(report.id);
+	viewStore.value.touchRecent(report.id);
+
+	let definitions: ReportFilterDefinition[];
 	try {
-		filters.value = await fetchReportMeta(report.reportName);
+		definitions = await fetchReportMeta(report.id);
 	} catch (error) {
+		if (!guard.isCurrent(token)) return;
 		errorMessage.value = extractErrorMessage(error);
+		status.value = "error";
 		showError(errorMessage.value);
 		return;
 	}
+	if (!guard.isCurrent(token)) return;
+	filters.value = definitions;
 
-	Object.assign(filterState, buildInitialReportFilters(filters.value, contextDefaults.value));
-	Object.assign(
-		filterState,
-		hydrateReportFiltersFromQuery(
-			filters.value,
-			route.query as Record<string, string | string[] | null | undefined>,
-		),
-	);
+	const query = route.query as Record<string, string | string[] | null | undefined>;
+	const defaults = buildInitialReportFilters(definitions, contextDefaults.value);
+	const fromUrl = hydrateReportFiltersFromQuery(definitions, query);
+	Object.assign(filterState, defaults, fromUrl);
+	Object.assign(filterState, splitShiftBoundFilters(definitions, shiftContext.value).bound);
+
+	const defaultView = savedViews.value.find((view) => view.isDefault);
+	if (defaultView?.filters && Object.keys(fromUrl).length === 0) {
+		Object.assign(filterState, defaultView.filters, filterSplit.value.bound);
+	}
+	pendingDefaultView = defaultView ?? null;
+
 	await runReport();
 }
 
+let pendingDefaultView: ReportView | null = null;
+
 function setFilterValue(fieldname: string, value: unknown) {
 	filterState[fieldname] = value;
-}
-
-function isValidFilterValue(value: unknown): boolean {
-	if (Array.isArray(value)) return value.length > 0;
-	if (value === null || value === undefined) return false;
-	if (typeof value === "string") return value.trim().length > 0;
-	return true;
+	clearTimeout(autoRunTimer);
+	autoRunTimer = setTimeout(() => void runReport(), 400);
 }
 
 async function runReport() {
+	clearTimeout(autoRunTimer);
 	const report = activeReport.value;
 	if (!report) return;
 
-	if (!isReportAccessible(report)) {
-		errorMessage.value = __("You do not have access to this report.");
+	if (!isReportRunnable(report)) {
+		errorMessage.value = __("This report cannot be run from the POS yet.");
 		showError(errorMessage.value);
 		return;
 	}
+
+	Object.assign(filterState, filterSplit.value.bound);
+	validationErrors.value = validateReportFilters(filters.value, filterState);
+	if (validationErrors.value.length > 0) return;
+	// Empty required filters are marked in the bar; the run just waits for them.
+	if (missingRequiredReportFilters(filters.value, filterState).length > 0) return;
+
+	const token = guard.next();
+	await execute(normalizeReportFilters(filters.value, filterState), token, true);
+}
+
+/** Re-fetch exactly the filters of the displayed result. */
+async function refresh() {
+	if (!lastRunPayload.value) return runReport();
+	await execute(lastRunPayload.value, guard.next(), false);
+}
+
+function normalizeResponse(response: ReportQueryResult): LoadedResult {
+	const columns = Array.isArray(response.columns) ? response.columns : [];
+	return {
+		columns,
+		rows: normalizeReportRows(columns, Array.isArray(response.result) ? response.result : [], {
+			addTotalRow: response.add_total_row,
+			skipTotalRow: response.skip_total_row,
+		}),
+		summary: Array.isArray(response.report_summary) ? response.report_summary : [],
+		chart: response.chart ?? null,
+		prepared: getReportPreparedState(response),
+		preparedStatus: String(response.status ?? ""),
+		message: response.message ? String(response.message) : "",
+	};
+}
+
+async function execute(payload: Record<string, unknown>, token: number, syncUrl: boolean) {
+	const report = activeReport.value;
+	if (!report) return;
 
 	if (!isOnline()) {
 		errorMessage.value = __("You are offline. Connect to the server and try again.");
+		status.value = result.value ? "ready" : "error";
 		showError(errorMessage.value);
 		return;
 	}
 
-	if (missingRequiredFilters.value.length > 0) {
-		errorMessage.value = __("Please fill the required filters: {0}", [
-			missingRequiredFilters.value.join(", "),
-		]);
-		showError(errorMessage.value);
-		return;
-	}
-
-	isLoading.value = true;
+	status.value = "loading";
 	errorMessage.value = "";
 
 	try {
-		const payload = normalizeReportFilters(filters.value, filterState);
-		const response = await fetchReportData(report.reportName, payload);
-		reportColumns.value = response.columns || [];
-		reportRows.value = normalizeReportRows(
-			reportColumns.value,
-			Array.isArray(response.result) ? response.result : [],
-			{
-				addTotalRow: response.add_total_row,
-				skipTotalRow: response.skip_total_row,
-			},
-		);
-		reportSummary.value = Array.isArray(response.report_summary) ? response.report_summary : [];
-		lastRefreshedAt.value = new Date().toLocaleString();
-		currentPage.value = 1;
-		await router.replace({
-			path: route.path,
-			query: serializeReportFiltersToQuery(filters.value, filterState),
-		});
-		if (response.message) showSuccess(response.message);
+		const response = await fetchReportData(report.id, payload);
+		if (!guard.isCurrent(token)) return;
+		const loaded = normalizeResponse(response);
+		result.value = loaded;
+		lastRunPayload.value = { ...payload };
+		lastRefreshedAt.value = new Date();
+		collapsed.value = new Set();
+		layout.value = reconcileLayout(layout.value, getVisibleReportColumns(loaded.columns));
+		if (pendingDefaultView) {
+			layout.value = reconcileLayout(
+				pendingDefaultView.layout,
+				getVisibleReportColumns(loaded.columns),
+			);
+			sortState.value = pendingDefaultView.sort;
+			pendingDefaultView = null;
+		}
+		status.value = "ready";
+		if (syncUrl && route.params.reportSlug === report.slug) {
+			await router.replace({
+				path: route.path,
+				query: serializeReportFiltersToQuery(
+					shownFilters.value,
+					filterState,
+					buildInitialReportFilters(filters.value, contextDefaults.value),
+				),
+			});
+		}
+		if (loaded.message && guard.isCurrent(token)) showSuccess(loaded.message);
 	} catch (error) {
+		if (!guard.isCurrent(token)) return;
 		errorMessage.value = extractErrorMessage(error);
+		status.value = "error";
 		showError(errorMessage.value);
-	} finally {
-		isLoading.value = false;
 	}
-}
-
-function resetFilters() {
-	Object.assign(filterState, buildInitialReportFilters(filters.value, contextDefaults.value));
-	searchTerm.value = "";
-	sortState.value = null;
-	currentPage.value = 1;
-	void runReport();
 }
 
 function toggleSort(fieldname: string) {
 	if (!sortState.value || sortState.value.fieldname !== fieldname) {
 		sortState.value = { fieldname, direction: "asc" };
-		return;
-	}
-	if (sortState.value.direction === "asc") {
+	} else if (sortState.value.direction === "asc") {
 		sortState.value = { fieldname, direction: "desc" };
-		return;
-	}
-	sortState.value = null;
-}
-
-function setSortField(fieldname: string | undefined) {
-	if (!fieldname) {
+	} else {
 		sortState.value = null;
-		return;
-	}
-	if (!sortState.value || sortState.value.fieldname !== fieldname) {
-		sortState.value = { fieldname, direction: "asc" };
 	}
 }
 
-function toggleSortDirection() {
-	if (!sortState.value) return;
-	sortState.value = {
-		fieldname: sortState.value.fieldname,
-		direction: sortState.value.direction === "asc" ? "desc" : "asc",
+function toggleGroup(sourceIndex: number) {
+	const next = new Set(collapsed.value);
+	if (!next.delete(sourceIndex)) next.add(sourceIndex);
+	collapsed.value = next;
+}
+
+function onResize(fieldname: string, width: number) {
+	layout.value = { ...layout.value, widths: { ...layout.value.widths, [fieldname]: width } };
+}
+
+function toggleFavorite() {
+	const report = activeReport.value;
+	if (!report) return;
+	viewStore.value.toggleFavorite(report.id);
+	favorites.value = viewStore.value.favorites();
+	if (!viewStore.value.durable()) warnSessionOnly();
+}
+
+function saveView(name: string, withFilters: boolean) {
+	const report = activeReport.value;
+	if (!report) return;
+	savedViews.value = viewStore.value.saveView(report.id, {
+		name,
+		layout: { ...layout.value, order: allColumnsOrdered.value.map((column) => column.fieldname) },
+		sort: sortState.value,
+		filters: withFilters
+			? Object.fromEntries(
+					Object.entries(currentPayload.value).filter(([key]) => !(key in filterSplit.value.bound)),
+				)
+			: undefined,
+	});
+	if (viewStore.value.durable()) showSuccess(__("View saved."));
+	else warnSessionOnly();
+}
+
+function warnSessionOnly() {
+	showInfo(__("This browser would not store it, so it lasts only until you close or reload this page."));
+}
+
+function applyView(view: ReportView) {
+	layout.value = reconcileLayout(view.layout, baseColumns.value);
+	sortState.value = view.sort;
+	if (view.filters) {
+		Object.assign(
+			filterState,
+			buildInitialReportFilters(filters.value, contextDefaults.value),
+			view.filters,
+			filterSplit.value.bound,
+		);
+		void runReport();
+	}
+}
+
+function deleteView(view: ReportView) {
+	if (!activeReport.value) return;
+	savedViews.value = viewStore.value.deleteView(activeReport.value.id, view.id);
+}
+
+function setDefaultView(view: ReportView) {
+	if (!activeReport.value) return;
+	savedViews.value = viewStore.value.setDefault(activeReport.value.id, view.isDefault ? null : view.id);
+}
+
+async function drill(target: DrillTarget) {
+	const opened = await openDocument(target);
+	if (!opened) showError(__("You do not have permission to open {0} {1}.", [target.doctype, target.name]));
+}
+
+interface FreshData {
+	columns: ReportColumn[];
+	rows: Record<string, unknown>[];
+	totals: Record<string, unknown>[];
+	summary: ReportSummaryItem[];
+}
+
+/**
+ * Re-run the displayed filters under the export/print purpose and hand back that response.
+ * Output is always built from this authorized response, never from the rows already on screen,
+ * and is dropped if the user has moved on in the meantime.
+ */
+async function fetchAuthorized(purpose: "export" | "print"): Promise<FreshData | null> {
+	const report = activeReport.value;
+	const payload = lastRunPayload.value;
+	if (!report || !payload) return null;
+	const token = guard.current();
+	try {
+		const response = await fetchReportData(report.id, payload, purpose);
+		if (!guard.isCurrent(token)) return null;
+		const loaded = normalizeResponse(response);
+		if (loaded.prepared !== "none") {
+			showError(__("The report is still being prepared."));
+			return null;
+		}
+		const columns = applyLayout(getVisibleReportColumns(loaded.columns), layout.value);
+		return {
+			columns,
+			rows: loaded.rows.filter((row) => !isReportTotalRow(row)),
+			totals: loaded.rows.filter((row) => isReportTotalRow(row)),
+			summary: loaded.summary,
+		};
+	} catch (error) {
+		if (guard.isCurrent(token)) showError(extractErrorMessage(error));
+		return null;
+	}
+}
+
+function scoped(data: FreshData) {
+	const picked = selectReportRows(data.rows, {
+		columns: data.columns,
+		search: searchActive.value ? searchTerm.value : "",
+		sort: treeMode.value ? null : sortState.value,
+		currency: reportCurrency.value,
+	});
+	return {
+		rows: picked.rows,
+		filtered: searchActive.value,
+		filteredTotals: searchActive.value
+			? computeFilteredTotals(
+					data.columns,
+					picked.rows,
+					data.totals[0],
+					reportCurrency.value,
+					columnCurrency,
+				)
+			: undefined,
 	};
+}
+
+function buildDelimited(data: FreshData, delimiter: "," | "\t"): string {
+	const scope = scoped(data);
+	return buildReportExport({
+		columns: data.columns,
+		rows: scope.rows,
+		completeTotals: data.totals,
+		filteredTotals: scope.filteredTotals,
+		filtered: scope.filtered,
+		currency: reportCurrency.value,
+		delimiter,
+	});
 }
 
 async function copyText(text: string) {
@@ -297,74 +582,102 @@ async function copyText(text: string) {
 	document.body.removeChild(textarea);
 }
 
+const busyAction = ref<"copy" | "export" | "print" | null>(null);
+
 async function copyReport() {
-	if (filteredRows.value.length === 0) {
-		showError(__("No rows to copy."));
+	if (!canExport.value || busyAction.value) return;
+	busyAction.value = "copy";
+	try {
+		const data = await fetchAuthorized("export");
+		if (!data) return;
+		await copyText(buildDelimited(data, "\t"));
+		showSuccess(__("Copied {0} rows to the clipboard.", [String(scoped(data).rows.length)]));
+	} catch (error) {
+		showError(error instanceof ReportExportLimitError ? error.message : extractErrorMessage(error));
+	} finally {
+		busyAction.value = null;
+	}
+}
+
+async function exportCsv() {
+	if (!canExport.value || busyAction.value) return;
+	busyAction.value = "export";
+	try {
+		const data = await fetchAuthorized("export");
+		if (!data) return;
+		const csv = CSV_BOM + buildDelimited(data, ",");
+		const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement("a");
+		anchor.href = url;
+		anchor.download = reportFileName(activeReport.value?.title || "report");
+		anchor.style.display = "none";
+		document.body.appendChild(anchor);
+		anchor.click();
+		document.body.removeChild(anchor);
+		URL.revokeObjectURL(url);
+		showSuccess(__("Report exported as CSV."));
+	} catch (error) {
+		showError(error instanceof ReportExportLimitError ? error.message : extractErrorMessage(error));
+	} finally {
+		busyAction.value = null;
+	}
+}
+
+async function printReport() {
+	if (!canPrint.value || busyAction.value) return;
+	// Opened synchronously: after an await the click's user gesture is gone and popup blockers bite.
+	const win = openReportPrintWindow();
+	if (!win) {
+		showError(__("Print window blocked. Please allow popups and try again."));
 		return;
 	}
-	const rows = [...filteredRows.value, ...totalRowsList.value];
-	await copyText(buildReportDelimitedRows(visibleColumns.value, rows, reportCurrency.value, "\t"));
-	showSuccess(__("Copied {0} rows to clipboard.", [String(filteredRows.value.length)]));
-}
-
-function slugify(value: string): string {
-	return value
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "");
-}
-
-function exportCsv() {
-	if (filteredRows.value.length === 0) {
-		showError(__("No rows available to export."));
-		return;
+	busyAction.value = "print";
+	try {
+		const data = await fetchAuthorized("print");
+		if (!data) {
+			win.close();
+			return;
+		}
+		if (data.rows.length > REPORT_EXPORT_ROW_LIMIT) {
+			win.close();
+			showError(new ReportExportLimitError(data.rows.length, REPORT_EXPORT_ROW_LIMIT).message);
+			return;
+		}
+		const scope = scoped(data);
+		const options: ReportPrintOptions = {
+			title: activeReport.value?.title || __("Report"),
+			filters: filters.value,
+			values: lastRunPayload.value ?? {},
+			columns: data.columns,
+			rows: scope.rows,
+			completeTotals: data.totals,
+			filteredTotals: scope.filteredTotals,
+			summary: data.summary,
+			currency: reportCurrency.value,
+			filteredBy: scope.filtered ? searchTerm.value.trim() : undefined,
+			format: pickPrintFormat(activeReport.value, data.columns),
+		};
+		writeReportPrintWindow(win, options);
+	} catch (error) {
+		win.close();
+		showError(extractErrorMessage(error));
+	} finally {
+		busyAction.value = null;
 	}
-	const rows = [...filteredRows.value, ...totalRowsList.value];
-	const csv = buildReportDelimitedRows(visibleColumns.value, rows, reportCurrency.value, ",");
-	const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-	const downloadUrl = URL.createObjectURL(blob);
-	const anchor = document.createElement("a");
-	anchor.href = downloadUrl;
-	anchor.download = `${slugify(activeReport.value?.title || "report")}-${new Date().toISOString().slice(0, 10)}.csv`;
-	anchor.style.display = "none";
-	document.body.appendChild(anchor);
-	anchor.click();
-	document.body.removeChild(anchor);
-	URL.revokeObjectURL(downloadUrl);
-	showSuccess(__("Report exported as CSV."));
-}
-
-function printThermal() {
-	if (filteredRows.value.length === 0) {
-		showError(__("No data to print."));
-		return;
-	}
-	const ok = printThermalReport({
-		title: activeReport.value?.title || __("Report"),
-		filters: filters.value,
-		values: filterState,
-		columns: visibleColumns.value,
-		rows: filteredRows.value,
-	});
-	if (!ok) showError(__("Print window blocked. Please allow popups and try again."));
-}
-
-function formatSummaryValue(value: unknown): string {
-	if (value === null || value === undefined || value === "") return "-";
-	if (Array.isArray(value)) return value.map((item) => String(item)).join(", ");
-	if (typeof value === "number") return formatQty(value);
-	return String(value);
 }
 
 function goBack() {
 	router.push("/reports");
 }
+
+const updatedAt = computed(() => (lastRefreshedAt.value ? lastRefreshedAt.value.toLocaleTimeString() : ""));
 </script>
 
 <template>
 	<div class="flex h-full flex-col overflow-hidden bg-background">
 		<div
-			v-if="!isReportVisible || !activeReport"
+			v-if="catalogLoaded && !activeReport"
 			class="flex h-full items-center justify-center p-6 text-center"
 		>
 			<Card class="w-full max-w-xl border-border/70 bg-card p-8">
@@ -377,14 +690,17 @@ function goBack() {
 				</p>
 				<div class="mt-6 flex justify-center">
 					<Button @click="goBack">
-						<ArrowLeft class="h-4 w-4" />
+						<ArrowLeft class="h-4 w-4 rtl:rotate-180" />
 						{{ __("Back to Reports") }}
 					</Button>
 				</div>
 			</Card>
 		</div>
 
-		<div v-else-if="!isReportAllowed" class="flex h-full items-center justify-center p-6 text-center">
+		<div
+			v-else-if="activeReport && !isReportAllowed"
+			class="flex h-full items-center justify-center p-6 text-center"
+		>
 			<Card class="w-full max-w-xl border-border/70 bg-card p-8">
 				<div
 					class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive"
@@ -397,165 +713,268 @@ function goBack() {
 				</p>
 				<div class="mt-6 flex justify-center">
 					<Button variant="outline" @click="goBack">
-						<ArrowLeft class="h-4 w-4" />
+						<ArrowLeft class="h-4 w-4 rtl:rotate-180" />
 						{{ __("Back to Reports") }}
 					</Button>
 				</div>
 			</Card>
 		</div>
 
-		<ScrollArea v-else class="flex-1">
-			<div class="space-y-4 p-3 pb-4 sm:p-4">
-				<div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-					<div class="min-w-0 space-y-1">
-						<div class="flex flex-wrap items-center gap-2">
-							<Button variant="ghost" size="icon-sm" @click="goBack">
-								<ArrowLeft class="h-4 w-4" />
-							</Button>
-							<h1 class="truncate text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-								{{ activeReport.title }}
-							</h1>
-							<Badge variant="outline">{{ activeReport.category }}</Badge>
-						</div>
-						<p class="text-sm text-muted-foreground">{{ activeReport.description }}</p>
-					</div>
-
-					<div class="flex flex-wrap items-center gap-2">
-						<Button
-							variant="outline"
-							size="sm"
-							class="h-9"
-							:disabled="isLoading"
-							@click="runReport"
-						>
-							<RefreshCw class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
-							{{ __("Refresh") }}
-						</Button>
-						<Button variant="outline" size="sm" class="h-9" @click="copyReport">
-							<Copy class="h-4 w-4" />
-							{{ __("Copy") }}
-						</Button>
-						<Button variant="outline" size="sm" class="h-9" @click="exportCsv">
-							<Download class="h-4 w-4" />
-							{{ __("Export CSV") }}
-						</Button>
-						<Button
-							v-if="activeReport.thermalPrint"
-							variant="outline"
-							size="sm"
-							class="h-9"
-							:disabled="reportRows.length === 0"
-							@click="printThermal"
-						>
-							<Printer class="h-4 w-4" />
-							{{ __("Print") }}
-						</Button>
-					</div>
-				</div>
-
-				<ReportFilterBar
-					:filters="filters"
-					:values="filterState"
-					:loading="isLoading"
-					:missing-required="missingRequiredFilters"
-					@set="setFilterValue"
-					@apply="runReport"
-					@reset="resetFilters"
-				/>
-
-				<div v-if="summaryItems.length > 0" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-					<Card
-						v-for="item in summaryItems"
-						:key="item.key || item.label || String(item.value)"
-						class="border-border/70 bg-card p-4"
+		<template v-else-if="activeReport">
+			<PageHeader
+				:title="activeReport.title"
+				:subtitle="activeReport.description"
+				class="mx-3 mt-3 rounded-2xl border shadow-raised"
+			>
+				<template #leading>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						:aria-label="__('Back to Reports')"
+						@click="goBack"
 					>
-						<p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-							{{ item.label || __("Summary") }}
+						<ArrowLeft class="h-4 w-4 rtl:rotate-180" />
+					</Button>
+				</template>
+				<template #meta>
+					<Badge variant="outline">{{ activeReport.category }}</Badge>
+					<Badge v-if="isLoading" variant="secondary" role="status">{{ __("Loading") }}</Badge>
+					<Badge v-else-if="isStale" variant="warning" role="status">{{
+						__("Filters changed")
+					}}</Badge>
+					<span
+						v-else-if="updatedAt"
+						class="inline-flex items-center gap-1 text-xs text-muted-foreground"
+					>
+						<Clock class="h-3 w-3" aria-hidden="true" />{{ __("Updated {0}", [updatedAt]) }}
+					</span>
+				</template>
+				<Button
+					variant="ghost"
+					size="icon-sm"
+					:aria-pressed="isFavorite"
+					:aria-label="isFavorite ? __('Remove from favorites') : __('Add to favorites')"
+					@click="toggleFavorite"
+				>
+					<Star class="h-4 w-4" :class="isFavorite ? 'fill-warning text-warning' : ''" />
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					class="h-9 gap-1.5"
+					:disabled="isLoading"
+					:title="__('Reload the results shown, using the same filters')"
+					@click="refresh"
+				>
+					<RefreshCw class="h-4 w-4" :class="{ 'animate-spin': isLoading }" />
+					{{ __("Refresh") }}
+				</Button>
+				<Popover>
+					<PopoverTrigger as-child>
+						<Button
+							variant="outline"
+							size="sm"
+							class="h-9 gap-1.5"
+							:disabled="Boolean(busyAction)"
+							data-testid="share-menu"
+						>
+							<Share2 class="h-4 w-4" aria-hidden="true" />
+							{{ __("Export") }}
+						</Button>
+					</PopoverTrigger>
+					<PopoverContentStyled align="end" class="w-72">
+						<p class="px-1 pb-1 text-xs text-muted-foreground" role="status">
+							{{
+								actionBlock ||
+								(exportScope === "filtered"
+									? __(
+											"Exports the filtered view: rows matching “{0}”, with filtered totals.",
+											[searchTerm.trim()],
+										)
+									: __("Exports the complete report with its totals."))
+							}}
 						</p>
-						<p class="mt-1 wrap-break-word text-lg font-semibold text-foreground">
-							{{ formatSummaryValue(item.value) }}
-						</p>
-					</Card>
-				</div>
+						<PopoverMenuItem :disabled="!canExport" data-testid="copy-report" @click="copyReport">
+							<template #icon><Copy /></template>
+							{{ __("Copy") }}
+						</PopoverMenuItem>
+						<PopoverMenuItem :disabled="!canExport" data-testid="export-csv" @click="exportCsv">
+							<template #icon><Download /></template>
+							{{ __("Export CSV") }}
+						</PopoverMenuItem>
+						<PopoverMenuItem
+							:disabled="!canPrint"
+							data-testid="print-report"
+							@click="printReport"
+						>
+							<template #icon><Printer /></template>
+							{{ __("Print") }}
+						</PopoverMenuItem>
+					</PopoverContentStyled>
+				</Popover>
+			</PageHeader>
 
-				<Card class="border-border/70 bg-card p-4 sm:p-5">
-					<div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-						<div class="flex w-full items-center gap-2 lg:max-w-xl">
-							<div class="relative flex-1">
+			<ScrollArea class="flex-1">
+				<div class="space-y-3 p-3">
+					<ReportFilterBar
+						:filters="shownFilters"
+						:values="filterState"
+						:errors="validationErrors"
+						@set="setFilterValue"
+						@apply="runReport"
+					/>
+
+					<ReportSummaryStrip
+						v-if="hasData && result"
+						:items="result.summary"
+						:currency="reportCurrency"
+					/>
+					<ReportChart v-if="hasData && result?.chart" :chart="result.chart" />
+
+					<Card class="rounded-2xl border-border bg-card/50 p-3 shadow-raised">
+						<div class="mb-3 flex flex-wrap items-center gap-2">
+							<div class="relative min-w-48 flex-1 sm:max-w-sm">
 								<Search
 									class="pointer-events-none absolute inset-s-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+									aria-hidden="true"
 								/>
 								<Input
 									v-model="searchTerm"
+									type="search"
+									:aria-label="__('Search rows')"
 									:placeholder="__('Search rows...')"
-									class="h-10 ps-9"
+									class="h-9 ps-9"
+									:disabled="!hasData"
 								/>
 							</div>
-							<Select
-								:items="sortFieldOptions"
-								:placeholder="__('Sort by')"
-								:model-value="sortState?.fieldname || ''"
-								@update:model-value="setSortField"
+							<ReportColumnsMenu
+								v-if="hasData"
+								:columns="allColumnsOrdered"
+								:layout="layout"
+								@change="layout = $event"
+								@reset="layout = emptyLayout()"
 							/>
-							<Button
-								variant="outline"
-								size="icon-sm"
-								:disabled="!sortState"
-								@click="toggleSortDirection"
-							>
-								<ArrowUpDown class="h-4 w-4" />
-							</Button>
+							<ReportViewsMenu
+								v-if="hasData"
+								:views="savedViews"
+								@apply="applyView"
+								@save="saveView"
+								@delete="deleteView"
+								@default="setDefaultView"
+							/>
+							<span v-if="hasData" class="ms-auto text-sm text-muted-foreground" role="status">
+								<template v-if="searchActive">
+									{{
+										__("{0} of {1} rows", [
+											String(selection.rows.length),
+											String(dataRows.length),
+										])
+									}}
+								</template>
+								<template v-else>{{ __("{0} rows", [String(dataRows.length)]) }}</template>
+							</span>
 						</div>
-						<div class="flex items-center gap-2 text-sm text-muted-foreground">
-							<Badge variant="secondary">{{ totalRows }} {{ __("rows") }}</Badge>
-							<span v-if="lastRefreshedAt" class="text-xs">{{ lastRefreshedAt }}</span>
-						</div>
-					</div>
 
-					<div
-						v-if="errorMessage"
-						class="mb-4 rounded-xl border border-destructive/20 bg-destructive/5 p-4"
-					>
-						<div class="flex items-start gap-3">
-							<AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-							<div class="min-w-0 flex-1 space-y-3">
-								<p class="text-sm font-medium text-foreground">{{ errorMessage }}</p>
-								<Button size="sm" @click="runReport">
-									<RefreshCw class="h-4 w-4" />
-									{{ __("Try Again") }}
-								</Button>
+						<div
+							v-if="errorMessage"
+							class="mb-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3"
+							role="alert"
+						>
+							<div class="flex items-start gap-3">
+								<AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+								<div class="min-w-0 flex-1 space-y-2">
+									<p class="text-sm font-medium text-foreground">{{ errorMessage }}</p>
+									<Button size="sm" @click="runReport">
+										<RefreshCw class="h-4 w-4" />
+										{{ __("Try Again") }}
+									</Button>
+								</div>
 							</div>
 						</div>
-					</div>
 
-					<div v-if="isInitialLoading" class="space-y-2">
-						<div v-for="i in 6" :key="i" class="skeleton h-10 w-full rounded-lg"></div>
-					</div>
+						<div
+							v-if="preparedState !== 'none'"
+							class="mb-3 rounded-xl border border-border bg-muted p-4"
+							role="status"
+							data-testid="prepared-state"
+						>
+							<p class="text-sm font-semibold text-foreground">
+								{{
+									preparedState === "failed"
+										? __("The prepared report failed to build.")
+										: __("This report is being prepared.")
+								}}
+							</p>
+							<p class="mt-1 text-sm text-muted-foreground">
+								{{
+									preparedState === "failed"
+										? __(
+												"No results are available. Run it again, or contact an administrator if it keeps failing.",
+											)
+										: __(
+												"It is built in the background and has no results yet{0}. This is not an empty report.",
+												[result?.preparedStatus ? ` (${result.preparedStatus})` : ""],
+											)
+								}}
+							</p>
+							<Button size="sm" class="mt-2" variant="outline" @click="refresh">
+								<RefreshCw class="h-4 w-4" />
+								{{ preparedState === "failed" ? __("Run again") : __("Check again") }}
+							</Button>
+						</div>
 
-					<div v-else>
-						<ReportTable
-							:columns="visibleColumns"
-							:rows="pagedRows"
-							:totals="totalRowsList"
-							:currency="reportCurrency"
-							:sort-state="sortState"
-							:empty-title="__('No rows found')"
-							:empty-description="__('Try adjusting the filters, search term, or sort order.')"
-							@sort-change="toggleSort"
-						/>
+						<div v-if="isLoading && !result" class="space-y-2" aria-busy="true">
+							<div v-for="i in 6" :key="i" class="skeleton h-9 w-full rounded-lg"></div>
+						</div>
 
-						<Pagination
-							v-if="totalRows > 0"
-							class="mt-4"
-							:total="totalRows"
-							:page-size="pageSize"
-							:current-page="currentPage"
-							@update:current-page="currentPage = $event"
-							@update:page-size="pageSize = $event"
-						/>
-					</div>
-				</Card>
-			</div>
-		</ScrollArea>
+						<div
+							v-else-if="
+								preparedState === 'none' &&
+								status !== 'idle' &&
+								!(status === 'error' && !result)
+							"
+						>
+							<div :class="{ 'opacity-60': isLoading || isStale }" :aria-busy="isLoading">
+								<ReportTable
+									:columns="displayColumns"
+									:rows="selection.rows"
+									:source-index="selection.sourceIndex"
+									:totals="totalRowsList"
+									:filtered-totals="filteredTotals"
+									:currency="reportCurrency"
+									:sort-state="sortState"
+									:widths="layout.widths"
+									:frozen="layout.frozen"
+									:sortable="!treeMode"
+									:parents="parents"
+									:collapsed="collapsed"
+									:mixed-currency="mixedCurrency"
+									:label="activeReport.title"
+									:empty-title="
+										isEmptyResult ? __('No rows found') : __('No matching rows')
+									"
+									:empty-description="
+										isEmptyResult
+											? __('This report returned no data for these filters.')
+											: __('No rows match the search.')
+									"
+									@sort-change="toggleSort"
+									@resize="onResize"
+									@toggle="toggleGroup"
+									@drill="drill"
+								/>
+							</div>
+							<p v-if="mixedCurrency" class="mt-2 text-xs text-muted-foreground">
+								{{
+									__(
+										"This report mixes currencies. Totals are not added across currencies.",
+									)
+								}}
+							</p>
+						</div>
+					</Card>
+				</div>
+			</ScrollArea>
+		</template>
 	</div>
 </template>

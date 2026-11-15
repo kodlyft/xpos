@@ -1,19 +1,38 @@
 import { defineStore } from "pinia";
-import { hasGiftCardActivity } from "@/services/giftCards";
 import { ref, computed } from "vue";
 import { call, showSuccess, showError, showInfo } from "@/services/api";
 import { usePosStore } from "@/stores/posStore";
 import {
 	addPendingInvoice,
+	claimPendingInvoice,
+	findPendingInvoiceByLocalId,
 	getAllPendingInvoices,
+	recoverStaleClaims,
 	updatePendingInvoice,
 	deletePendingInvoice,
 	countPendingInvoices,
 	countDeadLetters,
+	exportPendingInvoices,
 	retryDeadLetter as retryDeadLetterBridge,
 	adjustCachedStock,
 } from "@/services/dbBridge";
-import type { PendingInvoice } from "@/services/idbService";
+import { getDbState, onDbStateChange, type DbState, type PendingInvoice } from "@/services/idbService";
+import { classifySyncError, nextAttemptAt } from "@/services/syncClassify";
+import { offlineSaleBlockers, type OfflineBlocker } from "@/services/offlinePolicy";
+import {
+	currentCatalogEvidence,
+	getCatalogStatus,
+	syncCatalog,
+	type CatalogStatus,
+} from "@/services/catalogSync";
+import {
+	StorageWriteError,
+	getStorageHealth,
+	requestPersistence,
+	type StorageHealth,
+} from "@/services/storageHealth";
+import { broadcast, onBroadcast, runExclusive } from "@/services/tabCoordinator";
+import { currentOwner } from "@/services/sessionScope";
 import type { InvoiceData, InvoiceItem, ReceiptSnapshot, RepriceResponse } from "@/types/pos.types";
 import __ from "@/lib/translate";
 import {
@@ -24,6 +43,17 @@ import {
 
 export type OfflineInvoice = PendingInvoice;
 
+export type SaveFailure = "blocked" | "held" | "quota" | "unavailable" | "data" | "unknown";
+
+export interface SaveOfflineResult {
+	success: boolean;
+	localId?: number;
+	reason?: SaveFailure;
+	blockers?: OfflineBlocker[];
+}
+
+const DRAIN_BREAKER = 3;
+
 export const useOfflineStore = defineStore("offline", () => {
 	const isSyncing = ref(false);
 	const pendingCount = ref(0);
@@ -33,8 +63,10 @@ export const useOfflineStore = defineStore("offline", () => {
 	const syncErrors = ref<string[]>([]);
 	const isOnline = ref(typeof navigator !== "undefined" ? navigator.onLine : true);
 	const posStore = usePosStore();
-
-	const MAX_RETRIES = 3;
+	const dbState = ref<DbState>(getDbState());
+	const catalogStatus = ref<CatalogStatus | null>(null);
+	const storageHealth = ref<StorageHealth | null>(null);
+	const storagePersisted = computed(() => storageHealth.value?.persisted ?? null);
 
 	function isStockRejection(error: unknown): boolean {
 		const excType = (error as { excType?: string })?.excType;
@@ -64,6 +96,8 @@ export const useOfflineStore = defineStore("offline", () => {
 					status: "needs_review",
 					review: invoice.review,
 					error: invoice.error,
+					claimed_by: null,
+					claim_expires: null,
 				});
 			return "needs_review";
 		}
@@ -107,6 +141,8 @@ export const useOfflineStore = defineStore("offline", () => {
 				status: "fiscal_uncertain",
 				fiscal: invoice.fiscal,
 				error: message,
+				claimed_by: null,
+				claim_expires: null,
 			});
 		return { ...result, status: "fbr_uncertain", message };
 	}
@@ -201,7 +237,11 @@ export const useOfflineStore = defineStore("offline", () => {
 	}
 
 	const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+	let persistenceAsked = false;
+	const MIN_RETRY_DELAY_MS = 5_000;
 	let syncIntervalId: ReturnType<typeof setInterval> | null = null;
+	let retryTimerId: ReturnType<typeof setTimeout> | null = null;
+	let removeListeners: Array<() => void> = [];
 
 	const hasPending = computed(() => pendingCount.value > 0);
 	const hasDeadLetters = computed(() => deadLetterCount.value > 0);
@@ -223,19 +263,33 @@ export const useOfflineStore = defineStore("offline", () => {
 	});
 
 	const statusColor = computed(() => {
-		if (isSyncing.value) return "text-blue-500";
-		if (deadLetterCount.value > 0) return "text-red-500";
-		if (!isOnline.value) return "text-red-500";
-		if (pendingCount.value > 0) return "text-amber-500";
-		return "text-emerald-500";
+		if (isSyncing.value) return "text-info";
+		if (deadLetterCount.value > 0) return "text-destructive";
+		if (!isOnline.value) return "text-destructive";
+		if (pendingCount.value > 0) return "text-warning";
+		return "text-success";
 	});
 
 	function init() {
 		window.addEventListener("xpos:pending-invoices-changed", refreshPendingCount);
 		window.addEventListener("online", handleOnline);
 		window.addEventListener("offline", handleOffline);
+		removeListeners = [
+			onDbStateChange((state) => {
+				dbState.value = state;
+			}),
+			onBroadcast("queue-changed", () => {
+				void refreshPendingCount();
+				void loadPendingInvoices();
+			}),
+			onBroadcast("catalog-activated", () => void refreshCatalogStatus()),
+		];
 
-		refreshPendingCount();
+		void recoverStaleClaims()
+			.catch((error) => console.warn("[XPOS Offline] Could not recover interrupted sends", error))
+			.finally(() => refreshPendingCount());
+		void refreshStorageHealth();
+		void refreshCatalogStatus();
 		startPeriodicSync();
 	}
 
@@ -243,7 +297,11 @@ export const useOfflineStore = defineStore("offline", () => {
 		window.removeEventListener("xpos:pending-invoices-changed", refreshPendingCount);
 		window.removeEventListener("online", handleOnline);
 		window.removeEventListener("offline", handleOffline);
+		removeListeners.forEach((remove) => remove());
+		removeListeners = [];
 		stopPeriodicSync();
+		if (retryTimerId) clearTimeout(retryTimerId);
+		retryTimerId = null;
 	}
 
 	function handleOnline() {
@@ -284,6 +342,18 @@ export const useOfflineStore = defineStore("offline", () => {
 		} catch {
 			deadLetterCount.value = 0;
 		}
+	}
+
+	async function refreshCatalogStatus() {
+		try {
+			catalogStatus.value = await getCatalogStatus();
+		} catch {
+			catalogStatus.value = null;
+		}
+	}
+
+	async function refreshStorageHealth() {
+		storageHealth.value = await getStorageHealth();
 	}
 
 	async function retryDeadLetterInvoice(id: number): Promise<boolean> {
@@ -342,33 +412,75 @@ export const useOfflineStore = defineStore("offline", () => {
 		}
 	}
 
+	function outstandingOf(invoiceData: InvoiceData, grandTotal?: number): number {
+		if (!grandTotal || grandTotal <= 0) return 0;
+		const paid = (invoiceData.payments || []).reduce((sum, payment) => sum + (payment.amount || 0), 0);
+		return Math.max(Math.round((grandTotal - (paid - (invoiceData.change_amount || 0))) * 100) / 100, 0);
+	}
+
+	async function offlineBlockers(invoiceData: InvoiceData, outstanding = 0): Promise<OfflineBlocker[]> {
+		await Promise.all([refreshCatalogStatus(), refreshStorageHealth()]);
+		return offlineSaleBlockers({
+			invoice: invoiceData,
+			offlinePaymentModes: posStore.offlinePaymentModes,
+			outstanding,
+			catalog: catalogStatus.value,
+			dbState: getDbState(),
+			storage: storageHealth.value,
+		});
+	}
+
 	async function saveOffline(
 		invoiceData: InvoiceData,
 		customerName?: string,
 		grandTotal?: number,
 		reservations?: { item_code: string; stock_qty: number }[],
 		receipt?: ReceiptSnapshot,
-	): Promise<{ success: boolean; localId?: number }> {
-		if (hasGiftCardActivity(invoiceData)) return { success: false };
+	): Promise<SaveOfflineResult> {
 		try {
-			const record = {
+			const existing = invoiceData.local_id
+				? await findPendingInvoiceByLocalId(invoiceData.local_id)
+				: undefined;
+			const blockers = await offlineBlockers(invoiceData, outstandingOf(invoiceData, grandTotal));
+			if (blockers.length) {
+				// A sale already journaled by a send that lost its answer may have reached the server.
+				if (existing) {
+					await addPendingInvoice({ data: invoiceData as unknown, hold: "offline_blocked" });
+					await refreshPendingCount();
+					await loadPendingInvoices();
+					broadcast("queue-changed");
+				}
+				return { success: false, reason: existing ? "held" : "blocked", blockers };
+			}
+
+			const result = await addPendingInvoice({
 				data: invoiceData as unknown,
 				customer_name: customerName || invoiceData.customer,
 				grand_total: grandTotal,
 				receipt,
-			};
+				reservations,
+				catalog_evidence: await currentCatalogEvidence(),
+			});
 
-			const result = await addPendingInvoice(record);
-
-			await reserveStock(reservations);
+			if (existing) {
+				if (!existing.reservations && reservations?.length && existing.id) {
+					await updatePendingInvoice(existing.id, { reservations });
+					await reserveStock(reservations);
+				}
+			} else {
+				await reserveStock(reservations);
+			}
 
 			await refreshPendingCount();
 			await loadPendingInvoices();
+			broadcast("queue-changed");
 
-			return { success: true, localId: (result as any).id ?? result };
+			return { success: true, localId: result.id };
 		} catch (error) {
 			console.error("Failed to save offline invoice:", error);
-			return { success: false };
+			void refreshStorageHealth();
+			const reason = error instanceof StorageWriteError ? error.reason : "unknown";
+			return { success: false, reason };
 		}
 	}
 
@@ -378,7 +490,8 @@ export const useOfflineStore = defineStore("offline", () => {
 			const needsAttention = (inv: OfflineInvoice) =>
 				inv.status === "dead_letter" ||
 				inv.status === "needs_review" ||
-				inv.status === "fiscal_uncertain";
+				inv.status === "fiscal_uncertain" ||
+				!!inv.hold;
 			pendingCount.value = pendingInvoices.value.filter((inv) => !needsAttention(inv)).length;
 			deadLetterCount.value = pendingInvoices.value.filter(needsAttention).length;
 		} catch {
@@ -388,43 +501,102 @@ export const useOfflineStore = defineStore("offline", () => {
 		}
 	}
 
+	type SendOutcome = "synced" | "needs_review" | "fiscal_uncertain" | "rejected" | "retry" | "skipped";
+
+	function dueForBackgroundSend(invoice: OfflineInvoice, now: number): boolean {
+		if (invoice.hold) return false;
+		if ((invoice.data as Record<string, unknown>)?.is_draft) return false;
+		if (["dead_letter", "needs_review", "fiscal_uncertain"].includes(invoice.status)) return false;
+		if (invoice.next_attempt_at && Date.parse(invoice.next_attempt_at) > now) return false;
+		const session = currentOwner();
+		if (invoice.owner && session && invoice.owner.user !== session.user) return false;
+		return true;
+	}
+
+	/** Send one queued sale under a claim, and record how it went. */
+	async function attemptSend(invoice: OfflineInvoice): Promise<SendOutcome> {
+		if (!invoice.id) return "skipped";
+		const claimed = await claimPendingInvoice(invoice.id);
+		if (!claimed) return "skipped";
+		Object.assign(invoice, claimed);
+
+		try {
+			const outcome = await pushPending(invoice);
+			if (outcome === "synced") invoice.status = "pending";
+			return outcome;
+		} catch (error: unknown) {
+			const failure = classifySyncError(error);
+			invoice.error = failure.message;
+			if (failure.kind === "rejected") {
+				invoice.status = "dead_letter";
+				invoice.rejection = {
+					code: failure.code,
+					message: failure.message,
+					at: new Date().toISOString(),
+				};
+				await updatePendingInvoice(invoice.id, {
+					status: "dead_letter",
+					error: invoice.error,
+					rejection: invoice.rejection,
+					claimed_by: null,
+					claim_expires: null,
+				});
+				if (isStockRejection(error)) await reconcileStockFromServer(itemCodesOf(invoice));
+				return "rejected";
+			}
+			const attempts = (invoice.attempts || 0) + 1;
+			invoice.attempts = attempts;
+			invoice.retry_count = attempts;
+			invoice.status = "failed";
+			invoice.next_attempt_at = nextAttemptAt(attempts);
+			await updatePendingInvoice(invoice.id, {
+				status: "failed",
+				attempts,
+				retry_count: attempts,
+				next_attempt_at: invoice.next_attempt_at,
+				error: invoice.error,
+				claimed_by: null,
+				claim_expires: null,
+			});
+			return "retry";
+		}
+	}
+
 	async function syncPendingInvoices(): Promise<void> {
 		if (isSyncing.value || !isOnline.value) return;
+		if (!currentOwner()) return;
 
 		isSyncing.value = true;
 		syncErrors.value = [];
 
 		try {
-			const invoices = (await getAllPendingInvoices()) as OfflineInvoice[];
-			if (invoices.length === 0) {
-				isSyncing.value = false;
-				return;
-			}
+			const locked = await runExclusive("xpos-queue-drain", async (lock) => {
+				await recoverStaleClaims();
+				const invoices = (await getAllPendingInvoices()) as OfflineInvoice[];
+				if (invoices.length === 0) return;
 
-			let synced = 0;
-			let failed = 0;
-			let rejected = 0;
+				let synced = 0;
+				let failed = 0;
+				let rejected = 0;
+				let consecutiveTransient = 0;
 
-			for (const invoice of invoices) {
-				if (!isOnline.value) {
-					break;
-				}
-				if ((invoice.data as Record<string, unknown>)?.is_draft) {
-					continue;
-				}
-				if (
-					invoice.status === "dead_letter" ||
-					invoice.status === "needs_review" ||
-					invoice.status === "fiscal_uncertain"
-				) {
-					continue;
-				}
-				try {
-					invoice.status = "syncing";
-					if (invoice.id) await updatePendingInvoice(invoice.id, { status: "syncing" });
+				for (const invoice of invoices) {
+					if (!isOnline.value) break;
+					if (!dueForBackgroundSend(invoice, Date.now())) continue;
+					await lock.renew();
 
-					const outcome = await pushPending(invoice);
-					if (outcome !== "synced") {
+					const outcome = await attemptSend(invoice);
+					if (outcome === "skipped") continue;
+					consecutiveTransient = outcome === "retry" ? consecutiveTransient + 1 : 0;
+
+					if (outcome === "synced") synced++;
+					else if (outcome === "rejected") {
+						rejected++;
+						syncErrors.value.push(
+							`Invoice for ${invoice.customer_name || "Unknown"}: ${invoice.error}`,
+						);
+					} else if (outcome === "retry") failed++;
+					else
 						syncErrors.value.push(
 							outcome === "needs_review"
 								? __("Invoice for {0}: prices changed, held for review", [
@@ -434,70 +606,45 @@ export const useOfflineStore = defineStore("offline", () => {
 										invoice.customer_name || __("Unknown"),
 									]),
 						);
-						continue;
-					}
-					synced++;
-				} catch (error: unknown) {
-					invoice.error = error instanceof Error ? error.message : String(error);
-
-					if (isStockRejection(error)) {
-						rejected++;
-						invoice.status = "dead_letter";
-						syncErrors.value.push(
-							`Invoice for ${invoice.customer_name || "Unknown"}: ${invoice.error}`,
-						);
-						if (invoice.id)
-							await updatePendingInvoice(invoice.id, {
-								status: "dead_letter",
-								error: invoice.error,
-							});
-
-						await reconcileStockFromServer(itemCodesOf(invoice));
-						continue;
-					}
-
-					failed++;
-					invoice.retry_count = (invoice.retry_count || 0) + 1;
-					invoice.status = invoice.retry_count >= MAX_RETRIES ? "dead_letter" : "failed";
-
-					if (invoice.status === "dead_letter") {
-						syncErrors.value.push(
-							`Invoice for ${invoice.customer_name || "Unknown"}: ${invoice.error}`,
-						);
-					}
-
-					if (invoice.id)
-						await updatePendingInvoice(invoice.id, {
-							status: invoice.status,
-							retry_count: invoice.retry_count,
-							error: invoice.error,
-						});
+					if (consecutiveTransient >= DRAIN_BREAKER) break;
 				}
-			}
 
+				if (synced > 0) showSuccess(`Synced ${synced} offline invoice${synced > 1 ? "s" : ""}`);
+				if (failed > 0)
+					showError(`Could not send ${failed} invoice${failed > 1 ? "s" : ""}. Will retry.`);
+				if (rejected > 0) {
+					showError(
+						__(
+							"{0} offline invoice(s) were refused by the server. Review them in the pending list.",
+							[String(rejected)],
+						),
+					);
+				}
+			});
+			void locked;
 			await refreshPendingCount();
 			await loadPendingInvoices();
 			lastSyncTime.value = new Date().toISOString();
-
-			if (synced > 0) {
-				showSuccess(`Synced ${synced} offline invoice${synced > 1 ? "s" : ""}`);
-			}
-			if (failed > 0) {
-				showError(`Failed to sync ${failed} invoice${failed > 1 ? "s" : ""}. Will retry.`);
-			}
-			if (rejected > 0) {
-				showError(
-					__(
-						"{0} offline invoice(s) were rejected for insufficient stock and will not retry. Review them in the pending list.",
-						[String(rejected)],
-					),
-				);
-			}
+			broadcast("queue-changed");
 		} catch (error) {
 			console.error("Sync error:", error);
 		} finally {
 			isSyncing.value = false;
+			scheduleRetry();
 		}
+	}
+
+	function scheduleRetry(): void {
+		if (retryTimerId) clearTimeout(retryTimerId);
+		retryTimerId = null;
+		const due = pendingInvoices.value
+			.filter((inv) => inv.status === "failed" && !inv.hold && inv.next_attempt_at)
+			.map((inv) => Date.parse(inv.next_attempt_at as string))
+			.filter((time) => Number.isFinite(time));
+		if (!due.length) return;
+		const delay = Math.max(Math.min(...due) - Date.now(), MIN_RETRY_DELAY_MS);
+		if (delay >= SYNC_INTERVAL_MS) return;
+		retryTimerId = setTimeout(() => void syncPendingInvoices(), delay);
 	}
 
 	async function retrySingle(id: number): Promise<boolean> {
@@ -515,49 +662,36 @@ export const useOfflineStore = defineStore("offline", () => {
 			return false;
 		}
 
-		try {
-			invoice.status = "syncing";
-			await updatePendingInvoice(invoice.id!, { status: "syncing" });
+		if (invoice.hold) {
+			await updatePendingInvoice(id, { hold: null });
+			invoice.hold = null;
+		}
+		const outcome = await attemptSend(invoice);
+		await refreshPendingCount();
+		await loadPendingInvoices();
+		broadcast("queue-changed");
 
-			const outcome = await pushPending(invoice);
-			await refreshPendingCount();
-			await loadPendingInvoices();
-			if (outcome === "needs_review") {
+		switch (outcome) {
+			case "synced":
+				showSuccess(__("Invoice synced successfully"));
+				return true;
+			case "needs_review":
 				showError(__("Prices changed since this sale was rung up. Review it in the pending list."));
 				return false;
-			}
-			if (outcome === "fiscal_uncertain") {
+			case "fiscal_uncertain":
 				showError(
 					invoice.error || __("FBR did not confirm this sale. Check it in the pending list."),
 				);
 				return false;
-			}
-			showSuccess(__("Invoice synced successfully"));
-			return true;
-		} catch (error: unknown) {
-			invoice.error = error instanceof Error ? error.message : String(error);
-
-			if (isStockRejection(error)) {
-				invoice.status = "dead_letter";
-				await updatePendingInvoice(invoice.id!, {
-					status: "dead_letter",
-					error: invoice.error,
-				});
-				await loadPendingInvoices();
-				showError(invoice.error);
+			case "skipped":
+				showInfo(__("Another tab is already sending this sale."));
 				return false;
-			}
-
-			invoice.retry_count = (invoice.retry_count || 0) + 1;
-			invoice.status = invoice.retry_count >= MAX_RETRIES ? "dead_letter" : "failed";
-			await updatePendingInvoice(invoice.id!, {
-				status: invoice.status,
-				retry_count: invoice.retry_count,
-				error: invoice.error,
-			});
-			await loadPendingInvoices();
-			showError(__("Sync failed:") + " " + invoice.error);
-			return false;
+			case "rejected":
+				showError(invoice.error || __("The server refused this sale."));
+				return false;
+			default:
+				showError(__("Sync failed:") + " " + invoice.error);
+				return false;
 		}
 	}
 
@@ -585,6 +719,16 @@ export const useOfflineStore = defineStore("offline", () => {
 		await loadPendingInvoices();
 	}
 
+	async function downloadPendingExport(): Promise<void> {
+		const blob = new Blob([await exportPendingInvoices()], { type: "application/json" });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = `xpos-pending-sales-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+		link.click();
+		setTimeout(() => URL.revokeObjectURL(url), 10_000);
+	}
+
 	function startPeriodicSync(): void {
 		if (syncIntervalId) return;
 		syncIntervalId = setInterval(() => {
@@ -607,17 +751,18 @@ export const useOfflineStore = defineStore("offline", () => {
 		if (!posStore.isReady || !posStore.profileName) return;
 
 		try {
-			const { useItemStore } = await import("@/stores/itemStore");
-			const itemStore = useItemStore();
-			itemStore.cacheAllItems(posStore.profileName).catch((err) => {
-				console.warn("[XPOS Sync] Failed to sync items:", err);
-			});
-
-			const { useCustomerStore } = await import("@/stores/customerStore");
-			const customerStore = useCustomerStore();
-			customerStore.cacheAllCustomers(posStore.profileName).catch((err) => {
-				console.warn("[XPOS Sync] Failed to sync customers:", err);
-			});
+			if (posStore.useOfflineMode) {
+				if (!persistenceAsked) {
+					persistenceAsked = true;
+					void requestPersistence().then(() => refreshStorageHealth());
+				}
+				syncCatalog(posStore.profileName)
+					.then(() => refreshCatalogStatus())
+					.catch((err) => {
+						console.warn("[XPOS Sync] Failed to sync catalogue:", err);
+						void refreshCatalogStatus();
+					});
+			}
 
 			if (pendingCount.value > 0) {
 				syncPendingInvoices();
@@ -641,11 +786,18 @@ export const useOfflineStore = defineStore("offline", () => {
 		statusLabel,
 		statusColor,
 		isOnline,
+		dbState,
+		catalogStatus,
+		storageHealth,
+		storagePersisted,
 		init,
 		destroy,
 		refreshPendingCount,
 		refreshDeadLetterCount,
+		refreshCatalogStatus,
+		refreshStorageHealth,
 		retryDeadLetterInvoice,
+		offlineBlockers,
 		saveOffline,
 		loadPendingInvoices,
 		syncPendingInvoices,
@@ -656,6 +808,7 @@ export const useOfflineStore = defineStore("offline", () => {
 		consumePending,
 		deletePending,
 		clearAll,
+		downloadPendingExport,
 		startPeriodicSync,
 		stopPeriodicSync,
 		syncOfflineData,

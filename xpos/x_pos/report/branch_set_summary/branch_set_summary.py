@@ -4,8 +4,11 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
+	scope.enforce(filters or {})
 	columns, data = get_columns(), get_data(filters)
 	return columns, data
 
@@ -27,16 +30,18 @@ def get_data(filters):
                 sed.t_warehouse = %(warehouse)s
                 OR (sed.s_warehouse = '' AND se.purpose = 'Material Transfer')
             )
+            {scope_condition}
         GROUP BY se.name, sed.t_warehouse
     """
 
+	params = {
+		"date": filters.get("date"),
+		"warehouse": filters.get("warehouse"),
+		"company": filters.get("company"),
+	}
 	data = frappe.db.sql(
-		query,
-		{
-			"date": filters.get("date"),
-			"warehouse": filters.get("warehouse"),
-			"company": filters.get("company"),
-		},
+		query.replace("{scope_condition}", scope.warehouse_condition("sed.t_warehouse", params)),
+		params,
 		as_dict=True,
 	)
 	return data

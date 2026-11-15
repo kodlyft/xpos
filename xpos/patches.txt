@@ -17,3 +17,7 @@ xpos.patches.v2.activate_pos_profile_settings
 xpos.patches.v2.add_view_expected_amount_permission
 xpos.patches.v2.referral_code_unique_customer_company
 xpos.patches.v2.add_resolve_fiscal_check_permission
+xpos.patches.v3.add_catalog_change_log
+xpos.patches.v3.add_catalog_query_indexes
+xpos.patches.v3.add_gift_card_liability_report_permission
+xpos.patches.v3.add_stock_receiving_permissions

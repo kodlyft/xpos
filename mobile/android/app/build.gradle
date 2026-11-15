@@ -1,0 +1,104 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace = "com.kodlyft.xpos.mobile.dev"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.kodlyft.xpos.mobile.dev"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    kotlinOptions { jvmTarget = '21' }
+    // Release signing comes from android/keystore.properties (git-ignored) or XPOS_KEYSTORE_* environment variables.
+    // Without either, the release build is produced unsigned and cannot be uploaded anywhere.
+    def keystoreProps = new Properties()
+    def keystoreFile = rootProject.file('keystore.properties')
+    if (keystoreFile.exists()) keystoreFile.withInputStream { keystoreProps.load(it) }
+    def signingValue = { String key, String env -> keystoreProps.getProperty(key) ?: System.getenv(env) }
+    signingConfigs {
+        release {
+            def path = signingValue('storeFile', 'XPOS_KEYSTORE_FILE')
+            if (path) {
+                storeFile file(path)
+                storePassword signingValue('storePassword', 'XPOS_KEYSTORE_PASSWORD')
+                keyAlias signingValue('keyAlias', 'XPOS_KEY_ALIAS')
+                keyPassword signingValue('keyPassword', 'XPOS_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (signingConfigs.release.storeFile != null) signingConfig signingConfigs.release
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+// The schema is exported from the web build (yarn build -> assets/xpos-schema.json). Fail early if it is missing.
+tasks.configureEach { task ->
+    if (task.name == 'preBuild') {
+        task.doFirst {
+            if (!file('src/main/assets/xpos-schema.json').exists())
+                throw new GradleException('Missing src/main/assets/xpos-schema.json. Run `yarn build` in mobile/ first.')
+        }
+    }
+}
+
+// A release must never carry a live-reload server url (it would load code from a developer machine).
+tasks.configureEach { task ->
+    if (task.name == 'preReleaseBuild') {
+        task.doFirst {
+            def cfg = file('src/main/assets/capacitor.config.json')
+            if (cfg.exists() && cfg.text =~ /"url"\s*:/)
+                throw new GradleException('capacitor.config.json contains a server url (live reload). Re-run `yarn cap sync android` without XPOS_ANDROID_DEV, or use `yarn android:bundle`.')
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    implementation "androidx.work:work-runtime-ktx:$workVersion"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion"
+    testImplementation "junit:junit:$junitVersion"
+    testImplementation "org.json:json:20250517"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    androidTestImplementation "androidx.test:runner:1.7.0"
+    androidTestImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

@@ -1,26 +1,19 @@
 <template>
 	<div class="h-full min-h-0 flex flex-col">
-		<!-- Header -->
-		<div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-border/60 shrink-0">
-			<div class="flex items-center gap-2 min-w-0">
-				<Banknote class="w-5 h-5 text-primary shrink-0" />
-				<h1 class="font-semibold text-base sm:text-lg truncate">
-					{{ __("Cashier - Unsettled Invoices") }}
-				</h1>
+		<PageHeader :title="__('Cashier - Unsettled Invoices')" :icon="Banknote">
+			<template #meta>
 				<Badge v-if="invoices.length" variant="secondary" class="shrink-0">
 					{{ invoices.length }}
 				</Badge>
-			</div>
-			<div class="flex items-center gap-2 shrink-0">
-				<span class="hidden md:inline text-xs text-muted-foreground">
-					{{ __("Use ↑ ↓ to navigate, Enter to settle") }}
-				</span>
-				<Button variant="outline" size="sm" :disabled="isLoading" @click="loadList()">
-					<RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isLoading }" />
-					<span class="hidden sm:inline">{{ __("Refresh") }}</span>
-				</Button>
-			</div>
-		</div>
+			</template>
+			<span class="hidden md:inline text-xs text-muted-foreground">
+				{{ __("Use ↑ ↓ to navigate, Enter to settle") }}
+			</span>
+			<Button variant="outline" size="sm" :disabled="isLoading" @click="loadList()">
+				<RefreshCw class="w-4 h-4" :class="{ 'animate-spin': isLoading }" />
+				<span class="hidden sm:inline">{{ __("Refresh") }}</span>
+			</Button>
+		</PageHeader>
 
 		<!-- Feature disabled -->
 		<div
@@ -122,6 +115,7 @@
 </template>
 
 <script setup lang="ts">
+import { PageHeader } from "@/components/ui/page";
 import { ref, onMounted, onUnmounted, watch, nextTick, type ComponentPublicInstance } from "vue";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";

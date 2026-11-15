@@ -4,8 +4,11 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
+	scope.enforce(filters or {})
 	columns, data = get_columns(), evaluate_filters(filters)
 	return columns, data
 
@@ -57,7 +60,7 @@ def evaluate_filters(filters):
             ) u
                 ON ti.item_code = u.parent
             LEFT JOIN `tabBin` bin
-                ON ti.item_code = bin.item_code
+                ON ti.item_code = bin.item_code {bin_scope}
             LEFT JOIN (
                 SELECT
                     item_code,
@@ -100,7 +103,9 @@ def evaluate_filters(filters):
             ti.item_name, bin.warehouse ASC;
     """
 
-	return frappe.db.sql(sql, filters, as_dict=1)
+	params = dict(filters)
+	sql = sql.replace("{bin_scope}", scope.warehouse_condition("bin.warehouse", params))
+	return frappe.db.sql(sql, params, as_dict=1)
 
 
 def get_columns():

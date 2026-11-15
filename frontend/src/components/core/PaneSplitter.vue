@@ -35,8 +35,10 @@ const props = withDefaults(
 		defaultValue: number;
 		label: string;
 		step?: number;
+		/** Where the resized pane sits: "end" (default) is the inline-end side, "start" the inline-start side. */
+		side?: "start" | "end";
 	}>(),
-	{ step: 16 },
+	{ step: 16, side: "end" },
 );
 
 const emit = defineEmits<{
@@ -65,7 +67,7 @@ function onPointerDown(event: PointerEvent) {
 }
 
 function onPointerMove(event: PointerEvent) {
-	const delta = (event.clientX - startX) * (isRtl() ? 1 : -1);
+	const delta = (event.clientX - startX) * (isRtl() ? 1 : -1) * (props.side === "start" ? -1 : 1);
 	emit("update:modelValue", clamp(startValue + delta));
 }
 
@@ -85,8 +87,9 @@ function set(value: number) {
 
 function onKeydown(event: KeyboardEvent) {
 	// ArrowLeft moves the divider left: in LTR that widens the cart, in RTL it narrows it.
-	const towardStart = isRtl() ? "ArrowRight" : "ArrowLeft";
-	const towardEnd = isRtl() ? "ArrowLeft" : "ArrowRight";
+	const flip = isRtl() !== (props.side === "start");
+	const towardStart = flip ? "ArrowRight" : "ArrowLeft";
+	const towardEnd = flip ? "ArrowLeft" : "ArrowRight";
 	if (event.key === towardStart) set(props.modelValue + props.step);
 	else if (event.key === towardEnd) set(props.modelValue - props.step);
 	else if (event.key === "Home") set(props.max);

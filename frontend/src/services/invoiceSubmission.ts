@@ -1,11 +1,8 @@
-import { addPendingInvoice, deletePendingInvoice } from "@/services/dbBridge";
+import { addPendingInvoice, deletePendingInvoice, updatePendingInvoice } from "@/services/dbBridge";
+import { newInvoiceId } from "@/services/saleIdentity";
 import type { InvoiceData, ReceiptSnapshot } from "@/types/pos.types";
 
-/** A browser-safe random identity, including tills served over LAN HTTP. */
-export function newInvoiceId(): string {
-	const bytes = crypto.getRandomValues(new Uint8Array(16));
-	return `inv_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
-}
+export { newInvoiceId };
 
 /** Persist before sending: a lost response or page reload must retry this same sale. */
 export async function submitDurableInvoice<T>(
@@ -18,6 +15,7 @@ export async function submitDurableInvoice<T>(
 		receipt,
 		customer_name: data.customer,
 		grand_total: receipt.grand_total,
+		claim: true,
 	});
 	window.dispatchEvent(new Event("xpos:pending-invoices-changed"));
 	let result: T;
@@ -28,6 +26,12 @@ export async function submitDurableInvoice<T>(
 		if ((error as { excType?: string })?.excType) {
 			await deletePendingInvoice(pending.id);
 			window.dispatchEvent(new Event("xpos:pending-invoices-changed"));
+		} else {
+			try {
+				await updatePendingInvoice(pending.id, { claimed_by: null, claim_expires: null });
+			} catch {
+				/* the claim lapses on its own */
+			}
 		}
 		throw error;
 	}

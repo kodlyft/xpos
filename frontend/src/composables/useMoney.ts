@@ -63,7 +63,7 @@ export function useMoney() {
 		if (!currencySymbol.value) return figure;
 		return currencyMeta(currency.value).symbol_on_right
 			? `${figure} ${currencySymbol.value}`
-			: `${currencySymbol.value}${figure}`;
+			: `${currencySymbol.value} ${figure}`;
 	}
 
 	function qty(value: number | string | null | undefined, precision?: number): string {

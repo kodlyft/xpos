@@ -1,238 +1,239 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { Search, BarChart3, ArrowRight, Lock, Sparkles, Layers3, FolderOpen } from "lucide-vue-next";
+import { ArrowRight, BarChart3, FolderOpen, Lock, Search, Star } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import __ from "@/lib/translate";
-import {
-	getReportDefinitions,
-	isReportAccessible,
-	type ReportCategory,
-	type ReportDefinition,
-} from "@/services/reports";
+import { showError } from "@/services/api";
+import { useAuthStore } from "@/stores/authStore";
+import { extractErrorMessage } from "@/utils";
+import { fetchReportCatalog, isReportRunnable, type ReportDefinition } from "@/services/reports";
+import { createReportViewStore, reportStorageKey } from "@/services/reportViews";
 
 const router = useRouter();
+const authStore = useAuthStore();
 const searchTerm = ref("");
+const reports = ref<ReportDefinition[]>([]);
+const loading = ref(true);
+const favorites = ref<string[]>([]);
+const recents = ref<string[]>([]);
 
-const reportDefinitions = computed(() => getReportDefinitions());
-
-const filteredReports = computed(() => {
-	const query = searchTerm.value.trim().toLowerCase();
-	if (!query) return reportDefinitions.value;
-
-	return reportDefinitions.value.filter((report) => {
-		const textParts = [report.title, report.reportName, report.description, report.category, report.slug]
-			.join(" ")
-			.toLowerCase();
-		return textParts.includes(query);
-	});
-});
-
-const accessibleCount = computed(
-	() => reportDefinitions.value.filter((report) => isReportAccessible(report)).length,
+const store = computed(() =>
+	createReportViewStore(reportStorageKey(window.location.host, authStore.userName)),
 );
 
-const sectionReports = computed(() => {
-	const categories = Array.from(new Set(filteredReports.value.map((report) => report.category)));
+function loadLocalState() {
+	favorites.value = store.value.favorites();
+	recents.value = store.value.recents();
+}
+
+// The signed-in user decides which device-local state applies; it can arrive after first paint.
+watch(() => authStore.userName, loadLocalState);
+onActivated(loadLocalState);
+
+onMounted(async () => {
+	loadLocalState();
+	try {
+		reports.value = await fetchReportCatalog(true);
+	} catch (error) {
+		showError(extractErrorMessage(error));
+	} finally {
+		loading.value = false;
+	}
+});
+
+const query = computed(() => searchTerm.value.trim().toLowerCase());
+
+const matches = computed(() => {
+	if (!query.value) return reports.value;
+	return reports.value.filter((report) =>
+		[report.title, report.id, report.description, report.category, report.slug, ...report.aliases]
+			.join(" ")
+			.toLowerCase()
+			.includes(query.value),
+	);
+});
+
+const byId = computed(() => new Map(matches.value.map((report) => [report.id, report])));
+const favoriteReports = computed(() =>
+	favorites.value
+		.map((id) => byId.value.get(id))
+		.filter((report): report is ReportDefinition => Boolean(report)),
+);
+const recentReports = computed(() =>
+	recents.value
+		.map((id) => byId.value.get(id))
+		.filter((report): report is ReportDefinition => Boolean(report)),
+);
+
+const sections = computed(() => {
+	const categories = Array.from(new Set(matches.value.map((report) => report.category)));
 	return categories.map((category) => ({
 		category,
-		reports: filteredReports.value.filter((report) => report.category === category),
+		reports: matches.value.filter((report) => report.category === category),
 	}));
 });
 
-const categoryAccent: Record<ReportCategory, { accent: string; chip: string; icon: string }> = {
-	Inventory: {
-		accent: "from-emerald-500/20 via-emerald-500/10 to-transparent",
-		chip: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
-		icon: "text-emerald-500",
-	},
-	Sales: {
-		accent: "from-sky-500/20 via-sky-500/10 to-transparent",
-		chip: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20",
-		icon: "text-sky-500",
-	},
-	Purchasing: {
-		accent: "from-amber-500/20 via-amber-500/10 to-transparent",
-		chip: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20",
-		icon: "text-amber-500",
-	},
-	Operations: {
-		accent: "from-violet-500/20 via-violet-500/10 to-transparent",
-		chip: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20",
-		icon: "text-violet-500",
-	},
-};
-
-function openReport(report: ReportDefinition) {
-	if (!isReportAccessible(report)) return;
-	router.push(`/reports/${report.slug}`);
+function open(report: ReportDefinition) {
+	if (isReportRunnable(report)) router.push(`/reports/${report.slug}`);
 }
 
-function clearSearch() {
-	searchTerm.value = "";
+function toggleFavorite(report: ReportDefinition) {
+	store.value.toggleFavorite(report.id);
+	favorites.value = store.value.favorites();
+}
+
+function isFavorite(report: ReportDefinition): boolean {
+	return favorites.value.includes(report.id);
 }
 </script>
 
 <template>
-	<div class="flex flex-col h-full overflow-hidden bg-background">
-		<div class="shrink-0 p-3 sm:p-4 pb-2 sm:pb-3">
-			<Card
-				class="relative overflow-hidden border-border/70 bg-linear-to-br from-emerald-500/12 via-card to-background"
-			>
-				<div
-					class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.16),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(14,165,233,0.10),transparent_30%)]"
+	<div class="flex h-full flex-col overflow-hidden bg-background">
+		<PageHeader
+			:title="__('Reports')"
+			:subtitle="__('Open a report, filter it, then export or print the result.')"
+			class="mx-3 mt-3 rounded-2xl border shadow-raised"
+		>
+			<div class="relative w-full sm:w-80">
+				<Search
+					class="pointer-events-none absolute inset-s-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+					aria-hidden="true"
 				/>
-				<div class="relative p-5 sm:p-6 space-y-4">
-					<div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-						<div class="space-y-2 max-w-3xl">
-							<div class="flex flex-wrap items-center gap-2">
-								<Badge variant="outline" class="gap-1.5 bg-background/80">
-									<Layers3 class="h-3.5 w-3.5" />
-									{{ __("Reports") }}
-								</Badge>
-								<Badge variant="secondary" class="gap-1.5">
-									<BarChart3 class="h-3.5 w-3.5" />
-									{{ reportDefinitions.length }} {{ __("reports") }}
-								</Badge>
-								<Badge variant="secondary" class="gap-1.5">
-									<Sparkles class="h-3.5 w-3.5" />
-									{{ accessibleCount }} {{ __("available") }}
-								</Badge>
-							</div>
-							<h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-								{{ __("Analytics Reports") }}
-							</h1>
-							<p class="text-sm sm:text-base text-muted-foreground max-w-2xl">
-								{{
-									// prettier-ignore
-									__(
-										"Browse the reports library, open any report in a dedicated viewer, and export or copy the data directly from the app."
-									)
-								}}
-							</p>
-						</div>
-
-						<div class="flex flex-wrap items-center gap-2">
-							<div class="relative w-full sm:w-80">
-								<Search
-									class="pointer-events-none absolute inset-s-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
-								/>
-								<Input
-									v-model="searchTerm"
-									:placeholder="__('Search reports or categories...')"
-									class="ps-9 h-10 bg-background/95"
-								/>
-							</div>
-							<Button
-								variant="outline"
-								size="sm"
-								class="h-10"
-								:disabled="!searchTerm"
-								@click="clearSearch"
-							>
-								{{ __("Clear") }}
-							</Button>
-						</div>
-					</div>
-				</div>
-			</Card>
-		</div>
-
-		<ScrollArea class="flex-1 px-3 sm:px-4 pb-3 sm:pb-4">
-			<div
-				v-if="sectionReports.length === 0"
-				class="flex flex-col items-center justify-center py-20 text-center"
-			>
-				<FolderOpen class="h-14 w-14 text-muted-foreground/30 mb-4" />
-				<p class="text-lg font-semibold text-foreground">{{ __("No reports match your search") }}</p>
-				<p class="text-sm text-muted-foreground mt-1 max-w-md">
-					{{ __("Try a different keyword or clear the search field.") }}
-				</p>
+				<Input
+					v-model="searchTerm"
+					type="search"
+					:aria-label="__('Search reports')"
+					:placeholder="__('Search reports or categories...')"
+					class="h-9 ps-9"
+				/>
 			</div>
+		</PageHeader>
 
-			<div v-else class="space-y-8">
-				<section v-for="section in sectionReports" :key="section.category" class="space-y-3">
-					<div class="flex items-center justify-between gap-3">
-						<div>
-							<h2
-								class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground"
-							>
-								{{ section.category }}
-							</h2>
-							<p class="text-xs text-muted-foreground mt-1">
-								{{ section.reports.length }} {{ __("reports") }}
-							</p>
-						</div>
-						<Badge variant="outline" class="gap-1.5">
-							<Layers3 class="h-3.5 w-3.5" />
+		<ScrollArea class="flex-1">
+			<div class="space-y-4 p-3">
+				<div v-if="loading" class="space-y-2" aria-busy="true">
+					<div v-for="i in 5" :key="i" class="skeleton h-14 w-full rounded-xl"></div>
+				</div>
+
+				<div
+					v-else-if="matches.length === 0"
+					class="flex flex-col items-center justify-center py-20 text-center"
+					role="status"
+				>
+					<FolderOpen class="mb-4 h-12 w-12 text-muted-foreground/40" />
+					<p class="text-lg font-semibold text-foreground">
+						{{
+							reports.length === 0
+								? __("No reports available")
+								: __("No reports match your search")
+						}}
+					</p>
+					<p class="mt-1 max-w-md text-sm text-muted-foreground">
+						{{
+							reports.length === 0
+								? __("Ask an administrator to enable reports for your role.")
+								: __("Try a different keyword or clear the search field.")
+						}}
+					</p>
+				</div>
+
+				<template v-else>
+					<section
+						v-for="group in [
+							{ key: 'fav', title: __('Favorites'), items: favoriteReports },
+							{ key: 'recent', title: __('Recent'), items: recentReports },
+						]"
+						v-show="group.items.length > 0"
+						:key="group.key"
+						:aria-label="group.title"
+					>
+						<h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+							{{ group.title }}
+						</h2>
+						<ul class="flex flex-wrap gap-2">
+							<li v-for="report in group.items" :key="report.id">
+								<Button
+									variant="outline"
+									size="sm"
+									class="h-9 gap-1.5"
+									:disabled="!isReportRunnable(report)"
+									@click="open(report)"
+								>
+									<BarChart3 class="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+									{{ report.title }}
+								</Button>
+							</li>
+						</ul>
+					</section>
+
+					<section
+						v-for="section in sections"
+						:key="section.category"
+						:aria-label="section.category"
+					>
+						<h2 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
 							{{ section.category }}
-						</Badge>
-					</div>
-
-					<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-						<Card
-							v-for="report in section.reports"
-							:key="report.slug"
-							class="group relative overflow-hidden border-border/70 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+							<span class="ms-1 font-normal">({{ section.reports.length }})</span>
+						</h2>
+						<ul
+							class="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card/50 shadow-raised"
 						>
-							<div
-								:class="[
-									'absolute inset-x-0 top-0 h-1 bg-linear-to-r',
-									categoryAccent[report.category].accent,
-								]"
-							/>
-							<div class="p-5 space-y-4">
-								<div class="flex items-start justify-between gap-3">
-									<div class="min-w-0 flex-1 space-y-2">
-										<Badge
-											:class="categoryAccent[report.category].chip"
-											variant="outline"
-										>
-											{{ report.category }}
-										</Badge>
-										<h3 class="text-lg font-semibold text-foreground leading-tight">
-											{{ report.title }}
-										</h3>
-										<p class="text-sm text-muted-foreground leading-6">
-											{{ report.description }}
-										</p>
-									</div>
-									<div
-										class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-background/80"
-										:class="categoryAccent[report.category].icon"
-									>
-										<BarChart3 class="h-5 w-5" />
-									</div>
-								</div>
-
-								<div class="flex items-center justify-end gap-2 pt-1">
+							<li
+								v-for="report in section.reports"
+								:key="report.id"
+								class="flex items-center gap-2 px-3 py-2 hover:bg-surface-hover"
+							>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									:aria-pressed="isFavorite(report)"
+									:aria-label="
+										isFavorite(report)
+											? __('Remove {0} from favorites', [report.title])
+											: __('Add {0} to favorites', [report.title])
+									"
+									@click="toggleFavorite(report)"
+								>
+									<Star
+										class="h-4 w-4"
+										:class="isFavorite(report) ? 'fill-warning text-warning' : ''"
+									/>
+								</Button>
+								<button
+									type="button"
+									class="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-60"
+									:disabled="!isReportRunnable(report)"
+									@click="open(report)"
+								>
+									<span class="min-w-0 flex-1">
+										<span class="block truncate text-sm font-medium text-foreground">{{
+											report.title
+										}}</span>
+										<span class="block truncate text-xs text-muted-foreground">{{
+											report.description
+										}}</span>
+									</span>
 									<Badge
-										v-if="!isReportAccessible(report)"
+										v-if="!isReportRunnable(report)"
 										variant="destructive"
-										class="gap-1.5"
+										class="gap-1"
 									>
-										<Lock class="h-3 w-3" />
-										{{ __("Locked") }}
+										<Lock class="h-3 w-3" aria-hidden="true" />{{ __("Needs adapter") }}
 									</Badge>
-									<Button
-										variant="outline"
-										size="sm"
-										class="gap-1.5"
-										:disabled="!isReportAccessible(report)"
-										@click="openReport(report)"
-									>
-										{{ __("Open") }}
-										<ArrowRight class="h-4 w-4" />
-									</Button>
-								</div>
-							</div>
-						</Card>
-					</div>
-				</section>
+									<ArrowRight
+										class="h-4 w-4 shrink-0 text-muted-foreground rtl:rotate-180"
+										aria-hidden="true"
+									/>
+								</button>
+							</li>
+						</ul>
+					</section>
+				</template>
 			</div>
 		</ScrollArea>
 	</div>

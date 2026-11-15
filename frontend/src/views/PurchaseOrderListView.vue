@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, ChevronRight, Calendar, Package, Edit, Trash2 } from "lucide-vue-next";
 import __ from "@/lib/translate";
+import { showError } from "@/services/api";
 import type { PurchaseOrder } from "@/types/pos.types";
 import ListView from "@/components/core/ListView.vue";
 import PurchaseOrderDetailDialog from "@/components/dialogs/PurchaseOrderDetailDialog.vue";
@@ -32,16 +33,22 @@ const draftOrders = ref<
 	}>
 >([]);
 
+let detailRequestId = 0;
+
 async function viewOrder(order: PurchaseOrder): Promise<void> {
+	const id = ++detailRequestId;
 	isLoadingDetail.value = true;
 	selectedOrder.value = { ...order, items: [] };
 	try {
 		const detail = await purchaseStore.fetchReceiptDetail(order.name);
+		if (id !== detailRequestId) return;
 		selectedOrder.value = { ...order, items: detail?.items || [] };
 	} catch {
+		if (id !== detailRequestId) return;
 		selectedOrder.value = order;
+		showError(__("Failed to fetch order details"));
 	} finally {
-		isLoadingDetail.value = false;
+		if (id === detailRequestId) isLoadingDetail.value = false;
 	}
 }
 
@@ -189,10 +196,7 @@ onMounted(() => {
 			</template>
 
 			<template #item="{ item: order }">
-				<Card
-					class="p-3 sm:p-4 cursor-pointer transition-all duration-200 border-transparent hover:border-primary/40 hover:shadow-md dark:hover:bg-accent/50"
-					@click="viewOrder(order)"
-				>
+				<Card interactive class="p-3 sm:p-4" @click="viewOrder(order)">
 					<div class="flex items-center gap-2 sm:gap-4">
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1 flex-wrap">

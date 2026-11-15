@@ -4,6 +4,8 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
 	columns, data = get_columns(), get_data(filters)
@@ -11,6 +13,7 @@ def execute(filters=None):
 
 
 def get_data(filters):
+	scope.enforce(filters)
 	if not filters.get("brand"):
 		frappe.throw(_("Please select brand first"))
 	query = """
@@ -30,7 +33,9 @@ def get_data(filters):
         AND ti.brand IN %(brand_filter)s
     """
 
-	data = frappe.db.sql(query, {"brand_filter": tuple(filters.get("brand"))}, as_dict=True)
+	params = {"brand_filter": tuple(filters.get("brand"))}
+	query += scope.warehouse_condition("bin.warehouse", params)
+	data = frappe.db.sql(query, params, as_dict=True)
 	return data
 
 

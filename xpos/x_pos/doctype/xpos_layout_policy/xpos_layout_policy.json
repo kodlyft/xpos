@@ -1,0 +1,164 @@
+{
+ "actions": [],
+ "autoname": "field:pos_profile",
+ "creation": "2026-10-24 10:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "pos_profile",
+  "allow_customization",
+  "limits_section",
+  "max_pinned_items",
+  "max_favorite_categories",
+  "min_visible_actions",
+  "locks_section",
+  "lock_pinned_items",
+  "lock_favorite_categories",
+  "lock_view_and_density",
+  "lock_product_display",
+  "lock_cart_layout",
+  "lock_quick_actions",
+  "allow_section",
+  "allowed_footer_actions",
+  "allowed_row_actions",
+  "allowed_display_fields",
+  "defaults_section",
+  "default_layout"
+ ],
+ "fields": [
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "POS Profile",
+   "options": "POS Profile",
+   "reqd": 1,
+   "set_only_once": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_customization",
+   "fieldtype": "Check",
+   "label": "Allow Cashiers to Customize"
+  },
+  {
+   "fieldname": "limits_section",
+   "fieldtype": "Section Break",
+   "label": "Limits"
+  },
+  {
+   "default": "24",
+   "fieldname": "max_pinned_items",
+   "fieldtype": "Int",
+   "label": "Max Pinned Items"
+  },
+  {
+   "default": "12",
+   "fieldname": "max_favorite_categories",
+   "fieldtype": "Int",
+   "label": "Max Favorite Categories"
+  },
+  {
+   "default": "5",
+   "description": "Actions shown before the More menu. At least 5.",
+   "fieldname": "min_visible_actions",
+   "fieldtype": "Int",
+   "label": "Visible Cart Actions"
+  },
+  {
+   "description": "A locked section always uses the profile default; personal choices are ignored.",
+   "fieldname": "locks_section",
+   "fieldtype": "Section Break",
+   "label": "Locked Sections"
+  },
+  {
+   "default": "0",
+   "fieldname": "lock_pinned_items",
+   "fieldtype": "Check",
+   "label": "Lock Pinned Items"
+  },
+  {
+   "default": "0",
+   "fieldname": "lock_favorite_categories",
+   "fieldtype": "Check",
+   "label": "Lock Favorite Categories"
+  },
+  {
+   "default": "0",
+   "fieldname": "lock_view_and_density",
+   "fieldtype": "Check",
+   "label": "Lock Grid/List and Density"
+  },
+  {
+   "default": "0",
+   "fieldname": "lock_product_display",
+   "fieldtype": "Check",
+   "label": "Lock Product Display"
+  },
+  {
+   "default": "0",
+   "fieldname": "lock_cart_layout",
+   "fieldtype": "Check",
+   "label": "Lock Cart Placement and Width"
+  },
+  {
+   "default": "0",
+   "fieldname": "lock_quick_actions",
+   "fieldtype": "Check",
+   "label": "Lock Quick Actions"
+  },
+  {
+   "description": "One id per line. Empty means every action or field is allowed.",
+   "fieldname": "allow_section",
+   "fieldtype": "Section Break",
+   "label": "Allowed Choices"
+  },
+  {
+   "fieldname": "allowed_footer_actions",
+   "fieldtype": "Small Text",
+   "label": "Allowed Cart Footer Actions"
+  },
+  {
+   "fieldname": "allowed_row_actions",
+   "fieldtype": "Small Text",
+   "label": "Allowed Cart Row Actions"
+  },
+  {
+   "fieldname": "allowed_display_fields",
+   "fieldtype": "Small Text",
+   "label": "Allowed Product Display Fields"
+  },
+  {
+   "fieldname": "defaults_section",
+   "fieldtype": "Section Break",
+   "label": "Profile Default Layout"
+  },
+  {
+   "description": "Optional. Same shape as a personal layout; invalid parts are ignored.",
+   "fieldname": "default_layout",
+   "fieldtype": "Code",
+   "label": "Default Layout",
+   "options": "JSON"
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-24 03:24:31.094078",
+ "modified_by": "Administrator",
+ "module": "X POS",
+ "name": "XPOS Layout Policy",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

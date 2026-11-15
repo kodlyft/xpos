@@ -4,28 +4,31 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InvoiceData, ReceiptSnapshot } from "@/types/pos.types";
 
-const { cartStore, offlineStore, posStore, printReceiptOffline, showInfo, calls } = vi.hoisted(() => {
-	const calls: string[] = [];
-	return {
-		calls,
-		cartStore: {
-			customerName: "Walk-in Customer",
-			grandTotal: 10,
-			getReceiptSnapshot: vi.fn(),
-			getStockReservations: vi.fn(() => [{ item_code: "SKU1", stock_qty: 2 }]),
-			clearAll: vi.fn(() => calls.push("clearAll")),
-		},
-		offlineStore: { saveOffline: vi.fn() },
-		posStore: { profileName: "Shop Floor", lastInvoiceName: "" },
-		printReceiptOffline: vi.fn(async () => {
-			calls.push("print");
-			return true;
-		}),
-		showInfo: vi.fn(),
-	};
-});
+const { cartStore, cartSessions, offlineStore, posStore, printReceiptOffline, showInfo, calls } = vi.hoisted(
+	() => {
+		const calls: string[] = [];
+		return {
+			calls,
+			cartStore: {
+				customerName: "Walk-in Customer",
+				grandTotal: 10,
+				getReceiptSnapshot: vi.fn(),
+				getStockReservations: vi.fn(() => [{ item_code: "SKU1", stock_qty: 2 }]),
+			},
+			cartSessions: { finish: vi.fn(() => calls.push("clearAll")) },
+			offlineStore: { saveOffline: vi.fn() },
+			posStore: { profileName: "Shop Floor", lastInvoiceName: "" },
+			printReceiptOffline: vi.fn(async () => {
+				calls.push("print");
+				return true;
+			}),
+			showInfo: vi.fn(),
+		};
+	},
+);
 
 vi.mock("@/stores/cartStore", () => ({ useCartStore: () => cartStore }));
+vi.mock("@/stores/cartSessionStore", () => ({ useCartSessionStore: () => cartSessions }));
 vi.mock("@/stores/offlineStore", () => ({ useOfflineStore: () => offlineStore }));
 vi.mock("@/stores/posStore", () => ({ usePosStore: () => posStore }));
 vi.mock("@/composables/usePrintInvoice", () => ({
@@ -94,7 +97,7 @@ describe("completeOfflineSale", () => {
 		await completeOfflineSale(invoiceData, { withPrint: true });
 
 		const snapshotAt = cartStore.getReceiptSnapshot.mock.invocationCallOrder[0];
-		const clearedAt = cartStore.clearAll.mock.invocationCallOrder[0];
+		const clearedAt = cartSessions.finish.mock.invocationCallOrder[0];
 		expect(snapshotAt).toBeLessThan(clearedAt);
 	});
 
@@ -105,7 +108,7 @@ describe("completeOfflineSale", () => {
 
 		expect(printReceiptOffline).not.toHaveBeenCalled();
 		expect(offlineStore.saveOffline).toHaveBeenCalled();
-		expect(cartStore.clearAll).toHaveBeenCalled();
+		expect(cartSessions.finish).toHaveBeenCalled();
 	});
 
 	it("records the offline number as the last invoice, for Print Last", async () => {
@@ -121,7 +124,7 @@ describe("completeOfflineSale", () => {
 		const { completeOfflineSale } = useOfflineSale();
 
 		await expect(completeOfflineSale(invoiceData, { withPrint: true })).resolves.toBe(true);
-		expect(cartStore.clearAll).toHaveBeenCalled();
+		expect(cartSessions.finish).toHaveBeenCalled();
 	});
 
 	it("keeps the cart and prints nothing if the invoice could not be queued", async () => {
@@ -131,7 +134,7 @@ describe("completeOfflineSale", () => {
 		await expect(completeOfflineSale(invoiceData, { withPrint: true })).resolves.toBe(false);
 
 		expect(printReceiptOffline).not.toHaveBeenCalled();
-		expect(cartStore.clearAll).not.toHaveBeenCalled();
+		expect(cartSessions.finish).not.toHaveBeenCalled();
 		expect(posStore.lastInvoiceName).toBe("");
 	});
 });

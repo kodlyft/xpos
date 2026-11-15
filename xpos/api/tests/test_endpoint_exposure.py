@@ -108,3 +108,48 @@ class TestGiftCardHelpersAreNotExposed(unittest.TestCase):
 	def test_gated_endpoints_remain_public(self):
 		for name in ("check_gift_card", "claim_issued_gift_cards", "adjust_gift_card"):
 			self.assertTrue(is_whitelisted("xpos.api.gift_cards", name), name)
+
+
+class TestMobileBootstrapExposure(unittest.TestCase):
+	"""Only the named mobile endpoints are public; their helpers stay server-side."""
+
+	def test_bootstrap_is_whitelisted_without_guest_access(self):
+		self.assertTrue(is_whitelisted("xpos.api.mobile", "bootstrap"))
+		from xpos.api.mobile import bootstrap
+
+		self.assertNotIn(bootstrap, frappe.guest_methods)
+
+	def test_quote_sale_is_whitelisted_without_guest_access(self):
+		self.assertTrue(is_whitelisted("xpos.api.mobile_quote", "quote_sale"))
+		from xpos.api.mobile_quote import quote_sale
+
+		self.assertNotIn(quote_sale, frappe.guest_methods)
+
+	def test_customer_endpoints_are_whitelisted_without_guest_access(self):
+		from xpos.api import customers
+
+		for name in (
+			"search_customers_mobile",
+			"get_customer_for_sale",
+			"create_customer_mobile",
+			"update_customer_mobile",
+		):
+			self.assertTrue(is_whitelisted("xpos.api.customers", name), name)
+			self.assertNotIn(getattr(customers, name), frappe.guest_methods, name)
+
+	def test_quote_internals_are_not_endpoints(self):
+		for name in ("Quote", "context_hash", "parse_list"):
+			self.assertTrue(function_exists("xpos.api.mobile_quote", name), name)
+			self.assertFalse(is_whitelisted("xpos.api.mobile_quote", name), name)
+
+	def test_helpers_are_not_endpoints(self):
+		for name in (
+			"minor_digits_for",
+			"erpnext_version",
+			"major_version",
+			"profile_choices",
+			"payment_modes_for",
+			"open_shift_for",
+		):
+			self.assertTrue(function_exists("xpos.api.mobile", name))
+			self.assertFalse(is_whitelisted("xpos.api.mobile", name))

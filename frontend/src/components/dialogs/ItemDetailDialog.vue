@@ -336,8 +336,8 @@ const filteredSerials = computed(() => {
 	// a serial already on another cart line cannot be sold twice
 	const inCart = new Set(cartStore.items.map((i) => i.serial_no).filter(Boolean));
 	const available = resolveLine.value
-		? detail.value.serial_numbers.filter((sn) => !inCart.has(sn))
-		: detail.value.serial_numbers;
+		? detail.value.serial_numbers.filter((sn) => !inCart.has(sn) && !cartStore.serialCartElsewhere(sn))
+		: detail.value.serial_numbers.filter((sn) => !cartStore.serialCartElsewhere(sn));
 	const term = serialSearch.value.toLowerCase();
 	if (!term) return available;
 	return available.filter((sn) => sn.toLowerCase().includes(term));

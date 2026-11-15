@@ -187,9 +187,9 @@ describe("formatting", () => {
 	it("puts the symbol on the correct side", () => {
 		// Grouping and the decimal mark come from the System Settings mask, here left at its
 		// default. SEK is present for symbol_on_right, not for its own comma decimal.
-		expect(formatWithSymbol("USD", 100)).toBe("$100.00");
+		expect(formatWithSymbol("USD", 100)).toBe("$ 100.00");
 		expect(formatWithSymbol("SEK", 100)).toBe("100.00 kr");
-		expect(formatWithSymbol("LBP", 9000000)).toBe("L£9,000,000");
+		expect(formatWithSymbol("LBP", 9000000)).toBe("L£ 9,000,000");
 	});
 
 	it("renders a non-finite value as zero", () => {

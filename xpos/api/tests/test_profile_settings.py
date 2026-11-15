@@ -336,8 +336,11 @@ class TestCreateInvoicePricing(unittest.TestCase):
 		self.assertEqual(self.rows[0].rate, 0)
 
 	def test_return_keeps_original_rate(self):
+		self.can_change_price.return_value = (
+			True  # the stub answers every POS permission, including sale_return
+		)
 		self.run_invoice(
-			profile(force_price_from_customer_price_list=1),
+			profile(force_price_from_customer_price_list=1, allow_return=1),
 			[{"item_code": "A", "qty": -1, "rate": 40}],
 			prices={"A": 80},
 			is_return=1,
@@ -545,19 +548,13 @@ class TestBlindClosing(unittest.TestCase):
 		self.assertEqual(appended[0]["difference"], -150)
 
 	def test_reconciliation_report_blocked_for_blind_profiles(self):
-		from xpos.x_pos.report.pos_shift_reconciliation import pos_shift_reconciliation as report
+		from xpos.reports import policy
 
-		with (
-			patch.object(report.frappe, "has_permission", return_value=False),
-			patch.object(report, "is_blind_closing", return_value=True),
-		):
+		with patch.object(policy, "is_blind_closing", return_value=True):
 			with self.assertRaises(frappe.PermissionError):
-				report.ensure_not_blind({"POS-1"})
-		with (
-			patch.object(report.frappe, "has_permission", return_value=True),
-			patch.object(report, "is_blind_closing", return_value=True),
-		):
-			report.ensure_not_blind({"POS-1"})
+				policy.ensure_not_blind({"POS-1"})
+		with patch.object(policy, "is_blind_closing", return_value=False):
+			policy.ensure_not_blind({"POS-1"})
 
 
 class TestSaleDiscountAuthority(unittest.TestCase):

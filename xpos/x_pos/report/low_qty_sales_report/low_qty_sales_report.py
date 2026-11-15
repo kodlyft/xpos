@@ -4,9 +4,12 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
 	filters = frappe.parse_json(filters) if filters else {}
+	scope.enforce(filters)
 	return get_columns(), get_data(filters)
 
 
@@ -27,18 +30,23 @@ def get_data(filters):
         FROM `tabSales Invoice Item` tsi
         INNER JOIN `tabSales Invoice` ts ON tsi.parent = ts.name
         INNER JOIN `tabItem` ti ON tsi.item_code = ti.item_code
-        LEFT JOIN `tabBin` bin ON tsi.item_code = bin.item_code
+        LEFT JOIN `tabBin` bin ON tsi.item_code = bin.item_code {bin_scope}
         LEFT JOIN `tabItem Supplier` v ON tsi.item_code = v.parent
         WHERE
             ts.company = %(company)s
             AND tsi.docstatus = 1
             AND ts.posting_date BETWEEN %(from_date)s AND %(to_date)s
             AND ROUND(IFNULL(bin.actual_qty, 0), 2) <= %(min_qty)s
+            {sales_scope}
         GROUP BY tsi.item_code, tsi.warehouse
         ORDER BY tsi.item_name, tsi.warehouse ASC
     """
 
-	return frappe.db.sql(query, filters, as_dict=True)
+	params = dict(filters)
+	query = query.replace("{bin_scope}", scope.warehouse_condition("bin.warehouse", params)).replace(
+		"{sales_scope}", scope.warehouse_condition("tsi.warehouse", params)
+	)
+	return frappe.db.sql(query, params, as_dict=True)
 
 
 def get_columns():

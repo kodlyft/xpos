@@ -93,6 +93,7 @@ export const usePurchaseStore = defineStore("purchase", () => {
 	const isReceiving = ref(false);
 	const inTransitEntries = ref<InTransitEntry[]>([]);
 	const isLoadingTransits = ref(false);
+	const transitError = ref("");
 	const selectedTransit = ref<InTransitEntry | null>(null);
 	const isReceivingTransit = ref(false);
 	const isReturningShortage = ref(false);
@@ -819,6 +820,7 @@ export const usePurchaseStore = defineStore("purchase", () => {
 
 	async function fetchInTransitTransfers(): Promise<void> {
 		isLoadingTransits.value = true;
+		transitError.value = "";
 		try {
 			const posStore = usePosStore();
 			const result = await call<InTransitEntry[]>(
@@ -829,6 +831,7 @@ export const usePurchaseStore = defineStore("purchase", () => {
 		} catch (error) {
 			console.error("Error fetching in-transit transfers:", error);
 			inTransitEntries.value = [];
+			transitError.value = error instanceof Error && error.message ? error.message : String(error);
 		} finally {
 			isLoadingTransits.value = false;
 		}
@@ -1162,6 +1165,7 @@ export const usePurchaseStore = defineStore("purchase", () => {
 		isReceiving,
 		inTransitEntries,
 		isLoadingTransits,
+		transitError,
 		selectedTransit,
 		isReceivingTransit,
 		isReturningShortage,

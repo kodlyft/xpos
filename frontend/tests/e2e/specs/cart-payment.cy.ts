@@ -370,10 +370,8 @@ describe("cart + payment behaviour", () => {
 		});
 		addFromGrid(ITEM_A.item_name);
 		cy.cartRow(ITEM_A.item_name).find("input[aria-label='Rate']").should("not.exist");
-		cy.cartRow(ITEM_A.item_name).find("[aria-label='Line options']").click();
-		cy.contains("[role='menuitem']", "Add discount").should("not.exist");
-		cy.get("body").type("{esc}");
-		cy.contains("button:visible", /^\s*Discount\s*$/).should("not.exist");
+		cy.cartRow(ITEM_A.item_name).find("[data-testid='row-action-item_discount']").should("not.exist");
+		cy.get("[data-testid='cart-discount']").should("not.exist");
 	});
 
 	it("keeps the sale when the server refuses it", () => {
@@ -392,17 +390,20 @@ describe("cart + payment behaviour", () => {
 		cy.cartRow(ITEM_A.item_name).should("exist");
 	});
 
-	it("queues the sale with the same identity when the connection drops mid-submit", () => {
+	it("keeps the sale and its identity when the connection drops mid-submit and offline checkout is not set up", () => {
 		bootCart();
 		cy.then(() => stubNetworkError(CREATE));
 		addFromGrid(ITEM_A.item_name);
 		pay();
 		cy.get("[data-testid='save-payment']").click();
-		cy.get("[role='dialog']").should("not.exist");
+		cy.get("[data-testid='payment-status']")
+			.should("have.attr", "data-state", "failed")
+			.and("contain", "held in Pending Invoices");
+		cy.get("[role='dialog']").should("be.visible");
 		cy.contains(/saved successfully/).should("not.exist");
 		pendingInvoices().then((rows) => {
 			expect(rows, "one queued sale, not a duplicate").to.have.length(1);
-			// the background sync may retry; every attempt must carry the one identity
+			expect(rows[0].hold, "not sent again unseen").to.equal("offline_blocked");
 			const ids = new Set(callsTo(CREATE).map((c) => JSON.parse(String(c.args.data)).local_id));
 			expect([...ids]).to.deep.equal([rows[0].data.local_id]);
 		});

@@ -23,6 +23,11 @@ Each order is displayed as a card showing:
 - **Paid amount**
 - **Tax amount**
 
+### Layout
+- The filters, results and pagination sit in one bordered panel, matching the POS screen
+- Every filter has a visible label; the row wraps on tablets and phones
+- Pagination stays pinned under the scrolling results and follows the active light or dark theme
+
 ### Pagination
 - Orders are loaded in pages with a configurable page size
 - Navigate between pages using pagination controls
@@ -32,9 +37,11 @@ Each order is displayed as a card showing:
 
 ## Filtering Orders
 
-### Date Range
-- **From date** - Shows orders from this date onwards
-- **To date** - Shows orders up to this date
+### Posting Date
+- Pick the **Posting Date** with the calendar field (or type `dd/mm/yyyy` or `yyyy-mm-dd`)
+- Shows orders posted on exactly that day
+- Use the **x** in the field, or the calendar's **Clear** button, to remove the filter
+- For ranges use **Filters** and add `Posting Date` with `>=`, `<=`, or `between`
 
 ### Status Filter
 - Filter by invoice status (e.g., Submitted, Paid, Cancelled)

@@ -70,7 +70,7 @@
 						<span class="text-xs text-muted-foreground uppercase tracking-wide">
 							{{ __("Payment Status") }}
 						</span>
-						<p class="font-medium text-green-600">{{ __("Paid") }}</p>
+						<p class="font-medium text-success">{{ __("Paid") }}</p>
 					</div>
 				</div>
 
@@ -171,7 +171,7 @@
 											</div>
 											<div
 												v-if="getField(item, 'batch_no')"
-												class="text-[11px] text-blue-500"
+												class="text-[11px] text-info"
 											>
 												{{ __("Batch") }}: {{ getField(item, "batch_no") }}
 											</div>
@@ -234,7 +234,7 @@
 							<span class="text-xs text-muted-foreground block">{{
 								__("Total Discount")
 							}}</span>
-							<span class="font-semibold text-red-500">-{{ money(totalDiscountAmt) }}</span>
+							<span class="font-semibold text-destructive">-{{ money(totalDiscountAmt) }}</span>
 						</div>
 						<div>
 							<span class="text-xs text-muted-foreground block">{{ __("Net Total") }}</span>
@@ -256,7 +256,7 @@
 								class="text-muted-foreground"
 							>
 								{{ __("Addl. Discount") }}:
-								<strong class="text-red-500"
+								<strong class="text-destructive"
 									>-{{ money(Number((invoice as any).discount_amount)) }}</strong
 								>
 							</div>

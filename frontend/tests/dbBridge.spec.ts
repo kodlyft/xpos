@@ -77,6 +77,7 @@ vi.mock("@/services/idbService", () => ({
 	getCachedTerritories: vi.fn().mockResolvedValue([]),
 	cacheCountries: vi.fn(),
 	getCachedCountries: vi.fn().mockResolvedValue([]),
+	ensureDatabaseReady: vi.fn(),
 	addSyncIdMapping: vi.fn(),
 	getServerName: vi.fn().mockResolvedValue(null),
 }));
@@ -87,6 +88,10 @@ import * as bridge from "@/services/dbBridge";
 describe("dbBridge", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		const pending = mockDb.table("pendingInvoices");
+		pending.get.mockImplementation(async () => ({
+			local_id: pending.add.mock.calls.at(-1)?.[0].local_id,
+		}));
 	});
 
 	describe("IndexedDB storage", () => {

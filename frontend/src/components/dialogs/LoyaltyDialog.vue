@@ -10,7 +10,7 @@
 		<DialogContent class="max-w-md max-h-[80vh] flex flex-col p-0 gap-0">
 			<DialogHeader class="shrink-0 px-5 pt-5 pb-3 border-b border-border">
 				<div class="flex items-center gap-2">
-					<Gift class="w-5 h-5 text-violet-500" />
+					<Gift class="w-5 h-5 text-primary" />
 					<DialogTitle>{{ __("Loyalty Program") }}</DialogTitle>
 				</div>
 				<DialogDescription v-if="customerName" class="text-xs">
@@ -26,17 +26,14 @@
 				<template v-else>
 					<div
 						v-if="customerStore.customerLoyaltyInfo?.enrolled"
-						class="bg-violet-500/5 border border-violet-500/20 rounded-xl p-4 space-y-3"
+						class="bg-primary/5 border border-primary/30 rounded-xl p-4 space-y-3"
 					>
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-2">
-								<Award class="w-5 h-5 text-violet-500" />
+								<Award class="w-5 h-5 text-primary" />
 								<span class="font-semibold text-foreground">{{ __("Enrolled") }}</span>
 							</div>
-							<Badge
-								variant="secondary"
-								class="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
-							>
+							<Badge variant="secondary" class="bg-primary/10 text-primary">
 								{{
 									customerStore.customerLoyaltyInfo.loyalty_program_name ||
 									customerStore.customerLoyaltyInfo.loyalty_program
@@ -46,7 +43,7 @@
 
 						<div class="grid grid-cols-2 gap-3 text-sm">
 							<div class="bg-background rounded-lg p-2.5 text-center">
-								<p class="text-2xl font-bold text-violet-600 dark:text-violet-400">
+								<p class="text-2xl font-bold text-primary">
 									{{ customerStore.customerLoyaltyInfo.loyalty_points || 0 }}
 								</p>
 								<p class="text-[11px] text-muted-foreground">
@@ -54,7 +51,7 @@
 								</p>
 							</div>
 							<div class="bg-background rounded-lg p-2.5 text-center">
-								<p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+								<p class="text-2xl font-bold text-success">
 									{{ money(customerStore.customerLoyaltyInfo.points_value || 0) }}
 								</p>
 								<p class="text-[11px] text-muted-foreground">
@@ -104,8 +101,8 @@
 									class="w-full p-3 rounded-xl border-2 text-start transition-all duration-150"
 									:class="
 										selectedProgram === program.name
-											? 'border-violet-500 bg-violet-500/5'
-											: 'border-border hover:border-violet-500/30'
+											? 'border-primary/30 bg-primary/5'
+											: 'border-border hover:border-primary/30'
 									"
 								>
 									<div class="flex items-center justify-between mb-1">
@@ -115,7 +112,7 @@
 										<Badge
 											v-if="selectedProgram === program.name"
 											variant="default"
-											class="bg-violet-500"
+											class="bg-primary"
 										>
 											{{ __("Selected") }}
 										</Badge>
@@ -177,7 +174,7 @@
 				</Button>
 				<Button
 					v-if="!customerStore.customerLoyaltyInfo?.enrolled && selectedProgram"
-					class="flex-1 bg-violet-500 hover:bg-violet-600 text-white"
+					class="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
 					:disabled="isProcessing"
 					@click="handleEnroll"
 				>

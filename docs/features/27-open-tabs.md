@@ -1,5 +1,7 @@
 # Open Tabs
 
+> Not to be confused with **cart tabs**, the several carts a cashier keeps open on one till. See [Cart Tabs](34-cart-tabs.md).
+
 Open tabs let a customer's unpaid order outlive the cashier who started it, and let a
 cashier collect on a sale that was already rung up on credit. Both live behind the
 **Recall Order** dialog.

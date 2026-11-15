@@ -145,6 +145,7 @@ How the pricing, delivery, closing, credit, printing and referral settings are e
 | Server Cache Duration | Server cache TTL in minutes |
 | Force Reload Items | Force reload the item list |
 | Use Offline Mode | Enable offline POS mode |
+| Offline Payment Modes | The modes of payment that may be taken while offline. **Empty by default, and offline checkout stays unavailable until you list at least one.** Each must also be one of the profile's payment methods. A listed mode is recorded, not verified: nothing authorizes a card or bank payment offline, so list only modes you can reconcile afterwards (usually Cash). Credit sales, part payments, gift cards and customer credit are never allowed offline |
 
 ---
 

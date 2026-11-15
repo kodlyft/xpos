@@ -4,6 +4,8 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
 	columns, data = get_columns(), get_data(filters)
@@ -11,9 +13,13 @@ def execute(filters=None):
 
 
 def get_data(filters):
+	scope.enforce(filters)
+	scope_params = {}
 	conditions = ["bin.actual_qty > 0", "bin.stock_value > %(min_value)s"]
 	if filters.get("warehouse"):
 		conditions.append("bin.warehouse = %(warehouse)s")
+	if scope_clause := scope.warehouse_clause("bin.warehouse", scope_params):
+		conditions.append(scope_clause)
 
 	supplier_filter = ""
 	if filters.get("supplier"):
@@ -70,6 +76,7 @@ def get_data(filters):
 			"suppliers": tuple(filters.get("supplier")) if filters.get("supplier") else (),
 			"company": filters.get("company"),
 			"warehouse": filters.get("warehouse"),
+			**scope_params,
 		},
 		as_dict=True,
 	)

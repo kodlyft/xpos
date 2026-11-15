@@ -1,0 +1,188 @@
+{
+ "actions": [],
+ "autoname": "field:report",
+ "creation": "2026-10-23 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "report",
+  "enabled",
+  "category",
+  "description",
+  "access_section",
+  "pos_permission",
+  "scope_mode",
+  "scope_verified",
+  "column_break_access",
+  "allow_export",
+  "thermal_print",
+  "display_section",
+  "summary",
+  "chart",
+  "column_break_display",
+  "aliases",
+  "filters_section",
+  "filter_provider",
+  "compatibility_section",
+  "capability",
+  "capability_reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "report",
+   "fieldtype": "Link",
+   "label": "Report",
+   "options": "Report",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "set_only_once": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "Inventory\nSales\nPurchasing\nOperations\nAccounting\nOther",
+   "default": "Other",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "access_section",
+   "fieldtype": "Section Break",
+   "label": "Access and Scope"
+  },
+  {
+   "fieldname": "pos_permission",
+   "fieldtype": "Link",
+   "label": "Required POS Permission",
+   "options": "POS Permission",
+   "description": "Leave empty to rely on Frappe report access alone."
+  },
+  {
+   "fieldname": "scope_mode",
+   "fieldtype": "Select",
+   "label": "Scope",
+   "options": "Company and Warehouse\nCompany\nNone",
+   "default": "Company and Warehouse",
+   "description": "Which of the user's company and warehouse limits are enforced on this report's filters. None declares the report holds no company or warehouse data."
+  },
+  {
+   "fieldname": "scope_verified",
+   "fieldtype": "Check",
+   "label": "Report Applies Scope Itself",
+   "description": "Tick only after confirming the report's own query limits rows and totals to the user's companies and warehouses (for example through xpos.reports.scope). Users restricted to a company or warehouse cannot run a report that is not ticked."
+  },
+  {
+   "fieldname": "column_break_access",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "allow_export",
+   "fieldtype": "Check",
+   "label": "Allow Export and Copy",
+   "default": "1",
+   "description": "Export also needs the Export right on the report's reference DocType."
+  },
+  {
+   "fieldname": "thermal_print",
+   "fieldtype": "Check",
+   "label": "Thermal Print"
+  },
+  {
+   "fieldname": "display_section",
+   "fieldtype": "Section Break",
+   "label": "Display"
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Select",
+   "label": "Report Summary",
+   "options": "runtime\nyes\nno",
+   "default": "runtime"
+  },
+  {
+   "fieldname": "chart",
+   "fieldtype": "Select",
+   "label": "Chart",
+   "options": "runtime\nyes\nno",
+   "default": "runtime"
+  },
+  {
+   "fieldname": "column_break_display",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "aliases",
+   "fieldtype": "Small Text",
+   "label": "URL Aliases",
+   "description": "One per line. Old addresses that should keep opening this report."
+  },
+  {
+   "fieldname": "filters_section",
+   "fieldtype": "Section Break",
+   "label": "Filters"
+  },
+  {
+   "fieldname": "filter_provider",
+   "fieldtype": "Data",
+   "label": "Filter Provider",
+   "description": "Only for reports whose filters are not defined in the Report's Filters table. Must be listed in the xpos_report_filter_providers hook."
+  },
+  {
+   "fieldname": "compatibility_section",
+   "fieldtype": "Section Break",
+   "label": "Compatibility"
+  },
+  {
+   "fieldname": "capability",
+   "fieldtype": "Data",
+   "label": "Capability",
+   "read_only": 1
+  },
+  {
+   "fieldname": "capability_reason",
+   "fieldtype": "Small Text",
+   "label": "Reason",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-23 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "X POS",
+ "name": "XPOS Report Setting",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

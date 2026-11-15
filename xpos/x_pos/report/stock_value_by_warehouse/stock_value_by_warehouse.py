@@ -4,8 +4,11 @@
 import frappe
 from frappe import _
 
+from xpos.reports import scope
+
 
 def execute(filters=None):
+	scope.enforce(filters or {})
 	columns, data = get_columns(), get_stock_value_by_warehouse(filters)
 	return columns, data
 
@@ -22,10 +25,13 @@ def get_stock_value_by_warehouse(filters):
 			AND b.warehouse IS NOT NULL
 			AND b.warehouse != ''
 			AND w.company = %(company)s
+			{scope_condition}
         GROUP BY b.warehouse
         HAVING SUM(b.stock_value) IS NOT NULL AND SUM(b.stock_value) > 0
     """
-	return frappe.db.sql(query, {"company": filters.get("company")}, as_dict=True)
+	params = {"company": filters.get("company")}
+	query = query.replace("{scope_condition}", scope.warehouse_condition("b.warehouse", params))
+	return frappe.db.sql(query, params, as_dict=True)
 
 
 def get_columns():

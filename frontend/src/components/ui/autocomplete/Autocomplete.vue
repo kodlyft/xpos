@@ -385,6 +385,7 @@ defineExpose({ focus, select, getInputEl, inputRef });
 						autocomplete="new-password"
 						:placeholder="modelValue ? displayText : placeholder"
 						:disabled="disabled"
+						:aria-label="label || placeholder"
 						:class="
 							cn(
 								inputVariants({ size: compact ? 'compact' : 'default' }),

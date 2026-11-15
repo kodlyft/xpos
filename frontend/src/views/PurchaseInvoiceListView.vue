@@ -2,11 +2,11 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { useMoney } from "@/composables/useMoney";
-import { getDoc } from "@/services/api";
+import { getDoc, showError } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Plus, ChevronRight, Calendar, Receipt, FileText } from "lucide-vue-next";
+import { Plus, ChevronRight, Calendar, Receipt } from "lucide-vue-next";
 import __ from "@/lib/translate";
 import type { PurchaseInvoice } from "@/types/pos.types";
 import ListView from "@/components/core/ListView.vue";
@@ -18,16 +18,22 @@ const { money } = useMoney();
 const selectedInvoice = ref<PurchaseInvoice | null>(null);
 const isLoadingDetail = ref(false);
 
+let detailRequestId = 0;
+
 async function viewInvoice(invoice: PurchaseInvoice): Promise<void> {
+	const id = ++detailRequestId;
 	isLoadingDetail.value = true;
 	selectedInvoice.value = { ...invoice, items: [] };
 	try {
 		const detail = await getDoc<PurchaseInvoice>("Purchase Invoice", invoice.name);
+		if (id !== detailRequestId) return;
 		selectedInvoice.value = detail || invoice;
 	} catch {
+		if (id !== detailRequestId) return;
 		selectedInvoice.value = invoice;
+		showError(__("Failed to fetch invoice details"));
 	} finally {
-		isLoadingDetail.value = false;
+		if (id === detailRequestId) isLoadingDetail.value = false;
 	}
 }
 
@@ -72,7 +78,6 @@ function statusVariant(
 				'company',
 				'posting_date',
 				'bill_no',
-				'purchase_order',
 				'grand_total',
 				'outstanding_amount',
 				'status',
@@ -96,10 +101,7 @@ function statusVariant(
 			</template>
 
 			<template #item="{ item: invoice }">
-				<Card
-					class="p-3 sm:p-4 cursor-pointer transition-all duration-200 border-transparent hover:border-primary/40 hover:shadow-md dark:hover:bg-accent/50"
-					@click="viewInvoice(invoice)"
-				>
+				<Card interactive class="p-3 sm:p-4" @click="viewInvoice(invoice)">
 					<div class="flex items-center gap-2 sm:gap-4">
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1 flex-wrap">
@@ -120,10 +122,6 @@ function statusVariant(
 								<span class="flex items-center gap-1 whitespace-nowrap">
 									<Calendar class="h-3 w-3 shrink-0" />
 									{{ formatDate(invoice.posting_date) }}
-								</span>
-								<span v-if="invoice.purchase_order" class="flex items-center gap-1 truncate">
-									<FileText class="h-3 w-3 shrink-0" />
-									{{ invoice.purchase_order }}
 								</span>
 							</div>
 						</div>

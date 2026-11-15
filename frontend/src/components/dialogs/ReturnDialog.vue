@@ -10,7 +10,7 @@
 		<DialogContent class="max-w-2xl max-h-[80vh] flex flex-col p-0 gap-0">
 			<DialogHeader class="shrink-0 px-5 pt-5 pb-3 border-b border-border">
 				<div class="flex items-center gap-2">
-					<RotateCcw class="w-5 h-5 text-amber-500" />
+					<RotateCcw class="w-5 h-5 text-warning" />
 					<DialogTitle class="text-base">{{ __("Return Invoice") }}</DialogTitle>
 				</div>
 				<DialogDescription class="text-xs">{{
@@ -152,7 +152,7 @@
 				<Button variant="outline" class="flex-1" @click="close">{{ __("Cancel") }}</Button>
 				<Button
 					v-if="selectedInvoice"
-					class="flex-1 font-bold bg-amber-500 hover:bg-amber-600 text-white"
+					class="flex-1 font-bold bg-warning hover:bg-warning/90 text-warning-foreground"
 					:disabled="!hasReturnItems"
 					@click="processReturn"
 				>
@@ -167,9 +167,10 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useCartStore } from "@/stores/cartStore";
+import { useCartSessionStore } from "@/stores/cartSessionStore";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
-import { call } from "@/services/api";
+import { call, showError } from "@/services/api";
 import {
 	Dialog,
 	DialogContent,
@@ -189,6 +190,7 @@ const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
 
 const cartStore = useCartStore();
+const cartSessions = useCartSessionStore();
 const posStore = usePosStore();
 const { money } = useMoney();
 
@@ -307,9 +309,14 @@ async function selectInvoice(invoiceName: string) {
 	}
 }
 
-function processReturn() {
+async function processReturn() {
 	if (!selectedInvoice.value || !hasReturnItems.value) return;
 
+	const prepared = cartSessions.prepareForLoad();
+	if (!prepared.ok) {
+		showError(prepared.reason || "");
+		return;
+	}
 	cartStore.clearCart();
 	const allowedItemCodes = returnItems.value.map((i) => i.item_code);
 	cartStore.enterReturnMode(selectedInvoice.value.name, allowedItemCodes);

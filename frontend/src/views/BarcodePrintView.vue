@@ -1,286 +1,283 @@
 <template>
-	<div class="flex flex-col h-full overflow-hidden">
-		<div class="shrink-0 px-6 py-4 border-b border-border bg-background">
-			<div class="flex items-center justify-between">
-				<div>
-					<h1 class="text-xl font-bold text-foreground">{{ __("Barcode Printer") }}</h1>
-					<p class="text-sm text-muted-foreground mt-0.5">
-						{{ __("Generate and print barcode labels for items") }}
-					</p>
-				</div>
-				<div class="flex items-center gap-2">
-					<Button variant="outline" size="sm" @click="clearAll" :disabled="items.length === 0">
-						<Trash2 class="w-4 h-4 me-1" />
-						{{ __("Clear All") }}
-					</Button>
-					<Button size="sm" @click="printLabels" :disabled="items.length === 0 || isPrinting">
-						<Printer class="w-4 h-4 me-1" />
-						{{ isPrinting ? __("Generating...") : __("Print Labels") }}
-					</Button>
-				</div>
-			</div>
-		</div>
-
-		<div class="flex-1 flex overflow-hidden">
-			<div class="w-105 flex flex-col border-e border-border shrink-0">
-				<div class="p-4 pb-2 space-y-3">
-					<div class="relative">
+	<div class="flex h-full flex-col overflow-hidden">
+		<div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:flex-row lg:overflow-hidden">
+			<section
+				class="flex max-h-[70vh] min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card/50 shadow-raised lg:max-h-none lg:w-120 lg:flex-none"
+			>
+				<div class="shrink-0 space-y-3 p-3 pb-2">
+					<div
+						class="relative flex h-12 items-center rounded-xl border border-border bg-card shadow-inset transition-[border-color,box-shadow] duration-fast focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/12"
+					>
 						<Search
-							class="absolute inset-s-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+							class="pointer-events-none absolute inset-s-3.5 size-5 text-muted-foreground"
+							aria-hidden="true"
 						/>
 						<input
 							ref="searchInput"
 							v-model="searchQuery"
 							type="text"
+							autocomplete="off"
+							enterkeyhint="search"
 							:placeholder="__('Search items by name, code, or barcode...')"
-							class="w-full h-9 ps-9 pe-3 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+							:aria-label="__('Search items by name, code, or barcode...')"
+							class="h-full w-full min-w-0 bg-transparent ps-11 pe-12 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
 							@input="onSearch"
-							@keydown.enter="onSearchEnter"
+							@keydown.enter.prevent="onSearchEnter"
 						/>
-					</div>
-
-					<div class="grid grid-cols-2 gap-2">
-						<div>
-							<label class="text-xs font-medium text-muted-foreground mb-1 block">
-								{{ __("Barcode Type") }}
-							</label>
-							<select
-								v-model="barcodeType"
-								class="w-full h-8 px-2 text-xs border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+						<div class="absolute inset-e-1.5 flex items-center">
+							<button
+								v-if="searchQuery"
+								type="button"
+								class="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+								:aria-label="__('Clear search')"
+								@click="clearSearch"
 							>
-								<option value="code128">CODE 128</option>
-								<option value="code39">CODE 39</option>
-								<option value="ean13">EAN-13</option>
-								<option value="ean8">EAN-8</option>
-								<option value="upca">UPC-A</option>
-								<option value="itf">ITF</option>
-							</select>
-						</div>
-						<div>
-							<label class="text-xs font-medium text-muted-foreground mb-1 block">
-								{{ __("Label Size") }}
-							</label>
-							<select
-								v-model="labelSize"
-								class="w-full h-8 px-2 text-xs border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-							>
-								<option value="small">{{ __("Small (38x25mm)") }}</option>
-								<option value="medium">{{ __("Medium (50x30mm)") }}</option>
-								<option value="large">{{ __("Large (60x40mm)") }}</option>
-								<option value="custom">{{ __("Custom") }}</option>
-							</select>
+								<X class="size-4" />
+							</button>
 						</div>
 					</div>
 
-					<div v-if="labelSize === 'custom'" class="grid grid-cols-2 gap-2">
-						<div>
-							<label class="text-xs font-medium text-muted-foreground mb-1 block">
-								{{ __("Width (mm)") }}
-							</label>
-							<NumberInput
-								v-model="customWidth"
-								:min="10"
-								:max="200"
-								class="w-full h-8 px-2 text-xs border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-							/>
+					<div
+						class="space-y-3 rounded-2xl border border-border bg-surface-raised p-3 shadow-raised"
+					>
+						<div class="grid grid-cols-2 gap-2">
+							<div>
+								<label class="mb-1 block text-xs font-semibold text-muted-foreground">
+									{{ __("Barcode Type") }}
+								</label>
+								<Select
+									v-model="barcodeType"
+									:items="barcodeTypeOptions"
+									:aria-label="__('Barcode Type')"
+								/>
+							</div>
+							<div>
+								<label class="mb-1 block text-xs font-semibold text-muted-foreground">
+									{{ __("Label Size") }}
+								</label>
+								<Select
+									v-model="labelSize"
+									:items="labelSizeOptions"
+									:aria-label="__('Label Size')"
+								/>
+							</div>
 						</div>
-						<div>
-							<label class="text-xs font-medium text-muted-foreground mb-1 block">
-								{{ __("Height (mm)") }}
-							</label>
-							<NumberInput
-								v-model="customHeight"
-								:min="10"
-								:max="200"
-								class="w-full h-8 px-2 text-xs border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-							/>
-						</div>
-					</div>
 
-					<div class="flex items-center gap-4">
-						<label class="flex items-center gap-2 text-xs cursor-pointer">
-							<Checkbox
-								:checked="showPrice"
-								@update:checked="showPrice = Boolean($event)"
-								class="rounded"
-							/>
-							<span class="select-none">{{ __("Show Price") }}</span>
-						</label>
-						<label class="flex items-center gap-2 text-xs cursor-pointer">
-							<Checkbox
-								:checked="includeQR"
-								@update:checked="includeQR = Boolean($event)"
-								class="rounded"
-							/>
-							<span class="select-none">{{ __("Include QR Code") }}</span>
-						</label>
+						<div v-if="labelSize === 'custom'" class="grid grid-cols-2 gap-2">
+							<div>
+								<label class="mb-1 block text-xs font-semibold text-muted-foreground">
+									{{ __("Width (mm)") }}
+								</label>
+								<NumberInput
+									:allow-decimal="false"
+									v-model="customWidth"
+									:min="10"
+									:max="200"
+									class="h-10 w-full rounded-lg border border-border bg-card px-2 text-sm shadow-inset focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/12"
+								/>
+							</div>
+							<div>
+								<label class="mb-1 block text-xs font-semibold text-muted-foreground">
+									{{ __("Height (mm)") }}
+								</label>
+								<NumberInput
+									:allow-decimal="false"
+									v-model="customHeight"
+									:min="10"
+									:max="200"
+									class="h-10 w-full rounded-lg border border-border bg-card px-2 text-sm shadow-inset focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/12"
+								/>
+							</div>
+						</div>
+
+						<div class="flex items-center gap-4">
+							<label class="flex cursor-pointer items-center gap-2 text-sm">
+								<Checkbox
+									:checked="showPrice"
+									@update:checked="showPrice = Boolean($event)"
+									class="rounded"
+								/>
+								<span class="select-none">{{ __("Show Price") }}</span>
+							</label>
+							<label class="flex cursor-pointer items-center gap-2 text-sm">
+								<Checkbox
+									:checked="includeQR"
+									@update:checked="includeQR = Boolean($event)"
+									class="rounded"
+								/>
+								<span class="select-none">{{ __("Include QR Code") }}</span>
+							</label>
+						</div>
 					</div>
 				</div>
 
-				<div class="flex-1 overflow-y-auto px-4 pb-4 xpos-scrollbar">
+				<div class="min-h-40 flex-1 overflow-y-auto px-3 pb-3 xpos-scrollbar">
 					<div v-if="isSearching" class="flex items-center justify-center py-8">
 						<div
-							class="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"
+							class="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent"
 						></div>
 					</div>
 					<div
-						v-else-if="searchResults.length === 0 && searchQuery"
-						class="text-center py-8 text-muted-foreground text-sm"
+						v-else-if="searchResults.length === 0"
+						class="flex flex-col items-center justify-center gap-2 py-10 text-center text-sm text-muted-foreground"
 					>
-						{{ __("No items found") }}
+						<Package class="size-8 opacity-40" aria-hidden="true" />
+						{{
+							searchQuery ? __("No items found") : __("Search for items to add barcode labels")
+						}}
 					</div>
-					<div
-						v-else-if="searchResults.length === 0 && !searchQuery"
-						class="text-center py-8 text-muted-foreground text-sm"
-					>
-						{{ __("Search for items to add barcode labels") }}
-					</div>
-					<div v-else class="space-y-1">
+					<div v-else class="overflow-hidden rounded-xl border-t border-border">
 						<button
 							v-for="item in searchResults"
 							:key="item.item_code"
-							class="w-full text-start px-3 py-2.5 rounded-md border border-transparent hover:border-border hover:bg-muted/50 transition-colors"
+							type="button"
+							class="group flex min-h-12 w-full min-w-0 items-center gap-3 border-x border-b border-x-border border-b-border/70 bg-card px-3 py-1.5 text-start transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
 							@click="addItem(item)"
 						>
-							<div class="flex items-center justify-between">
-								<div class="min-w-0 flex-1">
-									<div class="text-sm font-medium truncate">
-										{{ item.item_name }}
-									</div>
-									<div class="text-xs text-muted-foreground">
-										{{ item.item_code }}
-									</div>
-								</div>
-								<div class="flex items-center gap-2 shrink-0 ms-2">
-									<span
-										v-if="item.barcodes && item.barcodes.length === 1"
-										class="text-xs text-muted-foreground font-mono"
-										>{{ item.barcodes[0].barcode }}</span
-									>
-									<span
-										v-else-if="item.barcodes && item.barcodes.length > 1"
-										class="text-xs text-muted-foreground"
-										>{{ item.barcodes.length }} {{ __("barcodes") }}</span
-									>
-									<Plus class="w-4 h-4 text-primary" />
-								</div>
-							</div>
+							<span class="min-w-0 flex-1">
+								<span class="block truncate text-sm font-semibold text-foreground" dir="auto">
+									{{ item.item_name }}
+								</span>
+								<span
+									class="block truncate font-mono text-[0.6875rem] leading-4 text-muted-foreground"
+								>
+									{{ item.item_code }}
+								</span>
+							</span>
+							<span
+								v-if="item.barcodes && item.barcodes.length === 1"
+								class="shrink-0 font-mono text-xs text-muted-foreground"
+							>
+								{{ item.barcodes[0].barcode }}
+							</span>
+							<span
+								v-else-if="item.barcodes && item.barcodes.length > 1"
+								class="shrink-0 text-xs text-muted-foreground"
+							>
+								{{ item.barcodes.length }} {{ __("barcodes") }}
+							</span>
+							<Plus class="size-4 shrink-0 text-primary" aria-hidden="true" />
 						</button>
 					</div>
 				</div>
-			</div>
+			</section>
 
-			<div class="flex-1 flex flex-col min-w-0">
-				<div class="flex-1 overflow-y-auto p-4 xpos-scrollbar">
+			<section
+				class="flex min-h-80 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card/50 shadow-raised lg:min-h-0"
+			>
+				<div class="flex shrink-0 items-center justify-between gap-2 px-4 pt-3 pb-2">
+					<h2 class="flex min-w-0 items-center gap-2 text-lg font-bold text-foreground">
+						<Barcode class="size-5 shrink-0 text-primary" aria-hidden="true" />
+						<span class="truncate">{{ __("Barcode Printer") }}</span>
+					</h2>
+					<span
+						v-if="items.length"
+						class="shrink-0 rounded-lg border border-border bg-surface-sunken px-2 py-0.5 text-xs font-semibold text-muted-foreground tabular-nums"
+					>
+						{{ items.length }} {{ __("item(s)") }} &middot; {{ totalLabels }} {{ __("label(s)") }}
+					</span>
+				</div>
+
+				<div class="min-h-0 flex-1 overflow-y-auto px-3 pb-3 xpos-scrollbar">
 					<div
 						v-if="items.length === 0"
-						class="flex flex-col items-center justify-center h-full text-muted-foreground"
+						class="flex h-full flex-col items-center justify-center text-muted-foreground"
 					>
-						<Barcode class="w-16 h-16 mb-4 opacity-30" />
+						<Barcode class="mb-4 size-16 opacity-30" aria-hidden="true" />
 						<p class="text-base font-medium">{{ __("No items selected") }}</p>
-						<p class="text-sm mt-1">
-							{{ __("Search and add items from the left panel") }}
-						</p>
+						<p class="mt-1 text-sm">{{ __("Search and add items from the left panel") }}</p>
 					</div>
 
-					<div v-else>
-						<div class="mb-3 flex items-center justify-between">
-							<span class="text-sm font-medium text-foreground">
-								{{ items.length }} {{ __("item(s)") }} &bull; {{ totalLabels }}
-								{{ __("label(s)") }}
-							</span>
-						</div>
-
-						<div class="border rounded-lg overflow-hidden">
-							<table class="w-full text-sm">
-								<thead class="bg-muted/50">
-									<tr>
-										<th class="text-start px-3 py-2 font-medium text-muted-foreground">
-											{{ __("Item") }}
-										</th>
-										<th
-											class="text-center px-3 py-2 font-medium text-muted-foreground w-56"
-										>
-											{{ __("Barcode") }}
-										</th>
-										<th
-											class="text-center px-3 py-2 font-medium text-muted-foreground w-24"
-										>
-											{{ __("Qty") }}
-										</th>
-										<th
-											class="text-center px-3 py-2 font-medium text-muted-foreground w-16"
-										></th>
-									</tr>
-								</thead>
-								<tbody>
-									<tr
-										v-for="(item, idx) in items"
-										:key="idx"
-										class="border-t border-border hover:bg-muted/30 transition-colors"
-									>
-										<td class="px-3 py-2">
-											<div class="font-medium">{{ item.item_name }}</div>
-											<div class="text-xs text-muted-foreground">
-												{{ item.item_code }}
-											</div>
-										</td>
-										<td class="px-3 py-2 text-center">
-											<select
-												v-if="item.barcodes.length"
-												v-model="item.selectedBarcode"
-												class="w-full h-8 px-2 text-xs font-mono border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-											>
-												<option
-													v-for="(bc, bidx) in item.barcodes"
-													:key="bidx"
-													:value="bc.barcode"
-												>
-													{{ bc.barcode
-													}}{{ bc.barcode_type ? ` (${bc.barcode_type})` : "" }}
-												</option>
-												<option :value="''">
-													{{ item.item_code }} ({{ __("Item Code") }})
-												</option>
-											</select>
-											<span v-else class="font-mono text-xs">{{ item.item_code }}</span>
-										</td>
-										<td class="px-3 py-2">
-											<div class="flex items-center justify-center gap-1">
-												<button
-													class="w-7 h-7 flex items-center justify-center rounded border border-border hover:bg-muted transition-colors"
-													@click="decrementQty(idx)"
-												>
-													<Minus class="w-3 h-3" />
-												</button>
-												<NumberInput
-													v-model="item.qty"
-													:min="1"
-													class="w-12 h-7 text-center text-sm border border-input rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-												/>
-												<button
-													class="w-7 h-7 flex items-center justify-center rounded border border-border hover:bg-muted transition-colors"
-													@click="incrementQty(idx)"
-												>
-													<Plus class="w-3 h-3" />
-												</button>
-											</div>
-										</td>
-										<td class="px-3 py-2 text-center">
-											<button
-												class="text-muted-foreground hover:text-destructive transition-colors"
-												@click="removeItem(idx)"
-											>
-												<X class="w-4 h-4" />
-											</button>
-										</td>
-									</tr>
-								</tbody>
-							</table>
+					<div v-else class="overflow-hidden rounded-xl border-t border-border">
+						<div
+							v-for="(item, idx) in items"
+							:key="idx"
+							class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 border-x border-b border-x-border border-b-border/70 bg-card px-3 py-2 transition-colors duration-fast hover:bg-surface-hover"
+						>
+							<div class="min-w-40 flex-1">
+								<div class="truncate text-sm font-semibold text-foreground" dir="auto">
+									{{ item.item_name }}
+								</div>
+								<div
+									class="truncate font-mono text-[0.6875rem] leading-4 text-muted-foreground"
+								>
+									{{ item.item_code }}
+								</div>
+							</div>
+							<div class="w-full sm:w-52">
+								<Select
+									v-if="item.barcodes.length"
+									:model-value="item.selectedBarcode || ITEM_CODE_VALUE"
+									:items="barcodeOptions(item)"
+									:aria-label="__('Barcode')"
+									class="font-mono text-xs"
+									@update:model-value="
+										item.selectedBarcode =
+											$event === ITEM_CODE_VALUE ? '' : ($event ?? '')
+									"
+								/>
+								<span v-else class="font-mono text-xs text-muted-foreground">
+									{{ item.item_code }}
+								</span>
+							</div>
+							<div
+								class="flex shrink-0 items-center gap-0.5 rounded-xl border border-border bg-surface-sunken p-0.5 shadow-inset"
+							>
+								<button
+									type="button"
+									class="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+									:aria-label="__('Decrease quantity')"
+									@click="decrementQty(idx)"
+								>
+									<Minus class="size-3.5" />
+								</button>
+								<NumberInput
+									:allow-decimal="false"
+									v-model="item.qty"
+									:min="1"
+									class="h-8 w-12 bg-transparent text-center text-sm font-semibold tabular-nums focus:outline-none"
+								/>
+								<button
+									type="button"
+									class="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+									:aria-label="__('Increase quantity')"
+									@click="incrementQty(idx)"
+								>
+									<Plus class="size-3.5" />
+								</button>
+							</div>
+							<button
+								type="button"
+								class="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+								:aria-label="__('Remove')"
+								@click="removeItem(idx)"
+							>
+								<X class="size-4" />
+							</button>
 						</div>
 					</div>
 				</div>
-			</div>
+
+				<div class="flex shrink-0 items-center gap-2 border-t border-border p-3">
+					<Button
+						variant="outline"
+						class="h-12 rounded-xl"
+						:disabled="items.length === 0"
+						@click="clearAll"
+					>
+						<Trash2 class="size-4" />
+						{{ __("Clear All") }}
+					</Button>
+					<Button
+						class="h-12 flex-1 rounded-xl text-base font-semibold shadow-primary"
+						:disabled="items.length === 0 || isPrinting"
+						@click="printLabels"
+					>
+						<Printer class="size-4.5" />
+						{{ isPrinting ? __("Generating...") : __("Print Labels") }}
+					</Button>
+				</div>
+			</section>
 		</div>
 		<div ref="printContainer" class="hidden"></div>
 	</div>
@@ -291,8 +288,9 @@ import { ref, computed, onMounted, nextTick } from "vue";
 import { call } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { __ } from "@/lib/translate";
-import { Search, Plus, Minus, X, Printer, Trash2, Barcode } from "lucide-vue-next";
+import { Search, Plus, Minus, X, Printer, Trash2, Barcode, Package } from "lucide-vue-next";
 import Checkbox from "@/components/ui/checkbox/Checkbox.vue";
+import { Select } from "@/components/ui/select";
 import { NumberInput } from "@/components/ui/number-input";
 import { usePosStore } from "@/stores/posStore";
 import { formatWithSymbol } from "@/composables/useCurrency";
@@ -326,6 +324,34 @@ interface LabelData {
 	price: number;
 	currency: string;
 	uom: string;
+}
+
+const ITEM_CODE_VALUE = "__item_code__";
+
+const barcodeTypeOptions = [
+	{ label: "CODE 128", value: "code128" },
+	{ label: "CODE 39", value: "code39" },
+	{ label: "EAN-13", value: "ean13" },
+	{ label: "EAN-8", value: "ean8" },
+	{ label: "UPC-A", value: "upca" },
+	{ label: "ITF", value: "itf" },
+];
+
+const labelSizeOptions = [
+	{ label: __("Small (38x25mm)"), value: "small" },
+	{ label: __("Medium (50x30mm)"), value: "medium" },
+	{ label: __("Large (60x40mm)"), value: "large" },
+	{ label: __("Custom"), value: "custom" },
+];
+
+function barcodeOptions(item: BarcodeItem) {
+	return [
+		...item.barcodes.map((bc) => ({
+			label: bc.barcode_type ? `${bc.barcode} (${bc.barcode_type})` : bc.barcode,
+			value: bc.barcode,
+		})),
+		{ label: `${item.item_code} (${__("Item Code")})`, value: ITEM_CODE_VALUE },
+	];
 }
 
 const searchInput = ref<HTMLInputElement | null>(null);
@@ -418,6 +444,12 @@ function addItem(item: SearchResult) {
 function selectedBarcodeType(item: BarcodeItem): string | undefined {
 	const match = item.barcodes.find((b) => b.barcode === item.selectedBarcode);
 	return match?.barcode_type || undefined;
+}
+
+function clearSearch() {
+	searchQuery.value = "";
+	searchResults.value = [];
+	searchInput.value?.focus();
 }
 
 function removeItem(idx: number) {

@@ -2,6 +2,7 @@ import {
 	showSuccess as toastSuccess,
 	showError as toastError,
 	showInfo as toastInfo,
+	showWarning as toastWarning,
 } from "@/composables/useToast";
 import { isOnline, isNetworkError } from "@/utils";
 import { captureError } from "@/services/errorLog";
@@ -273,22 +274,29 @@ export function formatCurrency(value: number, currency?: string): string {
 }
 
 /**
- * Show a success message using vue-sonner
+ * Show a success message as a toast
  */
 export function showSuccess(message: string): void {
 	toastSuccess(message);
 }
 
 /**
- * Show an error message using vue-sonner
+ * Show an error message as a toast
  */
 export function showError(message: string): void {
 	toastError(message);
 }
 
 /**
- * Show an info message using vue-sonner
+ * Show an info message as a toast
  */
 export function showInfo(message: string): void {
 	toastInfo(message);
+}
+
+/**
+ * Show a warning message as a toast
+ */
+export function showWarning(message: string): void {
+	toastWarning(message);
 }

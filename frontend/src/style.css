@@ -23,7 +23,7 @@
 		--muted-foreground: 220 21.3% 36.9%;
 		--accent: 220 60% 93%;
 		--accent-foreground: 225 75.6% 30%;
-		--destructive: 3 72.4% 44.1%;
+		--destructive: 3 72.4% 41%;
 		--destructive-foreground: 0 0% 100%;
 		--border: 215 23.5% 84.1%;
 		--input: 217 14.4% 51%;
@@ -43,15 +43,15 @@
 		--focus: 224 76.3% 48%;
 
 		/* Semantic states: solid fill + soft (tinted) fill */
-		--success: 142 71.6% 29%;
+		--success: 142 71.6% 25%;
 		--success-foreground: 0 0% 100%;
 		--success-soft: 141 41.7% 90.6%;
 		--success-soft-foreground: 142 70.7% 22.7%;
-		--warning: 27 93.1% 34.1%;
+		--warning: 27 93.1% 31%;
 		--warning-foreground: 0 0% 100%;
 		--warning-soft: 33 81.8% 91.4%;
 		--warning-soft-foreground: 27 85.9% 27.8%;
-		--info: 203 88.2% 33.3%;
+		--info: 203 88.2% 32%;
 		--info-foreground: 0 0% 100%;
 		--info-soft: 204 66.7% 91.8%;
 		--info-soft-foreground: 203 84.3% 27.5%;
@@ -106,7 +106,7 @@
 		--muted-foreground: 217 23.4% 69.8%;
 		--accent: 221 45% 22%;
 		--accent-foreground: 222 89.2% 88%;
-		--destructive: 3 74.8% 59.6%;
+		--destructive: 3 74.8% 64%;
 		--destructive-foreground: 220 48.8% 8.4%;
 		--border: 218 31.6% 22.4%;
 		--input: 218 18.1% 44.5%;
@@ -289,6 +289,21 @@
 	display: none;
 }
 
+@media (pointer: coarse) {
+	button:not(.sr-only),
+	[role="checkbox"],
+	[role="tab"],
+	[role="switch"],
+	[data-toast-dismiss] {
+		min-width: 24px;
+		min-height: 24px;
+	}
+}
+
+.dark .text-primary {
+	color: hsl(var(--focus));
+}
+
 [data-radix-popper-content-wrapper] {
 	z-index: 9999 !important;
 }
@@ -381,4 +396,73 @@
 		-webkit-user-select: text;
 		user-select: text;
 	}
+}
+
+:root .air-datepicker {
+	--adp-font-family: inherit;
+	--adp-font-size: 0.875rem;
+	--adp-z-index: 10050;
+	--adp-width: 17.5rem;
+	--adp-border-radius: 1rem;
+	--adp-background-color: hsl(var(--popover));
+	--adp-background-color-hover: hsl(var(--surface-hover));
+	--adp-background-color-active: hsl(var(--surface-pressed));
+	--adp-color: hsl(var(--popover-foreground));
+	--adp-color-secondary: hsl(var(--muted-foreground));
+	--adp-accent-color: hsl(var(--primary));
+	--adp-color-other-month: hsl(var(--muted-foreground) / 0.6);
+	--adp-color-other-month-hover: hsl(var(--muted-foreground));
+	--adp-color-disabled: hsl(var(--muted-foreground) / 0.45);
+	--adp-color-disabled-in-range: hsl(var(--muted-foreground) / 0.45);
+	--adp-border-color: hsl(var(--border));
+	--adp-border-color-inner: hsl(var(--border));
+	--adp-border-color-inline: hsl(var(--border));
+	--adp-day-name-color: hsl(var(--primary));
+	--adp-day-name-color-hover: hsl(var(--foreground));
+	--adp-cell-background-color-hover: hsl(var(--surface-hover));
+	--adp-cell-background-color-selected: hsl(var(--primary));
+	--adp-cell-background-color-selected-hover: hsl(var(--primary) / 0.9);
+	--adp-cell-background-color-in-range: hsl(var(--surface-selected));
+	--adp-cell-background-color-in-range-hover: hsl(var(--surface-selected));
+	--adp-background-color-in-range: hsl(var(--surface-selected));
+	--adp-background-color-in-range-focused: hsl(var(--surface-selected));
+	--adp-background-color-selected-other-month: hsl(var(--primary) / 0.7);
+	--adp-background-color-selected-other-month-focused: hsl(var(--primary));
+	--adp-btn-color: hsl(var(--primary));
+	--adp-btn-color-hover: hsl(var(--foreground));
+	--adp-time-track-color: hsl(var(--border));
+	--adp-time-track-color-hover: hsl(var(--border-strong));
+	--adp-time-day-period-color: hsl(var(--muted-foreground));
+	box-shadow: var(--shadow-overlay, 0 12px 32px hsl(var(--foreground) / 0.18));
+}
+
+:root .air-datepicker-cell.-selected-,
+:root .air-datepicker-cell.-selected-.-current- {
+	color: hsl(var(--primary-foreground));
+}
+
+:root .air-datepicker-cell.-current- {
+	color: hsl(var(--primary));
+	font-weight: 600;
+}
+
+:root .air-datepicker-cell,
+:root .air-datepicker-nav--action,
+:root .air-datepicker-nav--title,
+:root .air-datepicker-button {
+	border-radius: 0.625rem;
+}
+
+:root .air-datepicker-time--row input[type="range"]::-webkit-slider-thumb {
+	background: hsl(var(--card));
+	border-color: hsl(var(--primary));
+}
+
+:root .air-datepicker-time--row input[type="range"]::-moz-range-thumb {
+	background: hsl(var(--card));
+	border-color: hsl(var(--primary));
+}
+
+[dir="rtl"] .air-datepicker {
+	direction: rtl;
 }

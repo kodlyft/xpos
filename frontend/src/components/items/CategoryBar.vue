@@ -35,7 +35,7 @@
 						type="button"
 						role="option"
 						:aria-selected="selected === name"
-						class="flex min-h-9 w-full flex-col items-start justify-center rounded-lg px-3 py-1.5 text-start text-sm transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+						class="flex min-h-9 w-full flex-col items-start justify-center rounded-lg px-3 py-1.5 text-start text-sm transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none"
 						:class="
 							selected === name &&
 							'bg-surface-selected font-semibold text-surface-selected-foreground'

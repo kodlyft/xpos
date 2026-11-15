@@ -1,10 +1,10 @@
-import { call } from "@/services/api";
-import { __ } from "@/lib/utils";
-import { hasPermission, type PosPermissions } from "@/services/userRights";
+import { call, getValue } from "@/services/api";
+import __ from "@/lib/translate";
 import { formatWithSymbol } from "@/composables/useCurrency";
 import { formatFloat, formatInt } from "@/utils/numberFormat";
 
-export type ReportCategory = "Inventory" | "Sales" | "Purchasing" | "Operations";
+export type ReportCategory = "Inventory" | "Sales" | "Purchasing" | "Operations" | "Accounting" | "Other";
+export type ReportCapabilityState = "supported" | "adapter_required" | "unsupported";
 export type ReportFilterType = "link" | "multi-link" | "date" | "integer" | "float" | "select" | "text";
 
 export interface ReportFilterOption {
@@ -27,13 +27,17 @@ export interface ReportFilterDefinition {
 }
 
 export interface ReportDefinition {
+	id: string;
 	slug: string;
+	aliases: string[];
 	title: string;
-	reportName: string;
 	description: string;
 	category: ReportCategory;
-	permissionKey?: keyof PosPermissions;
-	thermalPrint?: boolean;
+	ref_doctype: string;
+	capability: { state: ReportCapabilityState; reasons: string[] };
+	execution?: { prepared?: "none" | "unsupported" | string; summary?: string; chart?: string };
+	export: { allowed: boolean };
+	print: { allowed: boolean; thermal: boolean };
 }
 
 export interface ReportColumn {
@@ -43,7 +47,8 @@ export interface ReportColumn {
 	options?: string;
 	width?: number;
 	precision?: number;
-	hidden?: number;
+	hidden?: number | boolean;
+	indent?: number;
 	default?: unknown;
 	[key: string]: unknown;
 }
@@ -51,6 +56,8 @@ export interface ReportColumn {
 export interface ReportSummaryItem {
 	label?: string;
 	value?: unknown;
+	datatype?: string;
+	currency?: string;
 	indicator?: string;
 	color?: string;
 	key?: string;
@@ -87,155 +94,44 @@ const reportUtilityFields = new Set([
 	"__index",
 ]);
 
-const reportDefinitions: ReportDefinition[] = [
-	{
-		slug: "current-stock-report",
-		title: __("Current Stock Report"),
-		reportName: "Current Stock Report",
-		description: __("Live stock valuation by item, warehouse, supplier, brand, and group."),
-		category: "Inventory",
-		permissionKey: "current_stock_report",
-	},
-	{
-		slug: "current-stock-by-brand",
-		title: __("Current Stock By Brand"),
-		reportName: "Current Stock By Brand",
-		description: __("Brand-wise stock snapshot with quantities and valuation."),
-		category: "Inventory",
-		permissionKey: "current_stock_by_brand",
-	},
-	{
-		slug: "current-stock-summary",
-		title: __("Current Stock Summary"),
-		reportName: "Current Stock Summary",
-		description: __("Compact warehouse stock overview with totals and stock movement levels."),
-		category: "Inventory",
-	},
-	{
-		slug: "current-stock-with-levels",
-		title: __("Current Stock With Levels"),
-		reportName: "Current Stock With Levels",
-		description: __("Stock snapshot grouped with reorder and alert levels."),
-		category: "Inventory",
-	},
-	{
-		slug: "dead-stock-report",
-		title: __("Dead Stock Report"),
-		reportName: "Dead Stock Report",
-		description: __("Stock that has been sitting too long with low value movement."),
-		category: "Inventory",
-	},
-	{
-		slug: "stock-value-by-warehouse",
-		title: __("Stock Value By Warehouse"),
-		reportName: "Stock Value By Warehouse",
-		description: __("Warehouse value and quantity summary for quick inventory valuation."),
-		category: "Inventory",
-	},
-	{
-		slug: "stock-value-summary-by-date",
-		title: __("Stock Value Summary By Date"),
-		reportName: "Stock Value Summary By Date",
-		description: __("Snapshot stock balance by posting date for trend review."),
-		category: "Inventory",
-	},
-	{
-		slug: "warehouse-stock-movement",
-		title: __("Warehouse Stock Movement"),
-		reportName: "Warehouse Stock Movement",
-		description: __("Movement summary by warehouse and voucher type over time."),
-		category: "Operations",
-	},
-	{
-		slug: "branch-item-summary",
-		title: __("Branch Item Summary"),
-		reportName: "Branch Item Summary",
-		description: __("Item movement and sales summary for a branch and warehouse window."),
-		category: "Operations",
-	},
-	{
-		slug: "branch-set-summary",
-		title: __("Branch Set Summary"),
-		reportName: "Branch Set Summary",
-		description: __("Set-level summary for branch stock and movement tracking."),
-		category: "Operations",
-	},
-	{
-		slug: "low-qty-sales-report",
-		title: __("Low Qty Sales Report"),
-		reportName: "Low Qty Sales Report",
-		description: "Items sold in low quantities over a selected period.",
-		category: "Sales",
-	},
-	{
-		slug: "zero-qty-sales-report",
-		title: __("Zero Qty Sales Report"),
-		reportName: "Zero Qty Sales Report",
-		description: __("Sales lines where no quantity was fulfilled during the period."),
-		category: "Sales",
-	},
-	{
-		slug: "slow-fast-moving-items",
-		title: __("Slow Fast Moving Items"),
-		reportName: "Slow Fast Moving Items",
-		description: __("Movement velocity overview to identify fast and slow sellers."),
-		category: "Sales",
-	},
-	// prettier-ignore
-	{
-		slug: "stock-audit-report",
-		title: __("Stock Audit Report"),
-		reportName: "Stock Audit Report",
-		description: __(
-			"Thermal-printable stock audit by item with available qty. Filter by warehouse, brand, supplier, or item."
-		),
-		category: "Inventory",
-		thermalPrint: true,
-	},
-	{
-		slug: "purchase-order-report",
-		title: __("Purchase Order Report"),
-		reportName: "Purchase Order Report",
-		description: __("Purchase order summary with supplier, date range, and type filters."),
-		category: "Purchasing",
-	},
-	// prettier-ignore
-	{
-		slug: "pos-shift-reconciliation",
-		title: __("Shift Reconciliation"),
-		reportName: "POS Shift Reconciliation",
-		description: __(
-			"Z-report: items sold with quantities plus totals by payment mode for end-of-shift cash-up."
-		),
-		category: "Sales",
-		permissionKey: "shift_report",
-		thermalPrint: true,
-	},
-];
-
-const reportMap = new Map(reportDefinitions.map((report) => [report.slug, report]));
-
 function cloneValue<T>(value: T): T {
 	if (Array.isArray(value)) return [...value] as T;
 	if (value && typeof value === "object") return { ...(value as Record<string, unknown>) } as T;
 	return value;
 }
 
-export function getReportDefinition(slug: string | string[] | undefined): ReportDefinition | undefined {
-	if (!slug || Array.isArray(slug)) return undefined;
-	return reportMap.get(slug);
+let catalogRequest: Promise<ReportDefinition[]> | null = null;
+
+export function fetchReportCatalog(force = false): Promise<ReportDefinition[]> {
+	if (!catalogRequest || force) {
+		catalogRequest = call<ReportDefinition[]>("xpos.api.reports.get_report_catalog")
+			.then((rows) => (Array.isArray(rows) ? rows : []))
+			.catch((error) => {
+				catalogRequest = null;
+				throw error;
+			});
+	}
+	return catalogRequest;
 }
 
-export function getReportDefinitions(): ReportDefinition[] {
-	return [...reportDefinitions];
+export function resetReportCatalog(): void {
+	catalogRequest = null;
 }
 
-export function getAccessibleReports(): ReportDefinition[] {
-	return reportDefinitions.filter((report) => !report.permissionKey || hasPermission(report.permissionKey));
+/** Match a URL segment against a report's canonical id, slug or any alias. */
+export function findReportDefinition(
+	reports: ReportDefinition[],
+	identifier: string | string[] | undefined,
+): ReportDefinition | undefined {
+	if (!identifier || Array.isArray(identifier)) return undefined;
+	return reports.find(
+		(report) =>
+			report.id === identifier || report.slug === identifier || report.aliases.includes(identifier),
+	);
 }
 
-export function isReportAccessible(report: ReportDefinition): boolean {
-	return !report.permissionKey || hasPermission(report.permissionKey);
+export function isReportRunnable(report: ReportDefinition): boolean {
+	return report.capability.state === "supported";
 }
 
 export function buildInitialReportFilters(
@@ -298,71 +194,223 @@ export function normalizeReportFilters(
 	return payload;
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
+
+function firstQueryValue(value: string | string[]): string {
+	return Array.isArray(value) ? String(value[0] ?? "") : String(value);
+}
+
+/**
+ * Read filter values out of the URL. Only the fields the URL actually supplies are returned, so
+ * the caller's defaults (company, warehouse, saved defaults) survive for everything else. A key
+ * present with an empty value is an explicit "cleared" and is returned as the empty value.
+ */
 export function hydrateReportFiltersFromQuery(
 	filters: ReportFilterDefinition[],
 	query: Record<string, string | string[] | null | undefined>,
 ): Record<string, unknown> {
-	const hydrated = buildInitialReportFilters(filters);
+	const hydrated: Record<string, unknown> = {};
 
 	for (const filter of filters) {
 		const queryValue = query[filter.fieldname];
-		if (queryValue === undefined || queryValue === null || queryValue === "") {
+		if (queryValue === undefined || queryValue === null) continue;
+
+		const text = firstQueryValue(queryValue).trim();
+
+		if (filter.type === "multi-link") {
+			const items = Array.isArray(queryValue)
+				? queryValue.map((item) => String(item).trim())
+				: text.split(",").map((item) => item.trim());
+			hydrated[filter.fieldname] = items.filter(Boolean);
 			continue;
 		}
 
-		if (filter.type === "multi-link") {
-			if (Array.isArray(queryValue)) {
-				hydrated[filter.fieldname] = queryValue.map((item) => String(item)).filter(Boolean);
-			} else {
-				hydrated[filter.fieldname] = String(queryValue)
-					.split(",")
-					.map((item) => item.trim())
-					.filter(Boolean);
-			}
+		if (text === "") {
+			hydrated[filter.fieldname] = "";
 			continue;
 		}
 
 		if (filter.type === "integer") {
-			const parsed = Number.parseInt(Array.isArray(queryValue) ? queryValue[0] : queryValue, 10);
+			const parsed = Number.parseInt(text, 10);
 			if (!Number.isNaN(parsed)) hydrated[filter.fieldname] = parsed;
 			continue;
 		}
 
 		if (filter.type === "float") {
-			const parsed = Number.parseFloat(Array.isArray(queryValue) ? queryValue[0] : queryValue);
+			const parsed = Number.parseFloat(text);
 			if (!Number.isNaN(parsed)) hydrated[filter.fieldname] = parsed;
 			continue;
 		}
 
-		hydrated[filter.fieldname] = Array.isArray(queryValue) ? queryValue[0] : String(queryValue);
+		if (filter.type === "date") {
+			if (ISO_DATE.test(text)) hydrated[filter.fieldname] = text.slice(0, 10);
+			continue;
+		}
+
+		if (filter.type === "select" && filter.options?.length) {
+			if (filter.options.some((option) => option.value === text)) hydrated[filter.fieldname] = text;
+			continue;
+		}
+
+		hydrated[filter.fieldname] = text;
 	}
 
 	return hydrated;
 }
 
+function isEmptyFilterValue(value: unknown): boolean {
+	if (Array.isArray(value)) return value.length === 0;
+	return value === undefined || value === null || value === "";
+}
+
+/**
+ * Write the non-empty filters to the URL. When `defaults` is given, a filter the user cleared
+ * that would otherwise be re-defaulted on reload is written as an explicit empty value.
+ */
 export function serializeReportFiltersToQuery(
 	filters: ReportFilterDefinition[],
 	values: Record<string, unknown>,
+	defaults: Record<string, unknown> = {},
 ): Record<string, string | string[]> {
 	const query: Record<string, string | string[]> = {};
 	const normalized = normalizeReportFilters(filters, values);
 
-	for (const [fieldname, value] of Object.entries(normalized)) {
-		if (Array.isArray(value)) {
-			if (value.length > 0) {
-				query[fieldname] = value.map((item) => String(item));
-			}
+	for (const filter of filters) {
+		const value = normalized[filter.fieldname];
+		if (value === undefined) {
+			if (!isEmptyFilterValue(defaults[filter.fieldname])) query[filter.fieldname] = "";
 			continue;
 		}
-
-		if (value === null || value === undefined || value === "") {
-			continue;
-		}
-
-		query[fieldname] = String(value);
+		query[filter.fieldname] = Array.isArray(value) ? value.map((item) => String(item)) : String(value);
 	}
 
 	return query;
+}
+
+/**
+ * Filters the open shift already decides. A cashier works inside one company, POS profile and
+ * warehouse, so these are not offered as choices and are always sent with the shift's values
+ * (the server still enforces the same scope).
+ */
+const SHIFT_BOUND_FILTERS = ["company", "pos_profile", "warehouse"] as const;
+
+export interface ShiftContext {
+	company?: string;
+	pos_profile?: string;
+	warehouse?: string;
+}
+
+export function splitShiftBoundFilters(
+	filters: ReportFilterDefinition[],
+	context: ShiftContext,
+): { visible: ReportFilterDefinition[]; bound: Record<string, string> } {
+	const bound: Record<string, string> = {};
+	const visible = filters.filter((filter) => {
+		const key = filter.fieldname as (typeof SHIFT_BOUND_FILTERS)[number];
+		if (!SHIFT_BOUND_FILTERS.includes(key) || !context[key]) return true;
+		bound[filter.fieldname] = context[key] as string;
+		return false;
+	});
+	return { visible, bound };
+}
+
+const DATE_RANGE_PAIRS: [string, string][] = [
+	["from_date", "to_date"],
+	["start_date", "end_date"],
+];
+
+/** Required filters still empty. The filter bar marks them with a red asterisk; no message is shown. */
+export function missingRequiredReportFilters(
+	filters: ReportFilterDefinition[],
+	values: Record<string, unknown>,
+): ReportFilterDefinition[] {
+	return filters.filter((filter) => filter.required && isEmptyFilterValue(values[filter.fieldname]));
+}
+
+/** Static checks that need no server round trip; each message is shown next to the filter bar. */
+export function validateReportFilters(
+	filters: ReportFilterDefinition[],
+	values: Record<string, unknown>,
+): string[] {
+	const errors: string[] = [];
+	const known = new Set(filters.map((filter) => filter.fieldname));
+
+	for (const filter of filters) {
+		if (filter.type !== "date") continue;
+		const value = values[filter.fieldname];
+		if (!isEmptyFilterValue(value) && !ISO_DATE.test(String(value))) {
+			errors.push(__("{0} is not a valid date.", [filter.label]));
+		}
+	}
+
+	for (const [fromName, toName] of DATE_RANGE_PAIRS) {
+		if (!known.has(fromName) || !known.has(toName)) continue;
+		const from = String(values[fromName] ?? "");
+		const to = String(values[toName] ?? "");
+		if (from && to && ISO_DATE.test(from) && ISO_DATE.test(to) && from > to) {
+			errors.push(__("The start date must not be after the end date."));
+		}
+	}
+
+	if (
+		known.has("warehouse") &&
+		!isEmptyFilterValue(values.warehouse) &&
+		known.has("company") &&
+		isEmptyFilterValue(values.company)
+	) {
+		errors.push(__("Choose a company before choosing a warehouse."));
+	}
+
+	return errors;
+}
+
+const CONTEXT_LINKS: { fieldname: string; doctype: string }[] = [
+	{ fieldname: "warehouse", doctype: "Warehouse" },
+	{ fieldname: "pos_profile", doctype: "POS Profile" },
+];
+const contextCompanyCache = new Map<string, Promise<string>>();
+
+/**
+ * Confirm the warehouse / POS profile belong to the chosen company. The server enforces scope
+ * regardless; this just fails fast with a clear message instead of an empty or rejected run.
+ */
+export async function validateReportContext(
+	filters: ReportFilterDefinition[],
+	values: Record<string, unknown>,
+	lookup: (doctype: string, name: string) => Promise<string> = lookupCompany,
+): Promise<string[]> {
+	const company = String(values.company ?? "");
+	if (!company) return [];
+	const known = new Set(filters.map((filter) => filter.fieldname));
+	const errors: string[] = [];
+	for (const { fieldname, doctype } of CONTEXT_LINKS) {
+		const name = String(values[fieldname] ?? "");
+		if (!known.has(fieldname) || !name) continue;
+		try {
+			const owner = await lookup(doctype, name);
+			if (owner && owner !== company) {
+				errors.push(__("{0} {1} belongs to {2}, not {3}.", [doctype, name, owner, company]));
+			}
+		} catch {
+			// an unreadable link is reported by the server run itself
+		}
+	}
+	return errors;
+}
+
+function lookupCompany(doctype: string, name: string): Promise<string> {
+	const key = `${doctype}\u0000${name}`;
+	let cached = contextCompanyCache.get(key);
+	if (!cached) {
+		cached = getValue<{ company?: string }>(doctype, name, "company")
+			.then((row) => String(row?.company ?? ""))
+			.catch((error) => {
+				contextCompanyCache.delete(key);
+				throw error;
+			});
+		contextCompanyCache.set(key, cached);
+	}
+	return cached;
 }
 
 export function resolveReportLinkFilters(
@@ -381,14 +429,25 @@ export function resolveReportLinkFilters(
 	return resolved;
 }
 
+/**
+ * Columns a user may see. `hidden` is honoured here and everywhere downstream (search, export,
+ * copy, print) so a hidden column never leaks into output. This is presentation, not a security
+ * boundary: the server decides which data a user can fetch at all.
+ */
 export function getVisibleReportColumns(columns: ReportColumn[]): ReportColumn[] {
 	return columns.filter(
-		(column) => !reportUtilityFields.has(column.fieldname) && !String(column.fieldname).startsWith("_"),
+		(column) =>
+			!reportUtilityFields.has(column.fieldname) &&
+			!String(column.fieldname).startsWith("_") &&
+			!Number(column.hidden),
 	);
 }
 
+const NUMERIC_TYPES = ["Currency", "Float", "Int", "Percent", "Check"];
+const SUMMABLE_TYPES = ["Currency", "Float", "Int"];
+
 export function isReportNumericColumn(column: ReportColumn): boolean {
-	return ["Currency", "Float", "Int", "Percent", "Check"].includes(String(column.fieldtype || ""));
+	return NUMERIC_TYPES.includes(String(column.fieldtype || ""));
 }
 
 export function isReportTotalRow(row: Record<string, unknown>): boolean {
@@ -401,7 +460,7 @@ export function normalizeReportRows(
 	options: { addTotalRow?: boolean | number; skipTotalRow?: boolean | number } = {},
 ): Record<string, unknown>[] {
 	const lastIndex = result.length - 1;
-	const markLastAsTotal = Boolean(options.addTotalRow) && !options.skipTotalRow;
+	const markLastAsTotal = Boolean(options.addTotalRow) && !options.skipTotalRow && result.length > 1;
 
 	return result.map((row, index) => {
 		let record: Record<string, unknown>;
@@ -411,7 +470,7 @@ export function normalizeReportRows(
 				record[column.fieldname] = row[columnIndex];
 			});
 		} else {
-			record = (row as Record<string, unknown>) ?? {};
+			record = { ...((row as Record<string, unknown>) ?? {}) };
 		}
 
 		if (markLastAsTotal && index === lastIndex) {
@@ -431,7 +490,7 @@ export function compareReportRows(
 	const rightValue = right[column.fieldname];
 	const fieldtype = String(column.fieldtype || "");
 
-	if (["Currency", "Float", "Int", "Percent", "Check"].includes(fieldtype)) {
+	if (NUMERIC_TYPES.includes(fieldtype)) {
 		const leftNumber = Number(leftValue ?? 0);
 		const rightNumber = Number(rightValue ?? 0);
 		if (Number.isNaN(leftNumber) && Number.isNaN(rightNumber)) return 0;
@@ -455,43 +514,39 @@ export function compareReportRows(
 	});
 }
 
-function escapeDelimited(value: string, delimiter: string): string {
-	const needsQuotes = value.includes(delimiter) || value.includes("\n") || value.includes('"');
-	const escaped = value.replace(/"/g, '""');
-	return needsQuotes ? `"${escaped}"` : escaped;
-}
-
-export function buildReportDelimitedRows(
-	columns: ReportColumn[],
-	rows: Record<string, unknown>[],
-	currency: string,
-	delimiter: "," | "\t",
-): string {
-	const header = columns.map((column) => escapeDelimited(column.label, delimiter)).join(delimiter);
-	const body = rows.map((row) =>
-		columns
-			.map((column) =>
-				escapeDelimited(formatReportCell(column, row[column.fieldname], currency), delimiter),
-			)
-			.join(delimiter),
-	);
-	return [header, ...body].join("\n");
-}
-
-function optionalPrecision(column: ReportColumn): number | null {
+export function reportColumnPrecision(column: ReportColumn): number | null {
 	const raw = column.precision as number | string | null | undefined;
 	if (raw === null || raw === undefined || raw === "") return null;
 	const parsed = Number(raw);
 	return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-function columnCurrency(column: ReportColumn): string {
+const CURRENCY_CODE = /^[A-Za-z]{3}$/;
+
+/**
+ * The currency of one cell: a literal code in `options`, else the value of the sibling column
+ * `options` names (the Frappe convention), else the report-level fallback.
+ */
+export function columnCurrency(column: ReportColumn, row?: Record<string, unknown>, fallback = ""): string {
 	const options = String(column.options || "").trim();
-	return /^[A-Za-z]{3}$/.test(options) ? options.toUpperCase() : "";
+	if (CURRENCY_CODE.test(options) && !(row && options in row)) return options.toUpperCase();
+	if (row && options && options in row) {
+		const sibling = String(row[options] ?? "").trim();
+		if (CURRENCY_CODE.test(sibling)) return sibling.toUpperCase();
+	}
+	return fallback;
+}
+
+/** A unit shown beside a quantity: the value of the sibling column a Float/Int column's options names. */
+export function columnUnit(column: ReportColumn, row?: Record<string, unknown>): string {
+	if (!row || !["Float", "Int"].includes(String(column.fieldtype || ""))) return "";
+	const options = String(column.options || "").trim();
+	if (!options || !(options in row)) return "";
+	const value = row[options];
+	return typeof value === "string" ? value.trim() : "";
 }
 
 function formatReportDateTime(value: unknown): string {
-	if (!value) return "-";
 	const date = new Date(String(value));
 	if (Number.isNaN(date.getTime())) return String(value);
 	return new Intl.DateTimeFormat(undefined, {
@@ -503,8 +558,14 @@ function formatReportDateTime(value: unknown): string {
 	}).format(date);
 }
 
-export function formatReportCell(column: ReportColumn, value: unknown, currency = ""): string {
-	if (value === null || value === undefined || value === "") return "-";
+/** Display text for a cell. Empty values render as an empty string; the grid shows its own placeholder. */
+export function formatReportCell(
+	column: ReportColumn,
+	value: unknown,
+	currency = "",
+	row?: Record<string, unknown>,
+): string {
+	if (value === null || value === undefined || value === "") return "";
 
 	if (Array.isArray(value)) {
 		return value.map((item) => String(item)).join(", ");
@@ -512,23 +573,29 @@ export function formatReportCell(column: ReportColumn, value: unknown, currency 
 
 	switch (column.fieldtype) {
 		case "Currency": {
-			const parsed = Number(value ?? 0);
+			const parsed = Number(value);
 			if (Number.isNaN(parsed)) return String(value);
-			const cellCurrency = columnCurrency(column) || currency;
-			const precision = optionalPrecision(column);
-			return formatWithSymbol(cellCurrency, parsed, precision);
+			return formatWithSymbol(
+				columnCurrency(column, row, currency),
+				parsed,
+				reportColumnPrecision(column),
+			);
 		}
 		case "Float":
 		case "Percent": {
-			const parsed = Number(value ?? 0);
+			const parsed = Number(value);
 			if (Number.isNaN(parsed)) return String(value);
-			const formatted = formatFloat(parsed, optionalPrecision(column));
-			return column.fieldtype === "Percent" ? `${formatted}%` : formatted;
+			const formatted = formatFloat(parsed, reportColumnPrecision(column));
+			if (column.fieldtype === "Percent") return `${formatted}%`;
+			const unit = columnUnit(column, row);
+			return unit ? `${formatted} ${unit}` : formatted;
 		}
 		case "Int": {
-			const parsed = Number(value ?? 0);
+			const parsed = Number(value);
 			if (Number.isNaN(parsed)) return String(value);
-			return formatInt(Math.trunc(parsed));
+			const formatted = formatInt(Math.trunc(parsed));
+			const unit = columnUnit(column, row);
+			return unit ? `${formatted} ${unit}` : formatted;
 		}
 		case "Check":
 			return value ? __("Yes") : __("No");
@@ -548,19 +615,70 @@ export function formatReportCell(column: ReportColumn, value: unknown, currency 
 	}
 }
 
-export async function fetchReportMeta(reportName: string): Promise<ReportFilterDefinition[]> {
+/** Summary card text, honouring the item's declared datatype and currency. */
+export function formatReportSummaryValue(item: ReportSummaryItem, fallbackCurrency = ""): string {
+	const value = item.value;
+	if (value === null || value === undefined || value === "") return "-";
+	if (Array.isArray(value)) return value.map((entry) => String(entry)).join(", ");
+	const number = typeof value === "number" ? value : Number(value);
+	const numeric =
+		typeof value === "number" ||
+		(typeof value === "string" && value.trim() !== "" && !Number.isNaN(number));
+	switch (String(item.datatype || "")) {
+		case "Currency":
+			return numeric ? formatWithSymbol(item.currency || fallbackCurrency, number) : String(value);
+		case "Int":
+			return numeric ? formatInt(Math.trunc(number)) : String(value);
+		case "Float":
+			return numeric ? formatFloat(number) : String(value);
+		case "Percent":
+			return numeric ? `${formatFloat(number)}%` : String(value);
+		case "Data":
+		case "Text":
+			return String(value);
+		default:
+			return typeof value === "number" ? formatFloat(value) : String(value);
+	}
+}
+
+export type ReportPreparedState = "none" | "pending" | "failed";
+
+/**
+ * A prepared report answers with a status instead of rows until its background run completes.
+ * That must read as "not ready", never as an empty result.
+ */
+export function getReportPreparedState(
+	response: Partial<ReportQueryResult> | null | undefined,
+): ReportPreparedState {
+	if (!response) return "none";
+	const status = String(response.status ?? "").toLowerCase();
+	if (["error", "failed"].includes(status)) return "failed";
+	if (["queued", "started", "running", "pending"].includes(status)) return "pending";
+	if (response.prepared_report && !(Array.isArray(response.result) && response.result.length > 0)) {
+		return status === "completed" || status === "finished" ? "none" : "pending";
+	}
+	return "none";
+}
+
+export const REPORT_EXPORT_ROW_LIMIT = 50_000;
+
+export { SUMMABLE_TYPES as REPORT_SUMMABLE_TYPES };
+
+export async function fetchReportMeta(reportId: string): Promise<ReportFilterDefinition[]> {
 	const response = await call<{ filters: ReportFilterDefinition[] }>("xpos.api.reports.get_report_meta", {
-		report: reportName,
+		report: reportId,
 	});
 	return Array.isArray(response?.filters) ? response.filters : [];
 }
 
 export async function fetchReportData(
-	reportName: string,
+	reportId: string,
 	filters: Record<string, unknown>,
+	purpose: "view" | "export" | "print" = "view",
 ): Promise<ReportQueryResult> {
-	return call<ReportQueryResult>("frappe.desk.query_report.run", {
-		report_name: reportName,
+	return call<ReportQueryResult>("xpos.api.reports.run_report", {
+		report: reportId,
 		filters: JSON.stringify(filters),
+		purpose,
 	});
 }

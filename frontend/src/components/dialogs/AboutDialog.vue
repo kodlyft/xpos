@@ -30,31 +30,31 @@
 				</div>
 
 				<div v-else class="space-y-4 text-sm overflow-y-auto max-h-50">
-					<div class="flex justify-between py-2 mr-2 border-b border-border">
+					<div class="flex justify-between py-2 me-2 border-b border-border">
 						<span class="text-muted-foreground">{{ __("Version") }}</span>
 						<span class="font-medium">{{ version }}</span>
 					</div>
-					<div v-if="gitBranch" class="flex justify-between mr-2 py-2 border-b border-border">
+					<div v-if="gitBranch" class="flex justify-between me-2 py-2 border-b border-border">
 						<span class="text-muted-foreground">{{ __("Branch") }}</span>
 						<span class="font-medium font-mono text-xs">{{ gitBranch }}</span>
 					</div>
-					<div v-if="gitHash" class="flex justify-between mr-2 py-2 border-b border-border">
+					<div v-if="gitHash" class="flex justify-between me-2 py-2 border-b border-border">
 						<span class="text-muted-foreground">{{ __("Commit") }}</span>
 						<span class="font-medium font-mono text-xs">{{ gitHash }}</span>
 					</div>
-					<div v-if="frappeVersion" class="flex justify-between mr-2 py-2 border-b border-border">
+					<div v-if="frappeVersion" class="flex justify-between me-2 py-2 border-b border-border">
 						<span class="text-muted-foreground">{{ __("Frappe") }}</span>
 						<span class="font-medium">{{ frappeVersion }}</span>
 					</div>
-					<div v-if="erpnextVersion" class="flex justify-between mr-2 py-2 border-b border-border">
+					<div v-if="erpnextVersion" class="flex justify-between me-2 py-2 border-b border-border">
 						<span class="text-muted-foreground">{{ __("ERPNext") }}</span>
 						<span class="font-medium">{{ erpnextVersion }}</span>
 					</div>
-					<div class="flex justify-between mr-2 py-2 border-b border-border">
+					<div class="flex justify-between me-2 py-2 border-b border-border">
 						<span class="text-muted-foreground">{{ __("Mode") }}</span>
 						<span class="font-medium">{{ __("Web Browser") }}</span>
 					</div>
-					<div class="flex justify-between mr-2 py-2 border-b border-border">
+					<div class="flex justify-between me-2 py-2 border-b border-border">
 						<span class="text-muted-foreground">{{ __("Company") }}</span>
 						<span class="font-medium">{{ companyName || __("Not Set") }}</span>
 					</div>

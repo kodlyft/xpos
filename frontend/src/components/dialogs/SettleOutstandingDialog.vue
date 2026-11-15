@@ -4,7 +4,7 @@
 			<DialogHeader class="shrink-0 px-5 pt-5 pb-3 border-b border-border">
 				<div class="flex items-center gap-2">
 					<div
-						class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center"
+						class="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center"
 					>
 						<Banknote class="w-4 h-4" />
 					</div>

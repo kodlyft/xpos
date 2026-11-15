@@ -156,6 +156,19 @@ Then open your site and launch **X POS** from the app launcher.
 
 ---
 
+## Mobile (Android)
+
+XPOS Mobile is an Android app (Vue + Capacitor) that sells against the same ERPNext 16 site, with the same look, prices, promotions and permissions as the web POS.
+
+- Sign in with your ERPNext user, pick a POS Profile, unlock with a 6-digit PIN.
+- Search a large catalog, choose customers, take cash, card, transfer and gift-card payments, in three layouts (Catalog, Scan, Fashion).
+- Needs ERPNext 16, an `https://` server and Android 7+. Charging needs a connection; returns, shift closing and printing are done in the web POS.
+- The Price Checker kiosk is a web screen at `/price-checker`, not part of the app.
+
+Start with [docs/features/35-xpos-mobile-overview.md](docs/features/35-xpos-mobile-overview.md) (what it needs and what it cannot do yet). For builds and publishing see [mobile/docs/release.md](mobile/docs/release.md). See [mobile/README.md](mobile/README.md) for `yarn dev` (browser development with hot reload against a real dev site), Android Studio/Gradle builds, live reload on an emulator or phone, signing and troubleshooting, and [docs/features/33-mobile-selling.md](docs/features/33-mobile-selling.md) for the cashier guide.
+
+---
+
 ## Configuration
 
 1. Create or update a **POS Profile** in ERPNext and assign it to the relevant users.

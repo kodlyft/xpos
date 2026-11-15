@@ -1,25 +1,34 @@
 <template>
-	<div class="flex flex-wrap items-center gap-2">
-		<template v-for="field in resolvedFields" :key="field.fieldname">
+	<div class="contents">
+		<div
+			v-for="field in resolvedFields"
+			:key="field.fieldname"
+			:class="['flex min-w-0 flex-col gap-1', cellWidth(field)]"
+		>
+			<label class="truncate text-xs font-medium text-muted-foreground" :for="controlId(field)">
+				{{ fieldLabel(field) }}
+			</label>
+
 			<Autocomplete
 				v-if="field.fieldtype === 'Link'"
 				:model-value="(modelFilters[field.fieldname] as string) || ''"
 				:options="linkOptions[field.fieldname] || []"
-				:placeholder="field.label || field.fieldname"
+				:placeholder="fieldLabel(field)"
 				:remote-search="true"
 				:show-search-icon="false"
 				:open-on-focus="true"
 				:clearable="true"
 				:max-visible="20"
 				:empty-text="__('No results')"
-				class="w-40"
+				class="w-full"
 				@search="(q: string) => onLinkSearch(field, q)"
 				@update:model-value="(val: string | undefined) => onFilterChange(field.fieldname, val || '')"
 			/>
 
 			<Select
 				v-else-if="field.fieldtype === 'Select'"
-				class="w-40"
+				class="w-full"
+				:aria-label="fieldLabel(field)"
 				:model-value="(modelFilters[field.fieldname] as string) || '__all__'"
 				@update:model-value="(val: string | undefined) => onFilterChange(field.fieldname, val || '')"
 				:items="[
@@ -30,7 +39,8 @@
 
 			<Select
 				v-else-if="field.fieldtype === 'Check'"
-				class="w-40"
+				class="w-full"
+				:aria-label="fieldLabel(field)"
 				:model-value="(modelFilters[field.fieldname] as string) || '__all__'"
 				@update:model-value="(val: string | undefined) => onFilterChange(field.fieldname, val || '')"
 				:items="[
@@ -39,11 +49,24 @@
 					{ label: __('No'), value: '0' },
 				]"
 			/>
+
+			<DateTimePicker
+				v-else-if="field.fieldtype === 'Date'"
+				mode="date"
+				:model-value="(modelFilters[field.fieldname] as string) || ''"
+				:placeholder="__('Select date')"
+				:aria-label="fieldLabel(field)"
+				:show-today="true"
+				class="w-full"
+				@update:model-value="(val: string) => onFilterChange(field.fieldname, val || '')"
+			/>
+
 			<Input
 				v-else
+				:id="controlId(field)"
 				:model-value="(modelFilters[field.fieldname] as string) || ''"
-				:placeholder="field.label || field.fieldname"
-				class="h-8 w-35 text-sm"
+				:placeholder="fieldLabel(field)"
+				class="w-full"
 				@change="
 					(e: Event) => onTextFilterChange(field.fieldname, (e.target as HTMLInputElement).value)
 				"
@@ -51,7 +74,7 @@
 					(e: Event) => onTextFilterChange(field.fieldname, (e.target as HTMLInputElement).value)
 				"
 			/>
-		</template>
+		</div>
 	</div>
 </template>
 
@@ -60,6 +83,7 @@ import { reactive, computed } from "vue";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import { Input } from "@/components/ui/input";
+import { DateTimePicker } from "@/components/ui/datetime-picker";
 import type { DocField } from "@/services/doctypeMeta";
 import { parseSelectOptions } from "@/services/doctypeMeta";
 import { searchLink } from "@/services/api";
@@ -88,6 +112,20 @@ const resolvedFields = computed<DocField[]>(() => {
 });
 
 const linkOptions = reactive<Record<string, AutocompleteOption[]>>({});
+
+function fieldLabel(field: DocField): string {
+	return __(field.label || field.fieldname);
+}
+
+function controlId(field: DocField): string {
+	return `list-filter-${field.fieldname}`;
+}
+
+function cellWidth(field: DocField): string {
+	if (field.fieldtype === "Date") return "w-full sm:w-48";
+	if (field.fieldtype === "Select" || field.fieldtype === "Check") return "w-full sm:w-40";
+	return "w-full sm:w-44";
+}
 
 function getSelectOptions(field: DocField): string[] {
 	return parseSelectOptions(field.options);

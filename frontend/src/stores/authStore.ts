@@ -1,5 +1,6 @@
 import { call } from "@/services/api";
 import { loadPermissions, resetPermissions } from "@/services/userRights";
+import { clearSessionData } from "@/services/sessionCleanup";
 import { UserSession } from "@/types/pos.types";
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
@@ -165,7 +166,15 @@ export const useAuthStore = defineStore("auth", () => {
 		try {
 			isLoading.value = true;
 
+			// Unfinished carts are written before the session goes, so the same user finds them again.
+			try {
+				const { useCartSessionStore } = await import("./cartSessionStore");
+				await useCartSessionStore().flush();
+			} catch (err) {
+				console.warn("Could not save open carts before logout:", err);
+			}
 			await call("logout");
+			await clearSessionData();
 
 			isAuthenticated.value = false;
 			user.value = null;

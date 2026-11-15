@@ -10,7 +10,7 @@
 		<DialogContent class="max-w-2xl max-h-[80vh] flex flex-col p-0 gap-0">
 			<DialogHeader class="shrink-0 px-5 pt-5 pb-3 border-b border-border">
 				<div class="flex items-center gap-2">
-					<Repeat class="w-5 h-5 text-blue-500" />
+					<Repeat class="w-5 h-5 text-info" />
 					<DialogTitle class="text-base">{{ __("Repeat Invoice") }}</DialogTitle>
 					<Badge variant="outline" class="text-[10px] font-mono">Ctrl+G</Badge>
 				</div>
@@ -91,6 +91,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from "vue";
 import { useCartStore } from "@/stores/cartStore";
+import { useCartSessionStore } from "@/stores/cartSessionStore";
 import { usePosStore } from "@/stores/posStore";
 import { useMoney } from "@/composables/useMoney";
 import { call, showError } from "@/services/api";
@@ -135,6 +136,7 @@ const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: "close"): void }>();
 
 const cartStore = useCartStore();
+const cartSessions = useCartSessionStore();
 const posStore = usePosStore();
 const { money, qty } = useMoney();
 
@@ -225,11 +227,17 @@ async function selectInvoice(inv: SearchInvoice) {
 			return;
 		}
 
-		cartStore.loadFromInvoice({
-			customer: result.customer,
-			customer_name: result.customer_name,
-			items: result.items,
-		});
+		const target = await cartSessions.loadIntoCart(() =>
+			cartStore.loadFromInvoice({
+				customer: result.customer,
+				customer_name: result.customer_name,
+				items: result.items,
+			}),
+		);
+		if (!target.ok) {
+			showError(target.reason || "");
+			return;
+		}
 
 		close();
 	} catch (error) {

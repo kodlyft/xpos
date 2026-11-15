@@ -1,0 +1,55 @@
+{
+  "name": "xpos-mobile",
+  "version": "0.0.1",
+  "private": true,
+  "description": "XPOS Mobile (Android) foundation: Capacitor shell, native catalog, Pearl mobile UI",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node --experimental-transform-types --no-warnings scripts/export-schema.ts && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "schema": "node --experimental-transform-types --no-warnings scripts/export-schema.ts",
+    "cap:sync": "yarn build && cap sync android",
+    "android:open": "node scripts/android.mjs open",
+    "android:build": "node scripts/android.mjs debug",
+    "android:release": "node scripts/android.mjs release",
+		"android:release-guard": "node scripts/release-guard.mjs",
+		"android:dev": "node scripts/android.mjs dev",
+    "android:bundle": "node scripts/android.mjs bundle",
+    "android:test": "node scripts/android-test.mjs",
+    "check": "yarn typecheck && yarn test && yarn build"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3",
+    "@fontsource-variable/inter": "5",
+    "@lucide/vue": "^1.61.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "pinia": "^2.1.7",
+    "radix-vue": "^1.9.17",
+    "tailwind-merge": "^3.5.0",
+    "vue": "3.5.30"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24.0.0",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "tailwindcss": "^4.3.3",
+    "typescript": "5.9.3",
+    "vite": "^8.2.4",
+    "vitest": "^4.1.11",
+    "vue-tsc": "^3.3.6"
+  },
+  "resolutions": {
+    "@capacitor/cli/xcode/uuid": "^11.1.0"
+  },
+  "engines": {
+    "node": ">=22.7.0",
+    "yarn": ">=1.22.0 <2"
+  }
+}

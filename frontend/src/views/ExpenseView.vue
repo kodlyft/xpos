@@ -21,19 +21,18 @@
 			</template>
 
 			<template #item="{ item: expense }">
-				<Card
-					class="p-3 sm:p-4 cursor-pointer transition-all duration-200 border-border/60 dark:border-transparent hover:border-primary/40 hover:shadow-md dark:hover:bg-accent/50 dark:hover:shadow-primary/5"
-					@click="openExpenseDetail(expense)"
-				>
+				<Card interactive class="p-3 sm:p-4" @click="openExpenseDetail(expense)">
 					<div class="flex items-center gap-2 sm:gap-4">
 						<div
-							class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-red-500/10 text-red-500"
+							class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-destructive/10 text-destructive"
 						>
 							<ArrowDownCircle class="w-4 h-4" />
 						</div>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1 flex-wrap">
-								<span class="font-semibold text-foreground text-sm leading-tight">
+								<span
+									class="font-semibold text-foreground text-sm leading-tight min-w-0 wrap-anywhere"
+								>
 									{{ expenseTitle(expense) }}
 								</span>
 								<Badge :variant="statusVariant(expense.docstatus)" class="text-[10px]">
@@ -69,7 +68,7 @@
 						</div>
 
 						<div class="text-end shrink-0">
-							<div class="font-bold text-base sm:text-lg leading-tight text-red-500">
+							<div class="font-bold text-base sm:text-lg leading-tight text-destructive">
 								{{ money(expense.amount) }}
 							</div>
 							<div class="text-xs text-muted-foreground whitespace-nowrap">

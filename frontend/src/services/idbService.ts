@@ -1,6 +1,8 @@
 import Dexie, { type Table } from "dexie";
 import type { POSItem, ItemGroup, Customer } from "@/types/pos.types";
 import { sanitizeForIdb } from "./idbSanitize";
+import { buildCatalogIndex, type CatalogIndex } from "./catalogIndex";
+import { StorageWriteError } from "./storageHealth";
 
 export { sanitizeForIdb };
 
@@ -35,6 +37,17 @@ export interface PendingInvoice {
 	review?: import("@/types/pos.types").RepriceResponse;
 	/** The server draft whose FBR outcome is unknown and must be checked before it is finished. */
 	fiscal?: { name?: string | null; doctype?: string; usin?: string; pos_profile?: string };
+	owner?: { user: string; profile: string; company: string } | null;
+	/** Which catalogue the prices came from. Kept beside `data`, never sent. */
+	catalog_evidence?: { snapshot_id: string; activated_at: string; price_list: string } | null;
+	attempts?: number;
+	next_attempt_at?: string | null;
+	rejection?: { code: string; message: string; at: string } | null;
+	reservations?: { item_code: string; stock_qty: number }[];
+	hold?: "offline_blocked" | null;
+	/** A tab that is sending this sale right now, and when its claim lapses (ISO). */
+	claimed_by?: string | null;
+	claim_expires?: string | null;
 }
 
 export interface StockEntry {
@@ -101,9 +114,12 @@ class XPosDB extends Dexie {
 	stockCache!: Table<StockEntry, string>;
 	meta!: Table<MetaEntry, string>;
 	syncIdMap!: Table<SyncIdMap, string>;
+	itemsStage!: Table<POSItem, string>;
+	stockStage!: Table<StockEntry, string>;
+	customersStage!: Table<Customer, string>;
 
 	constructor() {
-		super(DB_NAME);
+		super(DB_NAME, { chromeTransactionDurability: "strict" });
 
 		this.version(1).stores({
 			items: "item_code, item_name, item_group, barcode",
@@ -127,43 +143,194 @@ class XPosDB extends Dexie {
 			meta: "key",
 			syncIdMap: "local_id, server_name, doctype",
 		});
+
+		this.version(3)
+			.stores({
+				items: "item_code, item_name, item_group, barcode",
+				itemGroups: "name",
+				customers: "name, customer_name, mobile_no, email_id",
+				suppliers: "name, supplier_name, mobile_no, email_id",
+				pendingInvoices: "++id, status, created_at",
+				pendingPurchases: "++id, type, status, created_at",
+				stockCache: "cache_key, warehouse, item_code",
+				meta: "key",
+				syncIdMap: "local_id, server_name, doctype",
+				itemsStage: "item_code",
+				stockStage: "cache_key",
+				customersStage: "name",
+			})
+			.upgrade((tx) =>
+				tx
+					.table("pendingInvoices")
+					.toCollection()
+					.modify((row) => {
+						if (row.owner === undefined) row.owner = null;
+						if (row.attempts === undefined) row.attempts = row.retry_count || 0;
+					}),
+			);
 	}
 }
 
 const db = new XPosDB();
 let dbReadyPromise: Promise<void> | null = null;
 
-async function resetDatabaseConnection(): Promise<void> {
-	let savedInvoices: PendingInvoice[] = [];
-	let savedPurchases: PendingPurchase[] = [];
-	try {
-		if (!db.isOpen()) await db.open();
-		savedInvoices = await db.pendingInvoices.toArray();
-		savedPurchases = await db.pendingPurchases.toArray();
-	} catch (err) {
-		console.warn("[XPOS] Could not read pending records before DB reset", err);
-	}
+export type DbState = "ready" | "upgrading" | "needs_reload" | "storage_unavailable";
 
+let dbState: DbState = "ready";
+const dbStateListeners = new Set<(state: DbState) => void>();
+
+export function getDbState(): DbState {
+	return dbState;
+}
+
+export function setDbState(state: DbState): void {
+	if (state === dbState) return;
+	dbState = state;
+	dbStateListeners.forEach((listener) => listener(state));
+}
+
+export function onDbStateChange(listener: (state: DbState) => void): () => void {
+	dbStateListeners.add(listener);
+	return () => dbStateListeners.delete(listener);
+}
+
+// Another tab is upgrading the schema (or a newer build already did): let go of the connection
+db.on("versionchange", () => {
+	setDbState("needs_reload");
+	db.close();
+	return false;
+});
+
+const BACKUP_DB = "xpos_pending_backup";
+
+interface PendingBackup {
+	invoices: PendingInvoice[];
+	purchases: PendingPurchase[];
+}
+
+function readRawStore(database: IDBDatabase, store: string): Promise<unknown[]> {
+	if (!database.objectStoreNames.contains(store)) return Promise.resolve([]);
+	return new Promise((resolve, reject) => {
+		const request = database.transaction(store, "readonly").objectStore(store).getAll();
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+}
+
+async function readPendingRaw(): Promise<PendingBackup | null> {
+	if (typeof indexedDB === "undefined") return null;
 	try {
-		db.close();
+		const database = await new Promise<IDBDatabase>((resolve, reject) => {
+			const request = indexedDB.open(DB_NAME);
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+			request.onblocked = () => reject(new Error("blocked"));
+		});
+		try {
+			return {
+				invoices: (await readRawStore(database, "pendingInvoices")) as PendingInvoice[],
+				purchases: (await readRawStore(database, "pendingPurchases")) as PendingPurchase[],
+			};
+		} finally {
+			database.close();
+		}
 	} catch {
-		// Ignore close failures during recovery.
+		return null;
+	}
+}
+
+class BackupDB extends Dexie {
+	invoices!: Table<PendingInvoice, number>;
+	purchases!: Table<PendingPurchase, number>;
+	constructor() {
+		super(BACKUP_DB);
+		this.version(1).stores({ invoices: "id", purchases: "id" });
+	}
+}
+
+async function writeBackup(rows: PendingBackup): Promise<boolean> {
+	const backup = new BackupDB();
+	try {
+		await backup.transaction("rw", backup.invoices, backup.purchases, async () => {
+			await backup.invoices.clear();
+			await backup.purchases.clear();
+			await backup.invoices.bulkPut(rows.invoices);
+			await backup.purchases.bulkPut(rows.purchases);
+		});
+		const [invoices, purchases] = await Promise.all([backup.invoices.count(), backup.purchases.count()]);
+		return invoices === rows.invoices.length && purchases === rows.purchases.length;
+	} catch {
+		return false;
+	} finally {
+		backup.close();
+	}
+}
+
+async function readBackup(): Promise<PendingBackup | null> {
+	const backup = new BackupDB();
+	try {
+		return { invoices: await backup.invoices.toArray(), purchases: await backup.purchases.toArray() };
+	} catch {
+		return null;
+	} finally {
+		backup.close();
+	}
+}
+
+async function resetDatabaseConnection(): Promise<void> {
+	db.close();
+	const rows = await readPendingRaw();
+	if (!rows || !(await writeBackup(rows))) {
+		setDbState("storage_unavailable");
+		throw new StorageWriteError("unavailable");
 	}
 
 	await Dexie.delete(DB_NAME);
 	await db.open();
 
-	if (savedInvoices.length || savedPurchases.length) {
-		try {
-			if (savedInvoices.length) await db.pendingInvoices.bulkAdd(savedInvoices);
-			if (savedPurchases.length) await db.pendingPurchases.bulkAdd(savedPurchases);
-			console.warn(
-				`[XPOS] Restored ${savedInvoices.length} pending invoice(s) and ${savedPurchases.length} pending purchase(s) after DB reset`,
-			);
-		} catch (err) {
-			console.error("[XPOS] Failed to restore pending records after DB reset", err);
+	if (rows.invoices.length || rows.purchases.length) {
+		await db.transaction("rw", db.pendingInvoices, db.pendingPurchases, async () => {
+			await db.pendingInvoices.bulkPut(rows.invoices);
+			await db.pendingPurchases.bulkPut(rows.purchases);
+		});
+		const [invoices, purchases] = await Promise.all([
+			db.pendingInvoices.count(),
+			db.pendingPurchases.count(),
+		]);
+		if (invoices !== rows.invoices.length || purchases !== rows.purchases.length) {
+			setDbState("storage_unavailable");
+			throw new StorageWriteError("unavailable");
 		}
+		console.warn(
+			`[XPOS] Restored ${rows.invoices.length} pending invoice(s) and ${rows.purchases.length} pending purchase(s) after DB reset`,
+		);
 	}
+}
+
+/** Queued sales kept in the backup database; non-empty only after a recovery that has not been restored. */
+export async function getBackedUpPending(): Promise<PendingBackup | null> {
+	const rows = await readBackup();
+	return rows && (rows.invoices.length || rows.purchases.length) ? rows : null;
+}
+
+/** Put backed-up sales back into the live queue (skipping any already there), then drop the backup. */
+export async function restoreBackedUpPending(): Promise<number> {
+	const rows = await readBackup();
+	if (!rows) return 0;
+	await ensureDatabaseReady();
+	const existing = new Set((await db.pendingInvoices.toArray()).map((row) => row.local_id).filter(Boolean));
+	const missing = rows.invoices
+		.filter((row) => !row.local_id || !existing.has(row.local_id))
+		.map(({ id, ...rest }) => rest);
+	await db.pendingInvoices.bulkAdd(missing as PendingInvoice[]);
+	const backup = new BackupDB();
+	try {
+		await backup.invoices.clear();
+		await backup.purchases.clear();
+	} finally {
+		backup.close();
+	}
+	return missing.length;
 }
 
 export async function ensureDatabaseReady(forceReset = false): Promise<void> {
@@ -175,10 +342,20 @@ export async function ensureDatabaseReady(forceReset = false): Promise<void> {
 		dbReadyPromise = (async () => {
 			try {
 				if (!db.isOpen()) {
+					if (dbState === "needs_reload") throw new StorageWriteError("unavailable");
 					await db.open();
 				}
+				if (dbState === "upgrading") setDbState("ready");
 			} catch (error) {
+				if (error instanceof StorageWriteError) throw error;
+				const name = (error as { name?: string })?.name;
+				// A newer build already upgraded the schema: never reset, ask for a reload.
+				if (name === "VersionError") {
+					setDbState("needs_reload");
+					throw error;
+				}
 				if (!isRecoverableDbError(error)) {
+					setDbState("storage_unavailable");
 					throw error;
 				}
 
@@ -200,6 +377,7 @@ export async function cacheItems(allItems: POSItem[]): Promise<void> {
 		await db.items.clear();
 		await db.items.bulkAdd(safeItems);
 	});
+	invalidateCatalogIndex();
 	await setMeta("items_cached_at", new Date().toISOString());
 }
 
@@ -244,8 +422,99 @@ export async function searchCachedItems(
 	return results;
 }
 
+interface CatalogIndexSlot {
+	fields: string;
+	ready: Promise<CatalogIndex>;
+}
+
+let catalogIndex: CatalogIndexSlot | null = null;
+
+/** Forget the index; the next search rebuilds it from what is stored. Call after writing `items`. */
+export function invalidateCatalogIndex(): void {
+	catalogIndex = null;
+}
+
+/** The index for these search fields; without fields, whichever index exists (lookups ignore fields). */
+function ensureCatalogIndex(searchFields?: string[]): Promise<CatalogIndex> {
+	const fields = searchFields?.length ? searchFields : DEFAULT_CACHED_SEARCH_FIELDS;
+	const key = fields.join("\u0000");
+	if (catalogIndex && (!searchFields || catalogIndex.fields === key)) return catalogIndex.ready;
+
+	const slot: CatalogIndexSlot = {
+		fields: key,
+		ready: db.items.toArray().then((rows) => buildCatalogIndex(rows, fields)),
+	};
+	catalogIndex = slot;
+	slot.ready.catch(() => {
+		if (catalogIndex === slot) catalogIndex = null;
+	});
+	return slot.ready;
+}
+
+/** Build the index ahead of the first search so that search does not pay for it. */
+export async function warmCatalogIndex(searchFields?: string[]): Promise<void> {
+	await ensureCatalogIndex(searchFields);
+}
+
+/** One page of cached items, found through the index and read by key instead of scanning the table. */
+export async function searchCachedItemsPage(
+	term: string,
+	group: string,
+	searchFields: string[] | undefined,
+	offset: number,
+	limit: number,
+): Promise<{ items: POSItem[]; hasMore: boolean; total: number }> {
+	const index = await ensureCatalogIndex(searchFields);
+	const { codes, hasMore } = index.search({ term, group, offset, limit });
+	const rows = await db.items.bulkGet(codes);
+	return { items: rows.filter((row): row is POSItem => !!row), hasMore, total: index.size };
+}
+
+/** The item whose code or barcode is exactly `value`, ignoring case. */
+export async function findCachedItem(value: string): Promise<POSItem | undefined> {
+	const index = await ensureCatalogIndex();
+	const code = index.lookup(value);
+	return code === undefined ? undefined : db.items.get(code);
+}
+
+export type CachedScan =
+	| {
+			kind: "item";
+			item: POSItem;
+			barcode: string;
+			uom: string;
+			conversion_factor: number | null;
+			rate: number;
+	  }
+	| { kind: "ambiguous"; codes: string[] };
+
+/**
+ * What an offline scan of ``value`` sells: the item with the UOM, factor and rate its barcode carries.
+ * A plain item-code scan sells one stock unit at the item's rate. ``conversion_factor`` is null when
+ * the barcode's UOM cannot be converted, and the caller must refuse the scan.
+ */
+export async function findCachedScan(value: string): Promise<CachedScan | undefined> {
+	const index = await ensureCatalogIndex();
+	const hit = index.resolve(value);
+	if (hit.kind === "none") return undefined;
+	if (hit.kind === "ambiguous") return { kind: "ambiguous", codes: hit.codes };
+	const item = await db.items.get(hit.code);
+	if (!item) return undefined;
+	const entry = hit.entry;
+	const stockRate = Number((item as { rate?: number }).rate) || 0;
+	return {
+		kind: "item",
+		item,
+		barcode: entry?.barcode ?? value,
+		uom: entry?.uom || (item as { stock_uom?: string }).stock_uom || "",
+		conversion_factor: entry ? (entry.conversion_factor ?? null) : 1,
+		rate: entry?.rate ?? stockRate,
+	};
+}
+
 export async function updateCachedItem(item: POSItem): Promise<void> {
 	await db.items.put(sanitizeForIdb(item));
+	invalidateCatalogIndex();
 }
 
 export async function cacheItemGroups(groups: ItemGroup[], parentGroups: ItemGroup[]): Promise<void> {
@@ -281,6 +550,10 @@ export async function cacheCustomers(customers: Customer[]): Promise<void> {
 		await db.customers.bulkAdd(safeCustomers);
 	});
 	await setMeta("customers_cached_at", new Date().toISOString());
+}
+
+export async function mergeCachedCustomers(customers: Customer[]): Promise<void> {
+	await db.customers.bulkPut(sanitizeForIdb(customers));
 }
 
 export async function getCachedCustomers(): Promise<Customer[]> {
@@ -368,6 +641,17 @@ export async function cacheStockForWarehouse(
 
 export async function getCachedStock(warehouse: string): Promise<StockEntry[]> {
 	return db.stockCache.where("warehouse").equals(warehouse).toArray();
+}
+
+/** Cached quantities for just these items in one warehouse. */
+export async function getCachedStockForItems(
+	warehouse: string,
+	itemCodes: string[],
+): Promise<Map<string, number>> {
+	const rows = await db.stockCache.bulkGet(itemCodes.map((code) => `${warehouse}::${code}`));
+	const quantities = new Map<string, number>();
+	for (const row of rows) if (row) quantities.set(row.item_code, row.actual_qty);
+	return quantities;
 }
 
 export async function getCachedStockForItem(
@@ -577,17 +861,105 @@ export async function getCachedReceiptContext(
 export async function clearAllData(): Promise<void> {
 	await db.transaction(
 		"rw",
-		[db.items, db.itemGroups, db.customers, db.suppliers, db.stockCache, db.meta, db.syncIdMap],
+		[
+			db.items,
+			db.itemGroups,
+			db.customers,
+			db.suppliers,
+			db.stockCache,
+			db.meta,
+			db.syncIdMap,
+			db.itemsStage,
+			db.stockStage,
+			db.customersStage,
+		],
 		async () => {
 			await db.items.clear();
+			invalidateCatalogIndex();
 			await db.itemGroups.clear();
 			await db.customers.clear();
 			await db.suppliers.clear();
 			await db.stockCache.clear();
 			await db.meta.clear();
 			await db.syncIdMap.clear();
+			await db.itemsStage.clear();
+			await db.stockStage.clear();
+			await db.customersStage.clear();
 		},
 	);
+}
+
+const CATALOG_META_KEYS = [
+	"catalog_state",
+	"catalog_sync_job",
+	"items_cached_at",
+	"items_cache_scope",
+	"customers_cached_at",
+];
+
+export async function clearCatalogCache(): Promise<void> {
+	await db.transaction(
+		"rw",
+		[
+			db.items,
+			db.itemGroups,
+			db.customers,
+			db.stockCache,
+			db.meta,
+			db.itemsStage,
+			db.stockStage,
+			db.customersStage,
+		],
+		async () => {
+			await db.items.clear();
+			await db.itemGroups.clear();
+			await db.customers.clear();
+			await db.stockCache.clear();
+			await db.itemsStage.clear();
+			await db.stockStage.clear();
+			await db.customersStage.clear();
+			await db.meta.bulkDelete(CATALOG_META_KEYS);
+		},
+	);
+	invalidateCatalogIndex();
+}
+
+export async function claimPendingInvoice(
+	id: number,
+	owner: string,
+	ttlMs: number,
+): Promise<PendingInvoice | null> {
+	return db.transaction("rw", db.pendingInvoices, async () => {
+		const row = await db.pendingInvoices.get(id);
+		if (!row) return null;
+		if (row.claimed_by && row.claim_expires && Date.parse(row.claim_expires) > Date.now()) return null;
+		const claimed: PendingInvoice = {
+			...row,
+			claimed_by: owner,
+			claim_expires: new Date(Date.now() + ttlMs).toISOString(),
+			status: "syncing",
+		};
+		await db.pendingInvoices.put(claimed);
+		return claimed;
+	});
+}
+
+export async function recoverStaleClaims(): Promise<number> {
+	return db.transaction("rw", db.pendingInvoices, async () => {
+		const rows = await db.pendingInvoices.where("status").equals("syncing").toArray();
+		let recovered = 0;
+		for (const row of rows) {
+			if (row.claim_expires && Date.parse(row.claim_expires) > Date.now()) continue;
+			await db.pendingInvoices.put({
+				...row,
+				status: "pending",
+				claimed_by: null,
+				claim_expires: null,
+			});
+			recovered++;
+		}
+		return recovered;
+	});
 }
 
 export async function clearCachedData(): Promise<void> {
@@ -638,6 +1010,7 @@ export async function upsertPullBatch(
 	if (store === "items") {
 		if (!isIncremental) await db.items.clear();
 		await db.items.bulkPut(safeRecords as unknown as POSItem[]);
+		invalidateCatalogIndex();
 	} else if (store === "customers") {
 		if (!isIncremental) await db.customers.clear();
 		await db.customers.bulkPut(safeRecords as unknown as Customer[]);

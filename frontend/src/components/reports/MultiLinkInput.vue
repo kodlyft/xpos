@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 import { X } from "lucide-vue-next";
-import { Button } from "@/components/ui/button";
+import __ from "@/lib/translate";
 import { Badge } from "@/components/ui/badge";
 import { Autocomplete, AutocompleteOption } from "@/components/ui/autocomplete";
 
@@ -15,7 +15,7 @@ const props = withDefaults(
 		label?: string;
 	}>(),
 	{
-		placeholder: "Search and add...",
+		placeholder: "",
 		disabled: false,
 		filters: () => ({}),
 	},
@@ -78,60 +78,45 @@ function clearAll() {
 </script>
 
 <template>
-	<div class="space-y-2">
-		<div v-if="label" class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-			{{ label }}
-		</div>
-
-		<div class="rounded-xl border border-border bg-muted/20 p-3 space-y-3">
-			<div class="flex flex-wrap gap-1.5 min-h-8">
-				<Badge
-					v-for="item in selectedItems"
-					:key="item.value"
-					variant="secondary"
-					class="gap-1.5 pl-2.5 pr-1.5"
+	<div class="space-y-1">
+		<div v-if="selectedItems.length > 0" class="flex flex-wrap gap-1">
+			<Badge
+				v-for="item in selectedItems"
+				:key="item.value"
+				variant="secondary"
+				class="gap-1 ps-2 pe-1"
+			>
+				<span class="max-w-28 truncate">{{ item.label || item.value }}</span>
+				<button
+					type="button"
+					class="rounded-full p-0.5 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+					:aria-label="__('Remove {0}', [item.label || item.value])"
+					@click="removeItem(item.value)"
 				>
-					<span class="max-w-36 truncate">{{ item.label || item.value }}</span>
-					<button
-						type="button"
-						class="rounded-full p-0.5 text-muted-foreground hover:text-destructive transition-colors"
-						@click="removeItem(item.value)"
-					>
-						<X class="h-3 w-3" />
-					</button>
-				</Badge>
-
-				<div v-if="selectedItems.length === 0" class="text-xs text-muted-foreground italic px-1 py-1">
-					{{ placeholder }}
-				</div>
-			</div>
-
-			<div class="flex items-center gap-2">
-				<div class="flex-1 min-w-0">
-					<Autocomplete
-						v-model="activeValue"
-						:doctype="doctype"
-						:filters="filters"
-						:disabled="disabled"
-						:clearable="true"
-						:open-on-focus="true"
-						:min-chars="0"
-						:placeholder="placeholder"
-						class="w-full"
-						@select="addSelectedOption"
-					/>
-				</div>
-
-				<Button
-					variant="outline"
-					size="sm"
-					class="shrink-0"
-					:disabled="selectedItems.length === 0 || disabled"
-					@click="clearAll"
-				>
-					Clear
-				</Button>
-			</div>
+					<X class="h-3 w-3" />
+				</button>
+			</Badge>
+			<button
+				v-if="selectedItems.length > 1"
+				type="button"
+				class="rounded-full px-1.5 text-xs text-muted-foreground hover:text-foreground"
+				@click="clearAll"
+			>
+				{{ __("Clear") }}
+			</button>
 		</div>
+		<Autocomplete
+			v-model="activeValue"
+			:doctype="doctype"
+			:filters="filters"
+			:disabled="disabled"
+			:clearable="false"
+			:open-on-focus="true"
+			:min-chars="0"
+			:placeholder="placeholder"
+			:aria-label="label"
+			class="w-full"
+			@select="addSelectedOption"
+		/>
 	</div>
 </template>

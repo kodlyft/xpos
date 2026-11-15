@@ -73,7 +73,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libmariadb-dev mariadb-client wkhtmltopdf
+          sudo apt-get install -y --no-install-recommends libmariadb-dev mariadb-client
 
       - name: Add test_site to hosts
         run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts

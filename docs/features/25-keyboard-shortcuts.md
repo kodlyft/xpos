@@ -15,6 +15,21 @@ X POS is designed for fast operation with extensive keyboard support for power u
 
 ---
 
+## Carts
+
+| Key | Action | Context |
+|---|---|---|
+| `Alt+T` | New cart | POS view |
+| `Alt+→` | Next cart | POS view |
+| `Alt+←` | Previous cart | POS view |
+| `Alt+W` | Close the cart on screen (asks first if it has items) | POS view |
+
+`Ctrl+T`, `Ctrl+Tab` and `Ctrl+Shift+Tab` are reserved by browsers, so they only work when X POS
+runs as an installed app or in fullscreen. The keys can be changed from the **Carts** section of
+the Keyboard Shortcuts dialog (`Ctrl+/`). See [Cart Tabs](34-cart-tabs.md).
+
+---
+
 ## Item Search & Navigation
 
 | Key | Action | Context |

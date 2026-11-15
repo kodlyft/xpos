@@ -91,12 +91,14 @@ class TestGetCustomers(unittest.TestCase):
 class TestGetCustomerInfo(unittest.TestCase):
 	"""Tests for get_customer_info function."""
 
+	@patch("xpos.api.customers.user_may_see_address", return_value=True)
+	@patch("xpos.api.customers.require_customer_access", return_value=MagicMock(company="_Test Company"))
 	@patch("xpos.api.customers.get_loyalty_points")
 	@patch("erpnext.selling.doctype.customer.customer.get_credit_limit", return_value=0)
 	@patch("xpos.api.customers.get_customer_balance")
 	@patch("xpos.api.customers.frappe")
 	def test_get_customer_info_returns_full_details(
-		self, mock_frappe, mock_balance, mock_credit_limit, mock_loyalty
+		self, mock_frappe, mock_balance, mock_credit_limit, mock_loyalty, mock_access, mock_address
 	):
 		"""Test that get_customer_info returns complete customer data."""
 		mock_customer = MagicMock()
@@ -114,19 +116,21 @@ class TestGetCustomerInfo(unittest.TestCase):
 		self.assertEqual(result["name"], "CUST-001")
 		self.assertEqual(result["customer_name"], "John Doe")
 		self.assertEqual(result["balance"], {"balance": 500})
-		mock_balance.assert_called_once_with("CUST-001")
-		mock_loyalty.assert_called_once_with("CUST-001")
+		mock_balance.assert_called_once_with("CUST-001", "_Test Company")
+		mock_loyalty.assert_called_once_with("CUST-001", "_Test Company")
 
 	def test_get_customer_info_returns_none_for_missing_customer(self):
 		"""Test that get_customer_info returns None for a blank customer."""
 		self.assertIsNone(customers.get_customer_info(""))
 
+	@patch("xpos.api.customers.user_may_see_address", return_value=True)
+	@patch("xpos.api.customers.require_customer_access", return_value=MagicMock(company="_Test Company"))
 	@patch("xpos.api.customers.get_loyalty_points")
 	@patch("erpnext.selling.doctype.customer.customer.get_credit_limit", return_value=0)
 	@patch("xpos.api.customers.get_customer_balance")
 	@patch("xpos.api.customers.frappe")
 	def test_get_customer_info_includes_addresses(
-		self, mock_frappe, mock_balance, mock_credit_limit, mock_loyalty
+		self, mock_frappe, mock_balance, mock_credit_limit, mock_loyalty, mock_access, mock_address
 	):
 		"""Test that get_customer_info resolves Dynamic Links into full address rows."""
 		mock_customer = MagicMock()
@@ -187,8 +191,9 @@ class TestCreateCustomer(unittest.TestCase):
 class TestUpdateCustomer(unittest.TestCase):
 	"""Tests for update_customer function."""
 
+	@patch("xpos.api.customers.require_customer_access")
 	@patch("xpos.api.customers.frappe")
-	def test_update_customer_modifies_existing_customer(self, mock_frappe):
+	def test_update_customer_modifies_existing_customer(self, mock_frappe, mock_access):
 		"""Test that update_customer modifies existing customer."""
 		mock_customer = MagicMock()
 		mock_customer.name = "CUST-001"
@@ -209,7 +214,7 @@ class TestGetCustomerBalance(unittest.TestCase):
 		"""Test that get_customer_balance returns outstanding amount."""
 		mock_frappe.db.sql.return_value = [[500.0]]
 
-		result = customers.get_customer_balance("CUST-001")
+		result = customers.get_customer_balance("CUST-001", "_Test Company")
 
 		self.assertIn("balance", result) if isinstance(result, dict) else True
 
@@ -222,7 +227,7 @@ class TestGetLoyaltyPoints(unittest.TestCase):
 		"""Test that get_loyalty_points returns loyalty information."""
 		mock_frappe.db.sql.return_value = [{"loyalty_program": "VIP Program", "loyalty_points": 150}]
 
-		customers.get_loyalty_points("CUST-001")
+		customers.get_loyalty_points("CUST-001", "_Test Company")
 
 		mock_frappe.db.sql.assert_called()
 

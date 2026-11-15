@@ -41,22 +41,22 @@
 								</p>
 							</CardContent>
 						</Card>
-						<Card v-if="!blind" class="bg-emerald-500/5 border-emerald-500/20">
+						<Card v-if="!blind" class="bg-success/5 border-success/30">
 							<CardContent class="p-4 text-center">
-								<p class="text-xs font-medium text-emerald-600 dark:text-emerald-400 mb-1">
+								<p class="text-xs font-medium text-success mb-1">
 									{{ __("Grand Total") }}
 								</p>
-								<p class="text-2xl font-extrabold text-emerald-700 dark:text-emerald-300">
+								<p class="text-2xl font-extrabold text-success">
 									{{ money(summary.grand_total ?? 0) }}
 								</p>
 							</CardContent>
 						</Card>
-						<Card v-if="!blind" class="bg-blue-500/5 border-blue-500/20">
+						<Card v-if="!blind" class="bg-info/5 border-info/30">
 							<CardContent class="p-4 text-center">
-								<p class="text-xs font-medium text-blue-600 dark:text-blue-400 mb-1">
+								<p class="text-xs font-medium text-info mb-1">
 									{{ __("Net Total") }}
 								</p>
-								<p class="text-2xl font-extrabold text-blue-700 dark:text-blue-300">
+								<p class="text-2xl font-extrabold text-info">
 									{{ money(summary.net_total ?? 0) }}
 								</p>
 							</CardContent>
@@ -66,26 +66,23 @@
 					<div class="grid grid-cols-2 gap-3">
 						<Card
 							v-if="(summary as any).returns_count > 0"
-							class="bg-amber-500/5 border-amber-500/20"
+							class="bg-warning/5 border-warning/30"
 						>
 							<CardContent class="p-3 text-center">
-								<p class="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">
+								<p class="text-xs font-medium text-warning mb-1">
 									{{ __("Returns") }}
 								</p>
-								<p class="text-lg font-bold text-amber-700 dark:text-amber-300">
+								<p class="text-lg font-bold text-warning">
 									{{ (summary as any).returns_count }}
 								</p>
 							</CardContent>
 						</Card>
-						<Card
-							v-if="(summary as any).total_taxes > 0"
-							class="bg-violet-500/5 border-violet-500/20"
-						>
+						<Card v-if="(summary as any).total_taxes > 0" class="bg-primary/5 border-primary/30">
 							<CardContent class="p-3 text-center">
-								<p class="text-xs font-medium text-violet-600 dark:text-violet-400 mb-1">
+								<p class="text-xs font-medium text-primary mb-1">
 									{{ __("Total Taxes") }}
 								</p>
-								<p class="text-lg font-bold text-violet-700 dark:text-violet-300">
+								<p class="text-lg font-bold text-primary">
 									{{ money((summary as any).total_taxes ?? 0) }}
 								</p>
 							</CardContent>
@@ -207,7 +204,7 @@
 												data-testid="closing-difference"
 												:class="
 													detail.difference >= 0
-														? 'text-emerald-600'
+														? 'text-success'
 														: 'text-destructive'
 												"
 											>
@@ -259,8 +256,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { usePosStore } from "@/stores/posStore";
+import { useCartSessionStore } from "@/stores/cartSessionStore";
 import { useMoney } from "@/composables/useMoney";
-import { showSuccess, showError } from "@/services/api";
+import { showSuccess, showError, showInfo } from "@/services/api";
 import { hasPermission } from "@/services/userRights";
 import { formatFor, precisionFor, roundFor } from "@/composables/useCurrency";
 import type { ShiftModeTotal } from "@/types/pos.types";
@@ -300,6 +298,7 @@ interface ClosingDetail {
 }
 
 const posStore = usePosStore();
+const cartSessions = useCartSessionStore();
 const { money } = useMoney();
 
 const isLoading = ref(true);
@@ -387,6 +386,12 @@ async function handleCloseShift() {
 		showError(__("Only a Supervisor can close a shift."));
 		return;
 	}
+	const unconfirmed = cartSessions.shiftCloseBlocker();
+	if (unconfirmed) {
+		showError(unconfirmed);
+		return;
+	}
+	const unfinished = cartSessions.unfinishedCount();
 	isClosing.value = true;
 
 	try {
@@ -394,6 +399,13 @@ async function handleCloseShift() {
 		closedShiftName.value = result?.name || "";
 		shiftClosed.value = true;
 		showSuccess(__("Shift closed successfully!"));
+		if (unfinished) {
+			showInfo(
+				__("{0} unfinished cart(s) were kept. They are offered again when the next shift opens.", [
+					String(unfinished),
+				]),
+			);
+		}
 	} catch (error: unknown) {
 		showError("Failed to close shift: " + ((error as Error)?.message || error));
 	} finally {
