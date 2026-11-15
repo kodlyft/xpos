@@ -2,7 +2,7 @@
 	<div
 		id="xpos-app"
 		:class="[
-			'h-screen w-screen font-sans',
+			'h-dvh w-screen font-sans',
 			isDark ? 'dark' : '',
 			isAuthPage ? 'overflow-y-auto' : 'overflow-hidden',
 			isRtl ? 'rtl' : 'ltr',

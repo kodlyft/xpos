@@ -8,9 +8,8 @@ export default defineConfig({
 	plugins: [
 		vue(),
 		VitePWA({
-			registerType: "autoUpdate",
+			registerType: "prompt",
 			injectRegister: false,
-			includeAssets: ["pwa-192x192.svg", "pwa-512x512.svg", "apple-touch-icon.svg"],
 			manifest: {
 				name: "X POS - Point of Sale",
 				short_name: "X POS",
@@ -25,34 +24,34 @@ export default defineConfig({
 				categories: ["business", "finance"],
 				icons: [
 					{
-						src: "pwa-192x192.svg",
+						src: "/assets/xpos/xpos/pwa-192x192.png",
 						sizes: "192x192",
-						type: "image/svg+xml",
+						type: "image/png",
 					},
 					{
-						src: "pwa-512x512.svg",
+						src: "/assets/xpos/xpos/pwa-512x512.png",
 						sizes: "512x512",
-						type: "image/svg+xml",
+						type: "image/png",
 					},
 					{
-						src: "pwa-maskable-512x512.svg",
+						src: "/assets/xpos/xpos/pwa-maskable-512x512.png",
 						sizes: "512x512",
-						type: "image/svg+xml",
+						type: "image/png",
 						purpose: "maskable",
 					},
 				],
 				screenshots: [
 					{
-						src: "pwa-512x512.svg",
+						src: "/assets/xpos/xpos/pwa-512x512.png",
 						sizes: "512x512",
-						type: "image/svg+xml",
+						type: "image/png",
 						form_factor: "wide",
 						label: "X POS Dashboard",
 					},
 					{
-						src: "pwa-512x512.svg",
+						src: "/assets/xpos/xpos/pwa-512x512.png",
 						sizes: "512x512",
-						type: "image/svg+xml",
+						type: "image/png",
 						form_factor: "narrow",
 						label: "X POS Mobile",
 					},
@@ -62,13 +61,15 @@ export default defineConfig({
 				enabled: false,
 			},
 			workbox: {
-				globPatterns: ["**/*.{js,css,svg,png,ico,woff,woff2,ttf,eot}"],
-				globIgnores: ["**/index.html"],
+				globPatterns: ["**/*.{js,css,svg,png,ico,woff,woff2,ttf,eot}"],				globIgnores: ["**/index.html"],
+				// The shell is a Jinja template, so it cannot be precached. Cache the
+				// rendered HTML at runtime instead.
+				navigateFallback: null,
 				modifyURLPrefix: { "": "/assets/xpos/xpos/" },
 				maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
 				runtimeCaching: [
 					{
-						urlPattern: /^https?:\/\/[^/]+\/xpos\/?$/,
+						urlPattern: /^https?:\/\/[^/]+\/xpos(\/.*)?$/,
 						handler: "NetworkFirst",
 						options: {
 							cacheName: "xpos-html-cache",

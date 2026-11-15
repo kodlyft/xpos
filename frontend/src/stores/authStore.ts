@@ -12,6 +12,34 @@ function friendlyMessage(err: unknown, fallback: string): string {
 	return message;
 }
 
+/**
+ * The last session that reached the server. A till reloaded without a connection
+ * cannot ask who it is, and a cashier locked out of an open shift cannot sell, so
+ * the session is remembered on the device and reused while the server is out of reach.
+ * The server still refuses anything that session is not allowed to do.
+ */
+const LAST_USER_KEY = "xpos:last-user";
+
+function readCachedUser(): UserSession | null {
+	try {
+		const raw = localStorage.getItem(LAST_USER_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw) as UserSession;
+		return parsed?.user && parsed.user !== "Guest" ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
+function cacheUser(session: UserSession | null): void {
+	try {
+		if (session) localStorage.setItem(LAST_USER_KEY, JSON.stringify(session));
+		else localStorage.removeItem(LAST_USER_KEY);
+	} catch {
+		// No localStorage: the session is simply not remembered.
+	}
+}
+
 export const useAuthStore = defineStore("auth", () => {
 	const isLoading = ref(false);
 	const isAuthenticated = ref(false);
@@ -56,15 +84,26 @@ export const useAuthStore = defineStore("auth", () => {
 					};
 				}
 				await loadPermissions(loggedUser);
+				cacheUser(user.value);
 				return true;
 			}
 
 			isAuthenticated.value = false;
 			user.value = null;
+			cacheUser(null);
 			return false;
 		} catch (err) {
 			console.error("Auth check failed:", err);
 			if (isAuthenticated.value && !isOnline()) {
+				return true;
+			}
+			// Server unreachable: fall back to the remembered session instead of
+			// stranding an open till on the sign-in screen.
+			const cached = isNetworkError(err) ? readCachedUser() : null;
+			if (cached) {
+				isAuthenticated.value = true;
+				user.value = cached;
+				await loadPermissions(cached.user);
 				return true;
 			}
 			isAuthenticated.value = false;
@@ -92,6 +131,7 @@ export const useAuthStore = defineStore("auth", () => {
 			};
 
 			await loadPermissions(username);
+			cacheUser(user.value);
 			return true;
 		} catch (err) {
 			console.error("Login failed:", err);
@@ -130,6 +170,7 @@ export const useAuthStore = defineStore("auth", () => {
 			isAuthenticated.value = false;
 			user.value = null;
 			resetPermissions();
+			cacheUser(null);
 
 			window.location.href = "/xpos/login";
 		} catch (err) {

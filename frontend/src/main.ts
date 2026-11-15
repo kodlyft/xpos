@@ -17,16 +17,22 @@ if (import.meta.env.PROD) {
 			.then((registration) => {
 				console.log("[XPOS PWA] Service worker registered for", registration.scope);
 
+				// The new worker waits until the cashier accepts, so a shift is never
+				// swapped out from under a sale.
+				const offerUpdate = (worker: ServiceWorker | null) => {
+					if (!worker || !navigator.serviceWorker.controller) return;
+					if (!confirm("A new version of X POS is available. Reload to update?")) return;
+					worker.postMessage({ type: "SKIP_WAITING" });
+					window.location.reload();
+				};
+
+				offerUpdate(registration.waiting);
+
 				registration.addEventListener("updatefound", () => {
 					const installing = registration.installing;
 					if (!installing) return;
 					installing.addEventListener("statechange", () => {
-						if (installing.state === "installed" && navigator.serviceWorker.controller) {
-							if (confirm("A new version of X POS is available. Reload to update?")) {
-								installing.postMessage({ type: "SKIP_WAITING" });
-								window.location.reload();
-							}
-						}
+						if (installing.state === "installed") offerUpdate(installing);
 					});
 				});
 
@@ -44,6 +50,14 @@ if (import.meta.env.PROD) {
 }
 
 async function initializeBrowserStorage(): Promise<void> {
+	// Queued sales live in IndexedDB, which the browser may evict under storage
+	// pressure unless the origin holds a persistent grant.
+	try {
+		await navigator.storage?.persist?.();
+	} catch (error) {
+		console.warn("[XPOS] Persistent storage request failed", error);
+	}
+
 	if (!usePosStore().useOfflineMode) return;
 
 	try {
