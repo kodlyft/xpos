@@ -1430,29 +1430,17 @@
     postcss "^8.5.25"
     tailwindcss "4.3.5"
 
-"@tanstack/virtual-core@3.19.6":
-  version "3.19.6"
-  resolved "https://registry.yarnpkg.com/@tanstack/virtual-core/-/virtual-core-3.19.6.tgz#1a185556d5cd3f65a6db3c5a372feb4fde7cbafc"
-  integrity sha512-CsTW892z23gy7IyxYTTorVu1uZWB+0N349rSMgKz4rFLPpLza7F7TpcCKeI5iUAwYQCt8QUlOU67J+KXCxtpGw==
+"@tanstack/virtual-core@3.19.11":
+  version "3.19.11"
+  resolved "https://registry.yarnpkg.com/@tanstack/virtual-core/-/virtual-core-3.19.11.tgz#089fd1a9a92503f8f2329c7e48ceb84178726fc1"
+  integrity sha512-/5iHb0RHBvj8Di59FDs4ESNm45jls33aZAi4zccVXZjc/6ZvwQP6nzEYeT6weXjTf9E6/vrp2JhYWRyO+ZP13A==
 
-"@tanstack/virtual-core@3.19.7":
-  version "3.19.7"
-  resolved "https://registry.yarnpkg.com/@tanstack/virtual-core/-/virtual-core-3.19.7.tgz#6e88e87174108789637527ce9d4e5e1b9bda00f7"
-  integrity sha512-gxy5SvH0mFRJ0YujtrflB/1HAu9Wn1KGvL0bjZfQkYVVMsIpQiwcf1mR06/ViN4NjllUb4HNCjqE9FGwgTvMCQ==
-
-"@tanstack/vue-virtual@3.13.47":
-  version "3.13.47"
-  resolved "https://registry.yarnpkg.com/@tanstack/vue-virtual/-/vue-virtual-3.13.47.tgz#2ca92853969358be65d12dec060f6a76812bb6b6"
-  integrity sha512-6HzdYK9bDyDoD9Q/NjepnC4wGDaZ7mFl5zz8tbn3Fmy7FDicI98ZJ+R37ztFssnoTMoCQhY3GfUhlz+pW/vOTg==
+"@tanstack/vue-virtual@3.13.52", "@tanstack/vue-virtual@^3.8.1":
+  version "3.13.52"
+  resolved "https://registry.yarnpkg.com/@tanstack/vue-virtual/-/vue-virtual-3.13.52.tgz#d008aaead599ed42e5912d2a9b6b972ec1df6eb8"
+  integrity sha512-qTwG7HNr5o+FPd/u+T05N73A8howtkB9FgQI71VcBzx6J2KsYzlVugRz/0ji17kl26D8SAdKux1Wmk3yhTI1Kw==
   dependencies:
-    "@tanstack/virtual-core" "3.19.6"
-
-"@tanstack/vue-virtual@^3.8.1":
-  version "3.13.48"
-  resolved "https://registry.yarnpkg.com/@tanstack/vue-virtual/-/vue-virtual-3.13.48.tgz#4ec0dcb6c5b04f37c4974ee1e4632aced4341cf8"
-  integrity sha512-exH0/lELoCW9D6x8V1Uq61XY4zrN1AeDH4rDKUMTOJ93ndkeEVIY8zo366IBM13HSjhULpuWPdPhJ+ccidg58A==
-  dependencies:
-    "@tanstack/virtual-core" "3.19.7"
+    "@tanstack/virtual-core" "3.19.11"
 
 "@trickfilm400/rollup-plugin-off-main-thread@^3.0.0-pre1":
   version "3.0.0-pre1"
