@@ -26,7 +26,7 @@
     "test:e2e:run": "node scripts/run-cypress.mjs run"
   },
   "dependencies": {
-    "@tanstack/vue-virtual": "3.13.47",
+    "@tanstack/vue-virtual": "3.13.52",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "air-datepicker": "3.6.0",
